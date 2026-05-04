@@ -72,36 +72,24 @@ st.markdown(
     """
     <style>
     .main-header {
-        background: linear-gradient(90deg, #174A7C 0%, #1F5F99 55%, #2C8C6A 100%);
-        padding: 14px 18px;
+        background: linear-gradient(90deg, #EAF3FF 0%, #FFFFFF 100%);
+        padding: 18px 22px;
         border-radius: 10px;
-        color: white;
+        color: #174A7C;
         margin-bottom: 18px;
-    }
-    .logo-box {
-        background: white;
-        border-radius: 10px;
-        width: 230px;
-        height: 96px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        flex-shrink: 0;
-    }
-    .logo-box img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        display: block;
+        border: 1px solid #D9E2EF;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        text-align: center;
     }
     .main-header h1 {
-        margin: 0;
-        font-size: 28px;
+        margin: 10px 0 0 0;
+        font-size: 30px;
+        color: #174A7C;
+        font-weight: 800;
     }
     .main-header p {
         margin: 4px 0 0 0;
-        opacity: 0.92;
+        color: #355C88;
     }
     .card {
         border: 1px solid #D9E2EF;
@@ -471,13 +459,11 @@ def processar_recuperacao():
 def tela_login():
     st.markdown(
         f"""
-        <div class="main-header" style="display:flex;align-items:center;gap:18px;">
-            <div class="logo-box"><img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}"></div>
-            <div>
-                <h1>📧 Sistema SEPRO - Controle de Atendimentos</h1>
-                <p>Corregedoria Regional Eleitoral da Bahia</p>
-                <p>Controle de demandas, movimentação por status e relatórios.</p>
+        <div class="main-header">
+            <div class="logo-box">
+                <img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}">
             </div>
+            <h1>Sistema SEPRO - Controle de Atendimentos</h1>
         </div>
         """,
         unsafe_allow_html=True
