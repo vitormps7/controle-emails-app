@@ -967,60 +967,278 @@ if arquivo is not None:
 
 
 # -----------------------------
-# PÁGINA: PAINEL
+# PÁGINA: PAINEL / DASHBOARD
 # -----------------------------
 
 if pagina == "Painel":
     df = st.session_state.base.copy()
     df_filtrado = aplicar_filtros(df)
 
+    # -------------------------
+    # Funções locais do dashboard
+    # -------------------------
+    def _fmt_int(valor):
+        try:
+            return f"{int(valor):,}".replace(",", ".")
+        except Exception:
+            return str(valor)
+
+    def _fmt_pct(valor):
+        try:
+            return f"{float(valor):.2f}%".replace(".", ",")
+        except Exception:
+            return "0,00%"
+
+    def _class_status(nome):
+        texto = str(nome).lower()
+        if any(p in texto for p in ["respond", "concl", "final"]):
+            return "ok"
+        if any(p in texto for p in ["pend", "andamento"]):
+            return "warn"
+        if any(p in texto for p in ["arquiv"]):
+            return "muted"
+        return "info"
+
+    def _tabela_html(df_tabela, colunas, max_linhas=10, barra_coluna=None):
+        if df_tabela is None or df_tabela.empty:
+            return '<div class="dash-empty">Sem dados para exibir.</div>'
+
+        tabela = df_tabela.copy().head(max_linhas)
+        max_barra = 0
+        if barra_coluna and barra_coluna in tabela.columns:
+            max_barra = pd.to_numeric(tabela[barra_coluna], errors="coerce").fillna(0).max()
+
+        cabecalho = "".join([f"<th>{c}</th>" for c in colunas])
+        linhas = []
+        for _, linha in tabela.iterrows():
+            celulas = []
+            for c in colunas:
+                valor = linha.get(c, "")
+                valor_html = _fmt_int(valor) if c.lower() in ["qtd.", "quantidade", "total"] else str(valor)
+                if barra_coluna and c == barra_coluna and max_barra:
+                    largura = max(3, min(100, float(valor) / float(max_barra) * 100))
+                    valor_html = f'<div class="bar-wrap"><span>{_fmt_int(valor)}</span><div class="bar" style="width:{largura}%"></div></div>'
+                celulas.append(f"<td>{valor_html}</td>")
+            linhas.append("<tr>" + "".join(celulas) + "</tr>")
+        return f"<table class='dash-table'><thead><tr>{cabecalho}</tr></thead><tbody>{''.join(linhas)}</tbody></table>"
+
+    def _box(titulo, valor, classe="blue", subtitulo=""):
+        return f"""
+        <div class="kpi-card {classe}">
+            <div class="kpi-label">{titulo}</div>
+            <div class="kpi-value">{valor}</div>
+            <div class="kpi-subtitle">{subtitulo}</div>
+        </div>
+        """
+
+    # -------------------------
+    # Cálculos principais
+    # -------------------------
+    total_base = len(df)
     total = len(df_filtrado)
-    pendentes = df_filtrado["SITUAÇÃO"].astype(str).str.contains("pend|andamento", case=False, na=False).sum() if not df_filtrado.empty else 0
-    respondidos = df_filtrado["SITUAÇÃO"].astype(str).str.contains("respond|concl|final", case=False, na=False).sum() if not df_filtrado.empty else 0
-    outros = df_filtrado["SITUAÇÃO"].astype(str).str.contains("outro|arquiv", case=False, na=False).sum() if not df_filtrado.empty else 0
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        card("Total filtrado", total)
-    with c2:
-        card("Respondidos", int(respondidos))
-    with c3:
-        card("Pendentes / em atendimento", int(pendentes))
-    with c4:
-        card("Outros / arquivados", int(outros))
-
-    st.divider()
 
     if df_filtrado.empty:
-        st.info("Nenhum atendimento encontrado. Importe uma planilha ou registre um novo atendimento.")
+        datas_validas = pd.Series(dtype="datetime64[ns]")
+        datas_invalidas = 0
     else:
-        col_a, col_b = st.columns(2)
+        datas_convertidas = pd.to_datetime(df_filtrado["DATA"], errors="coerce")
+        datas_validas = datas_convertidas.dropna()
+        datas_invalidas = int(datas_convertidas.isna().sum())
 
-        with col_a:
-            st.subheader("Atendimentos por situação")
-            tabela = df_filtrado["SITUAÇÃO"].fillna("Não informado").value_counts()
-            st.bar_chart(tabela)
+    respondidos = int(df_filtrado["SITUAÇÃO"].astype(str).str.contains("respond|concl|final", case=False, na=False).sum()) if not df_filtrado.empty else 0
+    pendentes = int(df_filtrado["SITUAÇÃO"].astype(str).str.contains("pend|andamento", case=False, na=False).sum()) if not df_filtrado.empty else 0
+    pct_respondido = (respondidos / total * 100) if total else 0
 
-        with col_b:
-            st.subheader("Atendimentos por fonte")
-            tabela = df_filtrado["FONTE"].fillna("Não informado").value_counts()
-            st.bar_chart(tabela)
+    fontes_norm = df_filtrado["FONTE"].fillna("").astype(str).str.strip().str.lower() if not df_filtrado.empty else pd.Series(dtype=str)
+    qtd_email = int((fontes_norm == "e-mail").sum())
+    qtd_telefone = int((fontes_norm == "telefone").sum())
+    qtd_whatsapp = int((fontes_norm == "whatsapp").sum())
+    qtd_outros = int(total - qtd_email - qtd_telefone - qtd_whatsapp)
 
-        col_c, col_d = st.columns(2)
+    periodo_txt = "sem período válido"
+    if len(datas_validas) > 0:
+        periodo_txt = f"{datas_validas.min().strftime('%d/%m/%Y')} a {datas_validas.max().strftime('%d/%m/%Y')}"
 
-        with col_c:
-            st.subheader("Top servidores")
-            top_servidores = df_filtrado["SERVIDOR(A)"].fillna("Não informado").value_counts().head(15)
-            tabela_servidores = top_servidores.rename_axis("Servidor(a)").reset_index(name="Quantidade")
-            st.dataframe(tabela_servidores, use_container_width=True, hide_index=True)
+    atualizacao_txt = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-        with col_d:
-            st.subheader("Top assuntos")
-            top_assuntos = df_filtrado["ASSUNTO"].fillna("Não informado").value_counts().head(15)
-            tabela_assuntos = top_assuntos.rename_axis("Assunto").reset_index(name="Quantidade")
-            st.dataframe(tabela_assuntos, use_container_width=True, hide_index=True)
+    # Resumos em tabelas
+    if df_filtrado.empty:
+        resumo_situacao = pd.DataFrame(columns=["Situação", "Qtd."])
+        resumo_fonte = pd.DataFrame(columns=["Fonte", "Qtd."])
+        top_servidores = pd.DataFrame(columns=["Servidor(a)", "Qtd."])
+        top_assuntos = pd.DataFrame(columns=["Assunto", "Qtd."])
+        meses_maior_volume = pd.DataFrame(columns=["Mês", "Total"])
+        ultimos_meses = pd.DataFrame(columns=["Mês", "Total"])
+    else:
+        resumo_situacao = df_filtrado["SITUAÇÃO"].replace("", "Não informado").fillna("Não informado").value_counts().reset_index()
+        resumo_situacao.columns = ["Situação", "Qtd."]
+        resumo_fonte = df_filtrado["FONTE"].replace("", "Não informado").fillna("Não informado").value_counts().reset_index()
+        resumo_fonte.columns = ["Fonte", "Qtd."]
+        top_servidores = df_filtrado["SERVIDOR(A)"].replace("", "Não informado").fillna("Não informado").value_counts().head(10).reset_index()
+        top_servidores.columns = ["Servidor(a)", "Qtd."]
+        top_assuntos = df_filtrado["ASSUNTO"].replace("", "Não informado").fillna("Não informado").value_counts().head(10).reset_index()
+        top_assuntos.columns = ["Assunto", "Qtd."]
 
-        st.subheader("Base filtrada")
+        temp_mes = df_filtrado.copy()
+        temp_mes["DATA_CONVERTIDA"] = pd.to_datetime(temp_mes["DATA"], errors="coerce")
+        temp_mes = temp_mes.dropna(subset=["DATA_CONVERTIDA"])
+        if temp_mes.empty:
+            meses_maior_volume = pd.DataFrame(columns=["Mês", "Total"])
+            ultimos_meses = pd.DataFrame(columns=["Mês", "Total"])
+        else:
+            mensal = (
+                temp_mes.assign(MES_PERIODO=temp_mes["DATA_CONVERTIDA"].dt.to_period("M"))
+                .groupby("MES_PERIODO")
+                .size()
+                .reset_index(name="Total")
+            )
+            mensal["Mês"] = mensal["MES_PERIODO"].dt.strftime("%m/%Y")
+            meses_maior_volume = mensal.sort_values("Total", ascending=False)[["Mês", "Total"]].head(8)
+            ultimos_meses = mensal.sort_values("MES_PERIODO", ascending=False)[["Mês", "Total"]].head(8)
+
+    # Leitura rápida automática
+    leitura = []
+    if total == 0:
+        leitura.append("Nenhum registro encontrado com os filtros atuais.")
+    else:
+        if qtd_telefone > qtd_email and qtd_telefone > qtd_whatsapp:
+            leitura.append("Predomínio de telefone na base filtrada.")
+        elif qtd_email > qtd_telefone and qtd_email > qtd_whatsapp:
+            leitura.append("Predomínio de e-mail na base filtrada.")
+        elif qtd_whatsapp > qtd_email and qtd_whatsapp > qtd_telefone:
+            leitura.append("Predomínio de WhatsApp na base filtrada.")
+        else:
+            leitura.append("Distribuição equilibrada entre as principais fontes.")
+
+        if pendentes <= 5:
+            leitura.append("Baixíssimo volume pendente.")
+        else:
+            leitura.append(f"Há {_fmt_int(pendentes)} atendimentos pendentes ou em atendimento.")
+
+        if datas_invalidas > 0:
+            leitura.append("Datas inválidas são excluídas das análises mensais.")
+        else:
+            leitura.append("Não foram identificadas datas inválidas no recorte atual.")
+
+    leitura_html = "".join([f"<li>{item}</li>" for item in leitura])
+
+    # -------------------------
+    # CSS e renderização visual
+    # -------------------------
+    st.markdown(
+        """
+        <style>
+            .block-container {padding-top: 1rem;}
+            .dash-wrap {background:#f4f7fb; border:1px solid #d9e5f2; padding:0; border-radius:6px; overflow:hidden;}
+            .dash-title {background:#1f4e79; color:white; padding:10px 14px; font-size:24px; font-weight:800; letter-spacing:.2px;}
+            .dash-subtitle {background:#ddebf7; color:#2f3b46; padding:6px 14px; font-size:12px; font-style:italic; border-bottom:1px solid #c8d8e8;}
+            .section-title {background:#1f4e79; color:white; padding:6px 9px; font-weight:800; font-size:14px; text-transform:uppercase; letter-spacing:.4px; margin-top:14px; border-radius:4px 4px 0 0;}
+            .kpi-grid {display:grid; grid-template-columns:repeat(5, minmax(120px, 1fr)); gap:10px; margin-bottom:10px;}
+            .channel-grid {display:grid; grid-template-columns:repeat(5, minmax(120px, 1fr)); gap:10px; margin-bottom:10px;}
+            .kpi-card {background:white; border-top:4px solid #1f4e79; border-left:1px solid #d8e2ef; border-right:1px solid #d8e2ef; border-bottom:1px solid #d8e2ef; padding:12px 10px; min-height:86px; text-align:center;}
+            .kpi-card.green {border-top-color:#63b548;}.kpi-card.orange {border-top-color:#f4a261;}.kpi-card.purple {border-top-color:#8e6bb8;}.kpi-card.red {border-top-color:#c00000;}.kpi-card.blue {border-top-color:#5b9bd5;}.kpi-card.teal {border-top-color:#2a9d8f;}
+            .kpi-label {font-size:11px; color:#333; font-weight:800; letter-spacing:.3px; min-height:28px;}
+            .kpi-value {font-size:30px; font-weight:800; color:#1f4e79; margin-top:8px;}
+            .green .kpi-value {color:#4ea72e;}.orange .kpi-value {color:#f4a261;}.purple .kpi-value {color:#8e6bb8;}.red .kpi-value {color:#c00000;}.teal .kpi-value {color:#2a9d8f;}
+            .kpi-subtitle {font-size:10px; color:#667; margin-top:3px;}
+            .dash-grid {display:grid; grid-template-columns:1.2fr 1.2fr .85fr; gap:14px; align-items:start;}
+            .dash-grid-2 {display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px;}
+            .dash-panel {background:white; border:1px solid #d8e2ef; border-radius:0 0 4px 4px; overflow:hidden;}
+            .dash-table {width:100%; border-collapse:collapse; font-size:12px;}
+            .dash-table th {background:#595959; color:white; padding:6px 8px; text-align:left;}
+            .dash-table td {border:1px solid #d8e2ef; padding:6px 8px; vertical-align:middle;}
+            .dash-table tr:nth-child(even) td {background:#f7fbff;}
+            .bar-wrap {position:relative; min-height:18px; display:flex; align-items:center; justify-content:flex-end; font-weight:700; color:#1f4e79;}
+            .bar {position:absolute; left:0; top:3px; bottom:3px; background:linear-gradient(90deg,#4ba3a5,#e8f4f4); z-index:0; border-radius:2px;}
+            .bar-wrap span {position:relative; z-index:1;}
+            .reading-box {background:white; border:1px solid #d8e2ef; padding:10px 14px; min-height:92px; font-size:12px;}
+            .reading-box li {margin:6px 0;}
+            .dash-empty {padding:12px; color:#666; font-size:12px;}
+            .dash-note {background:#fde9d9; color:#333; padding:12px; font-size:12px; font-style:italic; margin-top:18px; border-radius:3px; border:1px solid #f5d2bb;}
+            @media (max-width: 1000px) {.kpi-grid,.channel-grid,.dash-grid,.dash-grid-2 {grid-template-columns:1fr;}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="dash-wrap">
+            <div class="dash-title">Dashboard - Controle de Atendimentos SEPRO</div>
+            <div class="dash-subtitle">Base: atendimentos cadastrados | Registros no recorte: {_fmt_int(total)} | Base completa: {_fmt_int(total_base)} | Período válido: {periodo_txt} | Atualizado em: {atualizacao_txt}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="section-title">Indicadores gerais</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="kpi-grid">
+            {_box('Total de registros', _fmt_int(total), 'blue')}
+            {_box('Respondidos', _fmt_int(respondidos), 'green')}
+            {_box('Pendentes / em atendimento', _fmt_int(pendentes), 'orange')}
+            {_box('% respondido', _fmt_pct(pct_respondido), 'purple')}
+            {_box('Datas inválidas', _fmt_int(datas_invalidas), 'red')}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="section-title">Canais e qualidade da base</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="channel-grid">
+            {_box('Atendimentos por e-mail', _fmt_int(qtd_email), 'blue')}
+            {_box('Atendimentos por telefone', _fmt_int(qtd_telefone), 'green')}
+            {_box('Atendimentos por WhatsApp', _fmt_int(qtd_whatsapp), 'teal')}
+            {_box('Outros / sem fonte', _fmt_int(qtd_outros), 'orange')}
+            <div>
+                <div class="section-title" style="margin-top:0;border-radius:4px 4px 0 0;">Leitura rápida</div>
+                <div class="reading-box"><ul>{leitura_html}</ul></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="dash-grid">
+            <div>
+                <div class="section-title">Situação</div>
+                <div class="dash-panel">{_tabela_html(resumo_situacao, ['Situação', 'Qtd.'], 8)}</div>
+            </div>
+            <div>
+                <div class="section-title">Fonte do atendimento</div>
+                <div class="dash-panel">{_tabela_html(resumo_fonte, ['Fonte', 'Qtd.'], 8)}</div>
+            </div>
+            <div>
+                <div class="section-title">Meses com maior volume</div>
+                <div class="dash-panel">{_tabela_html(meses_maior_volume, ['Mês', 'Total'], 8)}</div>
+                <div class="section-title">Últimos meses</div>
+                <div class="dash-panel">{_tabela_html(ultimos_meses, ['Mês', 'Total'], 8)}</div>
+            </div>
+        </div>
+        <div class="dash-grid-2">
+            <div>
+                <div class="section-title">Top servidores</div>
+                <div class="dash-panel">{_tabela_html(top_servidores, ['Servidor(a)', 'Qtd.'], 10, barra_coluna='Qtd.')}</div>
+            </div>
+            <div>
+                <div class="section-title">Top assuntos</div>
+                <div class="dash-panel">{_tabela_html(top_assuntos, ['Assunto', 'Qtd.'], 10, barra_coluna='Qtd.')}</div>
+            </div>
+        </div>
+        <div class="dash-note">
+            Nota: este painel é calculado com base nos dados cadastrados/importados no sistema e respeita os filtros da barra lateral. Datas inválidas não entram nas análises mensais, mas os registros continuam disponíveis na base e nos relatórios.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+    with st.expander("Ver base usada neste dashboard"):
         st.dataframe(preparar_para_exibicao(df_filtrado), use_container_width=True, hide_index=True)
 
 
