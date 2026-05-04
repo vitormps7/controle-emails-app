@@ -133,6 +133,105 @@ st.markdown(
         color: #64748B;
         font-size: 13px;
     }
+    
+    .dashboard-subinfo {
+        color: #475569;
+        font-size: 12px;
+        margin: -6px 0 12px 0;
+        font-style: italic;
+    }
+    .dash-section-title {
+        background: #174A7C;
+        color: white;
+        font-weight: 800;
+        text-transform: uppercase;
+        font-size: 15px;
+        padding: 8px 10px;
+        border-radius: 4px 4px 0 0;
+        margin-top: 8px;
+        margin-bottom: 0;
+    }
+    .dash-row-grid {
+        border: 1px solid #C9D5E4;
+        border-top: none;
+        background: white;
+        margin-bottom: 14px;
+        padding: 10px 8px 8px 8px;
+    }
+    .dash-metric-card {
+        background: white;
+        border: 1px solid #D7E0EA;
+        border-top: 3px solid #174A7C;
+        padding: 8px 10px 12px 10px;
+        min-height: 92px;
+        text-align: center;
+    }
+    .dash-metric-card .label {
+        color: #4B5563;
+        font-size: 13px;
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+    .dash-metric-card .value {
+        font-size: 22px;
+        font-weight: 800;
+        color: #174A7C;
+        line-height: 1.2;
+    }
+    .dash-reading-box {
+        background: white;
+        border: 1px solid #D7E0EA;
+        border-top: 3px solid #174A7C;
+        padding: 8px 12px;
+        min-height: 92px;
+    }
+    .dash-reading-box ul {
+        margin: 0;
+        padding-left: 18px;
+        color: #334155;
+        font-size: 13px;
+    }
+    .dash-reading-box li { margin-bottom: 6px; }
+    .dash-table-wrap {
+        border: 1px solid #C9D5E4;
+        background: white;
+        margin-bottom: 14px;
+    }
+    .dash-table-title {
+        background: #174A7C;
+        color: white;
+        font-weight: 800;
+        text-transform: uppercase;
+        font-size: 14px;
+        padding: 7px 10px;
+        margin: 0;
+    }
+    table.dash-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    table.dash-table th, table.dash-table td {
+        border: 1px solid #D9E2EF;
+        padding: 6px 8px;
+    }
+    table.dash-table th {
+        background: #5B5B5B;
+        color: white;
+        font-weight: 700;
+        text-align: left;
+    }
+    table.dash-table td.num, table.dash-table th.num { text-align: right; }
+    .mini-note {
+        background: #FFF3E8;
+        border: 1px solid #F6D1B5;
+        padding: 10px 12px;
+        color: #5B4636;
+        font-size: 12px;
+        border-radius: 4px;
+        margin-top: 10px;
+    }
+
     </style>
     """,
     unsafe_allow_html=True
@@ -783,69 +882,218 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             st.rerun()
 
 
+
+def numero_br(valor):
+    try:
+        return f"{int(valor):,}".replace(",", ".")
+    except Exception:
+        return "0"
+
+
+def percentual_br(valor):
+    try:
+        return f"{float(valor):.2f}%".replace(".", ",")
+    except Exception:
+        return "0,00%"
+
+
+def normalizar_fonte(valor):
+    texto = str(valor or "").strip().lower()
+    if texto in ["e-mail", "email", "e mail"]:
+        return "E-mail"
+    if texto == "telefone":
+        return "Telefone"
+    if texto == "whatsapp":
+        return "WhatsApp"
+    if not texto:
+        return "Sem fonte"
+    return str(valor).strip()
+
+
+def tabela_dashboard_html(df_tabela):
+    if df_tabela is None or df_tabela.empty:
+        return '<div style="padding:10px;font-size:13px;color:#475569;">Nenhum registro encontrado.</div>'
+
+    cabecalhos = ''.join(
+        f'<th class="{"num" if i == len(df_tabela.columns) - 1 else ""}">{col}</th>'
+        for i, col in enumerate(df_tabela.columns)
+    )
+
+    linhas = []
+    for _, row in df_tabela.iterrows():
+        tds = []
+        for i, val in enumerate(row):
+            classe = 'num' if i == len(df_tabela.columns) - 1 else ''
+            tds.append(f'<td class="{classe}">{val}</td>')
+        linhas.append('<tr>' + ''.join(tds) + '</tr>')
+
+    return '<table class="dash-table"><thead><tr>' + cabecalhos + '</tr></thead><tbody>' + ''.join(linhas) + '</tbody></table>'
+
+
+def bloco_tabela_dashboard(titulo, df_tabela):
+    st.markdown(
+        f'<div class="dash-table-wrap"><div class="dash-table-title">{titulo}</div>{tabela_dashboard_html(df_tabela)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def obter_serie_mensal(df):
+    if df is None or df.empty or 'Data' not in df.columns:
+        return pd.DataFrame(columns=['MesRef', 'Mes', 'Total'])
+
+    datas = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
+    serie = pd.DataFrame({'DataCalc': datas})
+    serie = serie.dropna(subset=['DataCalc'])
+    if serie.empty:
+        return pd.DataFrame(columns=['MesRef', 'Mes', 'Total'])
+
+    serie['MesRef'] = serie['DataCalc'].dt.to_period('M').astype(str)
+    serie['Mes'] = serie['DataCalc'].dt.strftime('%m/%Y')
+    resumo = serie.groupby(['MesRef', 'Mes']).size().reset_index(name='Total')
+    return resumo.sort_values('MesRef')
+
+
 def tela_dashboard():
-    st.subheader("Dashboard")
+    st.subheader('Dashboard')
 
     lista = filtros_base(atendimentos())
     df = atendimentos_df(lista)
 
     total = len(df)
-    qtd_triagem = int((df["Status"] == STATUS_CADASTRADO).sum()) if not df.empty else 0
-    qtd_em = int((df["Status"] == STATUS_EM_ATENDIMENTO).sum()) if not df.empty else 0
-    qtd_realizado = int((df["Status"] == STATUS_REALIZADO).sum()) if not df.empty else 0
-    percentual = (qtd_realizado / total * 100) if total else 0
+    realizados = int((df['Status'] == STATUS_REALIZADO).sum()) if not df.empty else 0
+    pendentes = int(((df['Status'] == STATUS_CADASTRADO) | (df['Status'] == STATUS_EM_ATENDIMENTO)).sum()) if not df.empty else 0
+    percentual = (realizados / total * 100) if total else 0
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total de atendimentos", total)
-    c2.metric("Triagem", qtd_triagem)
-    c3.metric("Em atendimento", qtd_em)
-    c4.metric("% realizados", f"{percentual:.2f}%".replace(".", ","))
+    datas_parse = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce') if not df.empty else pd.Series(dtype='datetime64[ns]')
+    datas_invalidas = int(datas_parse.isna().sum()) if not df.empty else 0
 
-    st.divider()
+    fontes_norm = df['Fonte'].apply(normalizar_fonte) if not df.empty else pd.Series(dtype='object')
+    qtd_email = int((fontes_norm == 'E-mail').sum()) if not df.empty else 0
+    qtd_telefone = int((fontes_norm == 'Telefone').sum()) if not df.empty else 0
+    qtd_outros = int(total - qtd_email - qtd_telefone) if total else 0
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Atendimentos realizados", qtd_realizado)
-    c2.metric("Pendentes totais", qtd_triagem + qtd_em)
-    c3.metric("Fontes utilizadas", df["Fonte"].nunique() if not df.empty else 0)
+    periodo_ini = ''
+    periodo_fim = ''
+    if not df.empty and datas_parse.notna().any():
+        periodo_ini = datas_parse.min().strftime('%d/%m/%Y')
+        periodo_fim = datas_parse.max().strftime('%d/%m/%Y')
 
-    st.divider()
+    st.markdown(
+        f"<div class='dashboard-subinfo'>Base: registros do sistema | Registros: {numero_br(total)} | Período válido: {periodo_ini or '-'} a {periodo_fim or '-'} | Atualizado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>",
+        unsafe_allow_html=True,
+    )
 
-    if df.empty:
-        st.info("Nenhum registro encontrado com os filtros atuais.")
-        return
+    st.markdown("<div class='dash-section-title'>Indicadores gerais</div><div class='dash-row-grid'>", unsafe_allow_html=True)
+    cols = st.columns(5)
+    metricas = [
+        ('Total de registros', numero_br(total), '#174A7C'),
+        ('Respondidos', numero_br(realizados), '#74B24A'),
+        ('Pendentes', numero_br(pendentes), '#F2A365'),
+        ('% respondido', percentual_br(percentual), '#7A60A8'),
+        ('Datas inválidas', numero_br(datas_invalidas), '#D62828'),
+    ]
+    for col, (label, value, color) in zip(cols, metricas):
+        with col:
+            st.markdown(
+                f"<div class='dash-metric-card' style='border-top-color:{color};'><div class='label'>{label}</div><div class='value' style='color:{color};'>{value}</div></div>",
+                unsafe_allow_html=True,
+            )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
+    fonte_pred = 'Sem dados'
+    if not df.empty:
+        vc_fontes = fontes_norm.value_counts()
+        if not vc_fontes.empty:
+            fonte_pred = vc_fontes.index[0]
 
-    with col1:
-        st.markdown("#### Situação")
-        st.dataframe(
-            df["Status"].value_counts().rename_axis("Status").reset_index(name="Quantidade"),
-            use_container_width=True,
-            hide_index=True
+    if pendentes == 0:
+        texto_pendentes = 'Nenhum atendimento pendente.'
+    elif pendentes <= 5:
+        texto_pendentes = 'Baixíssimo volume pendente.'
+    elif pendentes <= 20:
+        texto_pendentes = 'Volume pendente controlado.'
+    else:
+        texto_pendentes = 'Atenção ao volume pendente.'
+
+    mensal = obter_serie_mensal(df)
+    ultimo_mes_txt = mensal.iloc[-1]['Mes'] if not mensal.empty else 'Sem base mensal'
+
+    st.markdown("<div class='dash-section-title'>Canais e qualidade da base</div><div class='dash-row-grid'>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+    for col, label, value, color in [
+        (c1, 'Atendimentos por e-mail', numero_br(qtd_email), '#5B9BD5'),
+        (c2, 'Atendimentos por telefone', numero_br(qtd_telefone), '#74B24A'),
+        (c3, 'Outros / sem fonte', numero_br(qtd_outros), '#6E6E6E'),
+    ]:
+        with col:
+            st.markdown(
+                f"<div class='dash-metric-card' style='border-top-color:{color};min-height:82px;'><div class='label'>{label}</div><div class='value' style='color:{color};'>{value}</div></div>",
+                unsafe_allow_html=True,
+            )
+    with c4:
+        leitura = [
+            f'Dados com predominância de <b>{fonte_pred.lower() if fonte_pred != "Sem dados" else "informação indisponível"}</b>.',
+            texto_pendentes,
+            f'Datas inválidas identificadas: <b>{numero_br(datas_invalidas)}</b>.',
+            f'Último mês com registros: <b>{ultimo_mes_txt}</b>.',
+        ]
+        itens = ''.join(f'<li>{item}</li>' for item in leitura)
+        st.markdown(
+            f"<div class='dash-reading-box'><div class='label' style='font-weight:800;color:#174A7C;margin-bottom:6px;'>Leitura rápida</div><ul>{itens}</ul></div>",
+            unsafe_allow_html=True,
         )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("#### Top servidores")
-        st.dataframe(
-            df["Servidor(a)"].replace("", "Não informado").value_counts().head(10).rename_axis("Servidor(a)").reset_index(name="Quantidade"),
-            use_container_width=True,
-            hide_index=True
-        )
+    situacao = pd.DataFrame(columns=['Situação', 'Qtd.'])
+    fonte_tbl = pd.DataFrame(columns=['Fonte', 'Qtd.'])
+    top_servidores = pd.DataFrame(columns=['Servidor(a)', 'Qtd.'])
+    top_assuntos = pd.DataFrame(columns=['Assunto', 'Qtd.'])
+    meses_maior = pd.DataFrame(columns=['Mês', 'Total'])
+    ultimos_meses = pd.DataFrame(columns=['Mês', 'Total'])
 
-    with col2:
-        st.markdown("#### Fonte do atendimento")
-        st.dataframe(
-            df["Fonte"].replace("", "Não informado").value_counts().rename_axis("Fonte").reset_index(name="Quantidade"),
-            use_container_width=True,
-            hide_index=True
-        )
+    if not df.empty:
+        situacao = df['Status'].fillna('Não informado').replace('', 'Não informado').value_counts().reset_index()
+        situacao.columns = ['Situação', 'Qtd.']
+        situacao['Qtd.'] = situacao['Qtd.'].map(numero_br)
 
-        st.markdown("#### Top assuntos")
-        st.dataframe(
-            df["Assunto"].replace("", "Não informado").value_counts().head(10).rename_axis("Assunto").reset_index(name="Quantidade"),
-            use_container_width=True,
-            hide_index=True
-        )
+        fonte_tbl = fontes_norm.value_counts().reset_index()
+        fonte_tbl.columns = ['Fonte', 'Qtd.']
+        fonte_tbl['Qtd.'] = fonte_tbl['Qtd.'].map(numero_br)
 
+        top_servidores = df['Servidor(a)'].fillna('Não informado').replace('', 'Não informado').value_counts().head(8).reset_index()
+        top_servidores.columns = ['Servidor(a)', 'Qtd.']
+        top_servidores['Qtd.'] = top_servidores['Qtd.'].map(numero_br)
+
+        top_assuntos = df['Assunto'].fillna('Não informado').replace('', 'Não informado').value_counts().head(8).reset_index()
+        top_assuntos.columns = ['Assunto', 'Qtd.']
+        top_assuntos['Qtd.'] = top_assuntos['Qtd.'].map(numero_br)
+
+        if not mensal.empty:
+            meses_maior = mensal.sort_values(['Total', 'MesRef'], ascending=[False, False]).head(5)[['Mes', 'Total']].copy()
+            meses_maior['Total'] = meses_maior['Total'].map(numero_br)
+            ultimos_meses = mensal.sort_values('MesRef', ascending=False).head(8)[['Mes', 'Total']].copy()
+            ultimos_meses['Total'] = ultimos_meses['Total'].map(numero_br)
+
+    area1, area2, area3 = st.columns([2.2, 2.2, 0.9])
+    with area1:
+        bloco_tabela_dashboard('Situação', situacao)
+    with area2:
+        bloco_tabela_dashboard('Fonte do atendimento', fonte_tbl)
+    with area3:
+        bloco_tabela_dashboard('Meses com maior volume', meses_maior)
+
+    area4, area5, area6 = st.columns([2.2, 2.2, 0.9])
+    with area4:
+        bloco_tabela_dashboard('Top servidores', top_servidores)
+    with area5:
+        bloco_tabela_dashboard('Top assuntos', top_assuntos)
+    with area6:
+        bloco_tabela_dashboard('Últimos meses', ultimos_meses)
+
+    st.markdown(
+        "<div class='mini-note'><b>Nota:</b> o dashboard resume os atendimentos cadastrados no sistema. O campo <i>Datas inválidas</i> mostra registros com data ausente ou em formato não reconhecido. Os quadros de meses consideram apenas registros com datas válidas.</div>",
+        unsafe_allow_html=True,
+    )
 
 def tela_novo_atendimento():
     st.subheader("Novo atendimento")
