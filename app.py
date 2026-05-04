@@ -353,12 +353,14 @@ if pagina == "Painel":
         with col_c:
             st.subheader("Top servidores")
             top_servidores = df_filtrado["SERVIDOR(A)"].fillna("Não informado").value_counts().head(15)
-            st.dataframe(top_servidores.reset_index().rename(columns={"index": "Servidor(a)", "SERVIDOR(A)": "Quantidade", "count": "Quantidade"}), use_container_width=True, hide_index=True)
+            tabela_servidores = top_servidores.rename_axis("Servidor(a)").reset_index(name="Quantidade")
+            st.dataframe(tabela_servidores, use_container_width=True, hide_index=True)
 
         with col_d:
             st.subheader("Top assuntos")
             top_assuntos = df_filtrado["ASSUNTO"].fillna("Não informado").value_counts().head(15)
-            st.dataframe(top_assuntos.reset_index().rename(columns={"index": "Assunto", "ASSUNTO": "Quantidade", "count": "Quantidade"}), use_container_width=True, hide_index=True)
+            tabela_assuntos = top_assuntos.rename_axis("Assunto").reset_index(name="Quantidade")
+            st.dataframe(tabela_assuntos, use_container_width=True, hide_index=True)
 
         st.subheader("Base filtrada")
         st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
@@ -604,3 +606,4 @@ elif pagina == "Importar / Exportar":
         "Importante: no Streamlit Community Cloud, os dados podem não ficar gravados para sempre no servidor. "
         "Por isso, baixe o backup Excel ao final do expediente ou sempre que fizer alterações importantes."
     )
+    
