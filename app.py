@@ -9,6 +9,9 @@ import json
 import hashlib
 import hmac
 import secrets
+import smtplib
+from email.message import EmailMessage
+from urllib.parse import urlencode
 
 # ============================================================
 # CONTROLE DE ATENDIMENTOS - SEPRO
@@ -138,12 +141,15 @@ def criar_servidores_iniciais() -> pd.DataFrame:
 
 
 def obter_servidores_ativos() -> list:
-    servidores = st.session_state.servidores.copy()
-    if servidores.empty:
-        return []
-    servidores["SERVIDOR(A)"] = servidores["SERVIDOR(A)"].astype(str).str.strip()
-    ativos = servidores[servidores["ATIVO"] == True]["SERVIDOR(A)"].dropna().tolist()
-    return sorted(list(set([s for s in ativos if s])), key=str.casefold)
+    """Servidores responsáveis passam a ser os usuários ativos e com e-mail validado."""
+    usuarios = carregar_usuarios() if "carregar_usuarios" in globals() else {}
+    nomes = []
+    for usuario in usuarios.values():
+        if usuario.get("ativo", True) and usuario.get("email_validado", False):
+            nome = str(usuario.get("nome", "")).strip()
+            if nome:
+                nomes.append(nome)
+    return sorted(list(set(nomes)), key=str.casefold)
 
 
 def gerar_excel_relatorio(df: pd.DataFrame, servidores: pd.DataFrame) -> bytes:
@@ -189,7 +195,7 @@ def gerar_excel_relatorio(df: pd.DataFrame, servidores: pd.DataFrame) -> bytes:
             pendentes = base[base["SITUAÇÃO"].astype(str).str.contains("pend|andamento", case=False, na=False)]
             pendentes.to_excel(writer, index=False, sheet_name="Pendentes")
 
-        servidores.to_excel(writer, index=False, sheet_name="Servidores")
+        # A aba de servidores foi removida: responsáveis são os usuários ativos e validados do sistema.
 
         workbook = writer.book
         for sheet_name in workbook.sheetnames:
@@ -270,20 +276,20 @@ def card(label, valor, ajuda=None):
 
 
 # -----------------------------
-# Autenticação de usuários
+# Autenticação de usuários com validação institucional
 # -----------------------------
 
 USUARIOS_ARQUIVO = "usuarios_controle_emails.json"
-PERGUNTAS_RECUPERACAO = [
-    "Qual é o nome da sua primeira escola?",
-    "Qual é o nome da sua cidade natal?",
-    "Qual é o nome do seu primeiro animal de estimação?",
-    "Qual é uma palavra-chave interna que você deseja usar para recuperação?",
-]
+DOMINIO_INSTITUCIONAL = "tre-ba.jus.br"
 
 
 def _normalizar_login(valor: str) -> str:
     return str(valor or "").strip().lower()
+
+
+def _email_institucional(email: str) -> bool:
+    email_norm = _normalizar_login(email)
+    return email_norm.endswith("@" + DOMINIO_INSTITUCIONAL)
 
 
 def _hash_senha(senha: str, salt: str | None = None) -> str:
@@ -304,6 +310,10 @@ def _verificar_senha(senha: str, senha_hash: str) -> bool:
         return False
 
 
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+
 def carregar_usuarios() -> dict:
     if not os.path.exists(USUARIOS_ARQUIVO):
         return {}
@@ -320,7 +330,90 @@ def salvar_usuarios(usuarios: dict) -> None:
         json.dump(usuarios, f, ensure_ascii=False, indent=2)
 
 
-def criar_usuario(nome: str, login: str, email: str, senha: str, pergunta: str, resposta: str, perfil: str = "Usuário", ativo: bool = True) -> tuple[bool, str]:
+def app_base_url() -> str:
+    try:
+        url = str(st.secrets.get("APP_BASE_URL", "")).strip()
+    except Exception:
+        url = ""
+    return url.rstrip("/")
+
+
+def montar_link(parametro: str, token: str) -> str:
+    base = app_base_url()
+    if not base:
+        # Em ambiente de teste, o administrador pode copiar o trecho abaixo e completar com a URL do app.
+        return f"?{urlencode({parametro: token})}"
+    return f"{base}/?{urlencode({parametro: token})}"
+
+
+def smtp_configurado() -> bool:
+    try:
+        return all(st.secrets.get(chave) for chave in ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_REMETENTE"])
+    except Exception:
+        return False
+
+
+def enviar_email(destinatario: str, assunto: str, corpo: str) -> tuple[bool, str]:
+    if not smtp_configurado():
+        return False, "Envio de e-mail não configurado. Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_REMETENTE e APP_BASE_URL nos secrets do Streamlit."
+
+    try:
+        host = st.secrets["SMTP_HOST"]
+        port = int(st.secrets["SMTP_PORT"])
+        user = st.secrets["SMTP_USER"]
+        password = st.secrets["SMTP_PASSWORD"]
+        remetente = st.secrets["EMAIL_REMETENTE"]
+
+        msg = EmailMessage()
+        msg["Subject"] = assunto
+        msg["From"] = remetente
+        msg["To"] = destinatario
+        msg.set_content(corpo)
+
+        with smtplib.SMTP(host, port, timeout=30) as servidor:
+            servidor.starttls()
+            servidor.login(user, password)
+            servidor.send_message(msg)
+        return True, "E-mail enviado com sucesso."
+    except Exception as erro:
+        return False, f"Não foi possível enviar o e-mail: {erro}"
+
+
+def gerar_token_validacao(login_norm: str) -> str:
+    usuarios = carregar_usuarios()
+    token = secrets.token_urlsafe(32)
+    usuarios[login_norm]["token_validacao_hash"] = _hash_token(token)
+    usuarios[login_norm]["token_validacao_expira"] = (datetime.now() + pd.Timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+    salvar_usuarios(usuarios)
+    return token
+
+
+def enviar_link_validacao(login_norm: str) -> tuple[bool, str]:
+    usuarios = carregar_usuarios()
+    usuario = usuarios.get(login_norm)
+    if not usuario:
+        return False, "Usuário não encontrado."
+    token = gerar_token_validacao(login_norm)
+    link = montar_link("validar", token)
+    corpo = f"""Olá, {usuario.get('nome', '')}.
+
+Foi solicitado cadastro no Sistema de Controle de Atendimentos da SEPRO/COAJUC.
+
+Para validar seu acesso, clique no link abaixo:
+
+{link}
+
+Este link expira em 48 horas.
+
+Caso você não tenha solicitado esse cadastro, desconsidere esta mensagem.
+"""
+    ok, msg = enviar_email(usuario.get("email", ""), "Validação de acesso - Sistema SEPRO", corpo)
+    if ok:
+        return True, "Cadastro realizado. Enviamos um link de validação para o e-mail institucional informado."
+    return False, msg + f" Link de validação gerado: {link}"
+
+
+def criar_usuario(nome: str, login: str, email: str, senha: str) -> tuple[bool, str]:
     usuarios = carregar_usuarios()
     login_norm = _normalizar_login(login)
     email_norm = _normalizar_login(email)
@@ -329,36 +422,71 @@ def criar_usuario(nome: str, login: str, email: str, senha: str, pergunta: str, 
         return False, "Informe o nome do usuário."
     if not login_norm:
         return False, "Informe o login."
-    if not email_norm or "@" not in email_norm:
-        return False, "Informe um e-mail válido."
-    if len(senha) < 6:
-        return False, "A senha deve ter pelo menos 6 caracteres."
-    if not resposta.strip():
-        return False, "Informe a resposta de recuperação."
+    if not re.fullmatch(r"[a-z0-9._-]+", login_norm):
+        return False, "O login deve conter apenas letras, números, ponto, hífen ou sublinhado."
+    if not _email_institucional(email_norm):
+        return False, f"Use apenas e-mail institucional com final @{DOMINIO_INSTITUCIONAL}."
+    if len(senha) < 8:
+        return False, "A senha deve ter pelo menos 8 caracteres."
     if login_norm in usuarios:
         return False, "Já existe usuário com esse login."
     if any(_normalizar_login(u.get("email")) == email_norm for u in usuarios.values()):
         return False, "Já existe usuário com esse e-mail."
 
     primeiro_usuario = len(usuarios) == 0
-    perfil_final = "Administrador" if primeiro_usuario else perfil
-
     usuarios[login_norm] = {
         "nome": nome.strip(),
         "login": login_norm,
         "email": email_norm,
         "senha_hash": _hash_senha(senha),
-        "pergunta_recuperacao": pergunta,
-        "resposta_hash": _hash_senha(_normalizar_login(resposta)),
-        "perfil": perfil_final,
-        "ativo": bool(ativo),
+        "perfil": "Administrador" if primeiro_usuario else "Usuário",
+        "ativo": True,
+        "email_validado": True if primeiro_usuario else False,
         "criado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "ultimo_acesso": "",
+        "token_validacao_hash": "",
+        "token_validacao_expira": "",
+        "token_recuperacao_hash": "",
+        "token_recuperacao_expira": "",
     }
     salvar_usuarios(usuarios)
+
     if primeiro_usuario:
-        return True, "Primeiro usuário criado como Administrador. Faça login para acessar o sistema."
-    return True, "Usuário cadastrado com sucesso."
+        return True, "Primeiro usuário criado como Administrador e validado automaticamente. Faça login para acessar o sistema."
+
+    ok, msg = enviar_link_validacao(login_norm)
+    if ok:
+        return True, msg
+    return True, "Usuário criado, mas o envio automático do link de validação não foi concluído. O administrador deve configurar o e-mail SMTP ou reenviar a validação pela área Usuários. " + msg
+
+
+def processar_link_validacao() -> None:
+    token = st.query_params.get("validar", None)
+    if not token:
+        return
+
+    usuarios = carregar_usuarios()
+    agora = datetime.now()
+    for login, usuario in usuarios.items():
+        hash_salvo = usuario.get("token_validacao_hash", "")
+        expira_txt = usuario.get("token_validacao_expira", "")
+        if hash_salvo and hmac.compare_digest(hash_salvo, _hash_token(token)):
+            try:
+                expira = datetime.strptime(expira_txt, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                expira = datetime.min
+            if agora > expira:
+                st.error("Link de validação expirado. Solicite novo envio ao administrador.")
+            else:
+                usuarios[login]["email_validado"] = True
+                usuarios[login]["token_validacao_hash"] = ""
+                usuarios[login]["token_validacao_expira"] = ""
+                salvar_usuarios(usuarios)
+                st.success("E-mail validado com sucesso. Faça login para acessar o sistema.")
+            st.query_params.clear()
+            return
+    st.error("Link de validação inválido ou já utilizado.")
+    st.query_params.clear()
 
 
 def autenticar(login: str, senha: str) -> tuple[bool, str]:
@@ -369,6 +497,8 @@ def autenticar(login: str, senha: str) -> tuple[bool, str]:
         return False, "Login ou senha inválidos."
     if not usuario.get("ativo", True):
         return False, "Usuário inativo. Procure o administrador."
+    if not usuario.get("email_validado", False):
+        return False, "Acesso ainda não validado. Verifique o link enviado ao e-mail institucional cadastrado."
     if not _verificar_senha(senha, usuario.get("senha_hash", "")):
         return False, "Login ou senha inválidos."
 
@@ -383,36 +513,114 @@ def autenticar(login: str, senha: str) -> tuple[bool, str]:
     return True, "Login realizado com sucesso."
 
 
-def recuperar_senha(login: str, email: str, resposta: str, nova_senha: str) -> tuple[bool, str]:
-    usuarios = carregar_usuarios()
-    login_norm = _normalizar_login(login)
+def solicitar_recuperacao(email: str) -> tuple[bool, str]:
     email_norm = _normalizar_login(email)
-    usuario = usuarios.get(login_norm)
+    if not _email_institucional(email_norm):
+        return False, f"Informe um e-mail institucional @{DOMINIO_INSTITUCIONAL}."
+    usuarios = carregar_usuarios()
+    login_encontrado = None
+    for login, usuario in usuarios.items():
+        if _normalizar_login(usuario.get("email")) == email_norm:
+            login_encontrado = login
+            break
+    if not login_encontrado:
+        return False, "E-mail não localizado."
 
-    if not usuario or _normalizar_login(usuario.get("email")) != email_norm:
-        return False, "Login ou e-mail não localizado."
-    if len(nova_senha) < 6:
-        return False, "A nova senha deve ter pelo menos 6 caracteres."
-    if not _verificar_senha(_normalizar_login(resposta), usuario.get("resposta_hash", "")):
-        return False, "Resposta de recuperação incorreta."
+    token = secrets.token_urlsafe(32)
+    usuarios[login_encontrado]["token_recuperacao_hash"] = _hash_token(token)
+    usuarios[login_encontrado]["token_recuperacao_expira"] = (datetime.now() + pd.Timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+    salvar_usuarios(usuarios)
+    link = montar_link("recuperar", token)
+    corpo = f"""Olá.
 
-    usuarios[login_norm]["senha_hash"] = _hash_senha(nova_senha)
+Foi solicitada recuperação de senha no Sistema de Controle de Atendimentos da SEPRO/COAJUC.
+
+Para redefinir sua senha, clique no link abaixo:
+
+{link}
+
+Este link expira em 2 horas.
+
+Caso você não tenha solicitado a recuperação, desconsidere esta mensagem.
+"""
+    ok, msg = enviar_email(email_norm, "Recuperação de senha - Sistema SEPRO", corpo)
+    if ok:
+        return True, "Enviamos um link de recuperação para o e-mail institucional informado."
+    return False, msg + f" Link de recuperação gerado: {link}"
+
+
+def processar_link_recuperacao() -> None:
+    token = st.query_params.get("recuperar", None)
+    if not token:
+        return
+    usuarios = carregar_usuarios()
+    agora = datetime.now()
+    for login, usuario in usuarios.items():
+        hash_salvo = usuario.get("token_recuperacao_hash", "")
+        expira_txt = usuario.get("token_recuperacao_expira", "")
+        if hash_salvo and hmac.compare_digest(hash_salvo, _hash_token(token)):
+            try:
+                expira = datetime.strptime(expira_txt, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                expira = datetime.min
+            if agora > expira:
+                st.error("Link de recuperação expirado. Solicite nova recuperação de senha.")
+                st.query_params.clear()
+            else:
+                st.session_state.login_recuperacao = login
+                st.query_params.clear()
+            return
+    st.error("Link de recuperação inválido ou já utilizado.")
+    st.query_params.clear()
+
+
+def alterar_senha_por_token(login: str, nova_senha: str) -> tuple[bool, str]:
+    if len(nova_senha) < 8:
+        return False, "A nova senha deve ter pelo menos 8 caracteres."
+    usuarios = carregar_usuarios()
+    if login not in usuarios:
+        return False, "Usuário não localizado."
+    usuarios[login]["senha_hash"] = _hash_senha(nova_senha)
+    usuarios[login]["token_recuperacao_hash"] = ""
+    usuarios[login]["token_recuperacao_expira"] = ""
     salvar_usuarios(usuarios)
     return True, "Senha alterada com sucesso. Faça login com a nova senha."
 
 
 def usuario_eh_admin() -> bool:
     usuario = st.session_state.get("usuario_logado", {})
-    return usuario.get("perfil") == "Administrador"
+    return bool(usuario and usuario.get("perfil") == "Administrador")
 
 
 def tela_autenticacao() -> None:
+    processar_link_validacao()
+    processar_link_recuperacao()
+
     st.title("🔐 Acesso ao Sistema de Controle de Atendimentos")
-    st.caption("Entre com login e senha para acessar o sistema. O primeiro usuário cadastrado será o administrador.")
+    st.caption(f"Acesso restrito a usuários com e-mail institucional @{DOMINIO_INSTITUCIONAL}. O primeiro usuário cadastrado será o administrador.")
+
+    if st.session_state.get("login_recuperacao"):
+        st.subheader("Redefinir senha")
+        login = st.session_state.login_recuperacao
+        with st.form("form_definir_nova_senha"):
+            nova = st.text_input("Nova senha", type="password")
+            confirma = st.text_input("Confirmar nova senha", type="password")
+            salvar = st.form_submit_button("Salvar nova senha", type="primary")
+        if salvar:
+            if nova != confirma:
+                st.error("As senhas não conferem.")
+            else:
+                ok, msg = alterar_senha_por_token(login, nova)
+                if ok:
+                    st.session_state.login_recuperacao = None
+                    st.success(msg)
+                else:
+                    st.error(msg)
+        return
 
     usuarios = carregar_usuarios()
     if not usuarios:
-        st.info("Nenhum usuário cadastrado. Crie o primeiro usuário; ele será definido como Administrador.")
+        st.info("Nenhum usuário cadastrado. Crie o primeiro usuário; ele será definido como Administrador e validado automaticamente.")
 
     aba_login, aba_cadastro, aba_recuperacao = st.tabs(["Entrar", "Cadastrar usuário", "Recuperar senha"])
 
@@ -431,53 +639,38 @@ def tela_autenticacao() -> None:
 
     with aba_cadastro:
         if usuarios:
-            st.warning("Após o primeiro administrador, novos cadastros ficam como Usuário comum. O administrador pode ativar, inativar ou alterar perfis na área 'Usuários'.")
+            st.warning("Após o administrador inicial, todo novo cadastro ficará pendente até a validação pelo link enviado ao e-mail institucional.")
         with st.form("form_cadastro_usuario"):
             nome = st.text_input("Nome completo")
-            login_cad = st.text_input("Login desejado", help="Use letras e números, sem espaços.")
-            email = st.text_input("E-mail")
+            login_cad = st.text_input("Login desejado", help="Use letras, números, ponto, hífen ou sublinhado, sem espaços.")
+            email = st.text_input("E-mail institucional", placeholder="nome@tre-ba.jus.br")
             col1, col2 = st.columns(2)
             with col1:
                 senha_cad = st.text_input("Senha", type="password")
             with col2:
                 confirmar = st.text_input("Confirmar senha", type="password")
-            pergunta = st.selectbox("Pergunta de recuperação", PERGUNTAS_RECUPERACAO)
-            resposta = st.text_input("Resposta de recuperação", type="password")
             cadastrar = st.form_submit_button("Cadastrar")
         if cadastrar:
             if senha_cad != confirmar:
                 st.error("As senhas não conferem.")
             else:
-                ok, msg = criar_usuario(nome, login_cad, email, senha_cad, pergunta, resposta)
+                ok, msg = criar_usuario(nome, login_cad, email, senha_cad)
                 if ok:
                     st.success(msg)
                 else:
                     st.error(msg)
 
     with aba_recuperacao:
-        login_rec = st.text_input("Login", key="rec_login")
-        email_rec = st.text_input("E-mail cadastrado", key="rec_email")
-        usuarios_atual = carregar_usuarios()
-        pergunta_usuario = "Informe login e e-mail para visualizar a pergunta."
-        usuario = usuarios_atual.get(_normalizar_login(login_rec))
-        if usuario and _normalizar_login(usuario.get("email")) == _normalizar_login(email_rec):
-            pergunta_usuario = usuario.get("pergunta_recuperacao", pergunta_usuario)
-        st.info(f"Pergunta: {pergunta_usuario}")
-
-        with st.form("form_recuperar_senha"):
-            resposta_rec = st.text_input("Resposta", type="password")
-            nova_senha = st.text_input("Nova senha", type="password")
-            confirmar_nova = st.text_input("Confirmar nova senha", type="password")
-            recuperar = st.form_submit_button("Alterar senha")
-        if recuperar:
-            if nova_senha != confirmar_nova:
-                st.error("As senhas não conferem.")
+        st.write("Informe seu e-mail institucional para receber um link de recuperação de senha.")
+        with st.form("form_recuperacao_email"):
+            email_rec = st.text_input("E-mail institucional", placeholder="nome@tre-ba.jus.br")
+            enviar = st.form_submit_button("Enviar link de recuperação")
+        if enviar:
+            ok, msg = solicitar_recuperacao(email_rec)
+            if ok:
+                st.success(msg)
             else:
-                ok, msg = recuperar_senha(login_rec, email_rec, resposta_rec, nova_senha)
-                if ok:
-                    st.success(msg)
-                else:
-                    st.error(msg)
+                st.error(msg)
 
 
 def pagina_usuarios() -> None:
@@ -499,47 +692,58 @@ def pagina_usuarios() -> None:
             "E-MAIL": u.get("email", ""),
             "PERFIL": u.get("perfil", "Usuário"),
             "ATIVO": bool(u.get("ativo", True)),
+            "E-MAIL VALIDADO": bool(u.get("email_validado", False)),
             "CRIADO EM": u.get("criado_em", ""),
             "ÚLTIMO ACESSO": u.get("ultimo_acesso", ""),
         })
 
     df_usuarios = pd.DataFrame(linhas)
-    st.caption("Edite perfil e situação do usuário. Não é possível visualizar senhas, apenas redefini-las.")
+    st.caption("Usuários comuns somente acessam o sistema após validar o link enviado ao e-mail institucional. Senhas não são exibidas.")
     editado = st.data_editor(
         df_usuarios,
         use_container_width=True,
         hide_index=True,
-        disabled=["LOGIN", "CRIADO EM", "ÚLTIMO ACESSO"],
+        disabled=["LOGIN", "E-MAIL", "E-MAIL VALIDADO", "CRIADO EM", "ÚLTIMO ACESSO"],
         column_config={
             "PERFIL": st.column_config.SelectboxColumn("Perfil", options=["Administrador", "Usuário"]),
             "ATIVO": st.column_config.CheckboxColumn("Ativo"),
+            "E-MAIL VALIDADO": st.column_config.CheckboxColumn("E-mail validado"),
         },
         key="editor_usuarios",
     )
 
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if st.button("Salvar usuários", type="primary"):
-            usuarios_novos = carregar_usuarios()
-            admins_ativos = 0
-            for _, linha in editado.iterrows():
-                login = _normalizar_login(linha["LOGIN"])
-                if login in usuarios_novos:
-                    usuarios_novos[login]["nome"] = str(linha["NOME"]).strip()
-                    usuarios_novos[login]["email"] = _normalizar_login(linha["E-MAIL"])
-                    usuarios_novos[login]["perfil"] = linha["PERFIL"]
-                    usuarios_novos[login]["ativo"] = bool(linha["ATIVO"])
-                    if linha["PERFIL"] == "Administrador" and bool(linha["ATIVO"]):
-                        admins_ativos += 1
-            if admins_ativos == 0:
-                st.error("É necessário manter pelo menos um administrador ativo.")
-            else:
-                salvar_usuarios(usuarios_novos)
-                st.success("Usuários atualizados.")
-                st.rerun()
+    if st.button("Salvar usuários", type="primary"):
+        usuarios_novos = carregar_usuarios()
+        admins_ativos = 0
+        for _, linha in editado.iterrows():
+            login = _normalizar_login(linha["LOGIN"])
+            if login in usuarios_novos:
+                usuarios_novos[login]["nome"] = str(linha["NOME"]).strip()
+                usuarios_novos[login]["perfil"] = linha["PERFIL"]
+                usuarios_novos[login]["ativo"] = bool(linha["ATIVO"])
+                if linha["PERFIL"] == "Administrador" and bool(linha["ATIVO"]):
+                    admins_ativos += 1
+        if admins_ativos == 0:
+            st.error("É necessário manter pelo menos um administrador ativo.")
+        else:
+            salvar_usuarios(usuarios_novos)
+            st.success("Usuários atualizados.")
+            st.rerun()
 
-    with col2:
-        st.caption("Para excluir um acesso, desmarque ATIVO. Assim o histórico fica preservado.")
+    st.markdown("### Reenviar link de validação")
+    pendentes = [login for login, u in usuarios.items() if not u.get("email_validado", False)]
+    if pendentes:
+        with st.form("form_reenviar_validacao"):
+            login_validacao = st.selectbox("Usuário pendente", pendentes)
+            reenviar = st.form_submit_button("Reenviar link")
+        if reenviar:
+            ok, msg = enviar_link_validacao(login_validacao)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+    else:
+        st.info("Não há usuários pendentes de validação.")
 
     st.markdown("### Redefinir senha de usuário")
     with st.form("form_admin_reset"):
@@ -548,8 +752,8 @@ def pagina_usuarios() -> None:
         confirma = st.text_input("Confirmar nova senha temporária", type="password")
         resetar = st.form_submit_button("Redefinir senha")
     if resetar:
-        if len(nova) < 6:
-            st.error("A senha deve ter pelo menos 6 caracteres.")
+        if len(nova) < 8:
+            st.error("A senha deve ter pelo menos 8 caracteres.")
         elif nova != confirma:
             st.error("As senhas não conferem.")
         else:
@@ -558,7 +762,6 @@ def pagina_usuarios() -> None:
             salvar_usuarios(usuarios)
             st.success("Senha redefinida. Informe a senha temporária ao usuário por meio seguro.")
 
-
 # -----------------------------
 # Estado inicial do app
 # -----------------------------
@@ -566,8 +769,6 @@ def pagina_usuarios() -> None:
 if "base" not in st.session_state:
     st.session_state.base = criar_base_vazia()
 
-if "servidores" not in st.session_state:
-    st.session_state.servidores = criar_servidores_iniciais()
 
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
@@ -595,7 +796,6 @@ opcoes_menu = [
     "Painel",
     "Novo atendimento",
     "Base de atendimentos",
-    "Servidores",
     "Relatórios",
     "Importar / Exportar",
 ]
@@ -617,17 +817,6 @@ if arquivo is not None:
         df_importado = limpar_colunas(df_importado)
         if st.sidebar.button("Usar esta planilha como base"):
             st.session_state.base = df_importado
-            servidores_planilha = sorted(
-                [s for s in df_importado["SERVIDOR(A)"].dropna().astype(str).str.strip().unique() if s],
-                key=str.casefold
-            )
-            servidores_existentes = set(st.session_state.servidores["SERVIDOR(A)"].astype(str))
-            novos = [s for s in servidores_planilha if s not in servidores_existentes]
-            if novos:
-                st.session_state.servidores = pd.concat([
-                    st.session_state.servidores,
-                    pd.DataFrame({"SERVIDOR(A)": novos, "ATIVO": [True] * len(novos)})
-                ], ignore_index=True)
             st.sidebar.success("Base importada com sucesso.")
             st.rerun()
     except Exception as e:
@@ -702,7 +891,7 @@ elif pagina == "Novo atendimento":
 
     servidores_ativos = obter_servidores_ativos()
     if not servidores_ativos:
-        st.warning("Cadastre pelo menos um servidor ativo antes de registrar atendimentos.")
+        st.warning("É necessário ter pelo menos um usuário ativo e validado para registrar atendimentos.")
 
     with st.form("form_novo_atendimento", clear_on_submit=True):
         col1, col2, col3 = st.columns(3)
@@ -780,58 +969,6 @@ elif pagina == "Base de atendimentos":
 
 
 # -----------------------------
-# PÁGINA: SERVIDORES
-# -----------------------------
-
-elif pagina == "Servidores":
-    st.subheader("👥 Cadastro e descadastro de servidores")
-
-    with st.form("form_servidor"):
-        novo_servidor = st.text_input("Nome do servidor(a)")
-        incluir = st.form_submit_button("Cadastrar servidor")
-
-    if incluir:
-        nome = novo_servidor.strip()
-        if not nome:
-            st.error("Informe o nome do servidor.")
-        else:
-            servidores = st.session_state.servidores.copy()
-            existentes = servidores["SERVIDOR(A)"].astype(str).str.casefold().tolist()
-            if nome.casefold() in existentes:
-                st.warning("Esse servidor já existe.")
-            else:
-                st.session_state.servidores = pd.concat([
-                    servidores,
-                    pd.DataFrame([{"SERVIDOR(A)": nome, "ATIVO": True}])
-                ], ignore_index=True)
-                st.success("Servidor cadastrado.")
-                st.rerun()
-
-    st.markdown("### Lista de servidores")
-    st.caption("Para descadastrar, desmarque a coluna ATIVO. O servidor sai das novas escolhas, mas permanece nos registros antigos.")
-
-    servidores_editados = st.data_editor(
-        st.session_state.servidores,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        column_config={
-            "SERVIDOR(A)": st.column_config.TextColumn("Servidor(a)", required=True),
-            "ATIVO": st.column_config.CheckboxColumn("Ativo")
-        },
-        key="editor_servidores"
-    )
-
-    if st.button("Salvar cadastro de servidores", type="primary"):
-        servidores_editados["SERVIDOR(A)"] = servidores_editados["SERVIDOR(A)"].astype(str).str.strip()
-        servidores_editados = servidores_editados[servidores_editados["SERVIDOR(A)"] != ""]
-        servidores_editados = servidores_editados.drop_duplicates(subset=["SERVIDOR(A)"], keep="last")
-        st.session_state.servidores = servidores_editados.reset_index(drop=True)
-        st.success("Cadastro de servidores atualizado.")
-        st.rerun()
-
-
-# -----------------------------
 # PÁGINA: RELATÓRIOS
 # -----------------------------
 
@@ -898,7 +1035,7 @@ elif pagina == "Relatórios":
             mime="text/csv"
         )
 
-        excel_completo = gerar_excel_relatorio(df_filtrado, st.session_state.servidores)
+        excel_completo = gerar_excel_relatorio(df_filtrado, pd.DataFrame())
         st.download_button(
             "Baixar relatório completo em Excel",
             data=excel_completo,
@@ -923,9 +1060,9 @@ elif pagina == "Importar / Exportar":
     st.subheader("📦 Importar / Exportar dados")
 
     st.markdown("### Exportar backup completo")
-    st.write("Use este arquivo para guardar a base atual, os relatórios e o cadastro de servidores.")
+    st.write("Use este arquivo para guardar a base atual e os relatórios.")
 
-    excel_completo = gerar_excel_relatorio(st.session_state.base, st.session_state.servidores)
+    excel_completo = gerar_excel_relatorio(st.session_state.base, pd.DataFrame())
     st.download_button(
         "Baixar backup completo em Excel",
         data=excel_completo,
