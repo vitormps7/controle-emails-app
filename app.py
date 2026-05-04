@@ -4,6 +4,11 @@ from io import BytesIO
 from datetime import date, datetime
 import re
 import base64
+import os
+import json
+import hashlib
+import hmac
+import secrets
 
 # ============================================================
 # CONTROLE DE ATENDIMENTOS - SEPRO
@@ -262,6 +267,298 @@ def card(label, valor, ajuda=None):
     st.metric(label, valor, help=ajuda)
 
 
+
+
+# -----------------------------
+# Autenticação de usuários
+# -----------------------------
+
+USUARIOS_ARQUIVO = "usuarios_controle_emails.json"
+PERGUNTAS_RECUPERACAO = [
+    "Qual é o nome da sua primeira escola?",
+    "Qual é o nome da sua cidade natal?",
+    "Qual é o nome do seu primeiro animal de estimação?",
+    "Qual é uma palavra-chave interna que você deseja usar para recuperação?",
+]
+
+
+def _normalizar_login(valor: str) -> str:
+    return str(valor or "").strip().lower()
+
+
+def _hash_senha(senha: str, salt: str | None = None) -> str:
+    if salt is None:
+        salt = secrets.token_hex(16)
+    senha_bytes = str(senha).encode("utf-8")
+    salt_bytes = salt.encode("utf-8")
+    digest = hashlib.pbkdf2_hmac("sha256", senha_bytes, salt_bytes, 200_000).hex()
+    return f"{salt}${digest}"
+
+
+def _verificar_senha(senha: str, senha_hash: str) -> bool:
+    try:
+        salt, digest = senha_hash.split("$", 1)
+        novo_hash = _hash_senha(senha, salt).split("$", 1)[1]
+        return hmac.compare_digest(novo_hash, digest)
+    except Exception:
+        return False
+
+
+def carregar_usuarios() -> dict:
+    if not os.path.exists(USUARIOS_ARQUIVO):
+        return {}
+    try:
+        with open(USUARIOS_ARQUIVO, "r", encoding="utf-8") as f:
+            dados = json.load(f)
+        return dados if isinstance(dados, dict) else {}
+    except Exception:
+        return {}
+
+
+def salvar_usuarios(usuarios: dict) -> None:
+    with open(USUARIOS_ARQUIVO, "w", encoding="utf-8") as f:
+        json.dump(usuarios, f, ensure_ascii=False, indent=2)
+
+
+def criar_usuario(nome: str, login: str, email: str, senha: str, pergunta: str, resposta: str, perfil: str = "Usuário", ativo: bool = True) -> tuple[bool, str]:
+    usuarios = carregar_usuarios()
+    login_norm = _normalizar_login(login)
+    email_norm = _normalizar_login(email)
+
+    if not nome.strip():
+        return False, "Informe o nome do usuário."
+    if not login_norm:
+        return False, "Informe o login."
+    if not email_norm or "@" not in email_norm:
+        return False, "Informe um e-mail válido."
+    if len(senha) < 6:
+        return False, "A senha deve ter pelo menos 6 caracteres."
+    if not resposta.strip():
+        return False, "Informe a resposta de recuperação."
+    if login_norm in usuarios:
+        return False, "Já existe usuário com esse login."
+    if any(_normalizar_login(u.get("email")) == email_norm for u in usuarios.values()):
+        return False, "Já existe usuário com esse e-mail."
+
+    primeiro_usuario = len(usuarios) == 0
+    perfil_final = "Administrador" if primeiro_usuario else perfil
+
+    usuarios[login_norm] = {
+        "nome": nome.strip(),
+        "login": login_norm,
+        "email": email_norm,
+        "senha_hash": _hash_senha(senha),
+        "pergunta_recuperacao": pergunta,
+        "resposta_hash": _hash_senha(_normalizar_login(resposta)),
+        "perfil": perfil_final,
+        "ativo": bool(ativo),
+        "criado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "ultimo_acesso": "",
+    }
+    salvar_usuarios(usuarios)
+    if primeiro_usuario:
+        return True, "Primeiro usuário criado como Administrador. Faça login para acessar o sistema."
+    return True, "Usuário cadastrado com sucesso."
+
+
+def autenticar(login: str, senha: str) -> tuple[bool, str]:
+    usuarios = carregar_usuarios()
+    login_norm = _normalizar_login(login)
+    usuario = usuarios.get(login_norm)
+    if not usuario:
+        return False, "Login ou senha inválidos."
+    if not usuario.get("ativo", True):
+        return False, "Usuário inativo. Procure o administrador."
+    if not _verificar_senha(senha, usuario.get("senha_hash", "")):
+        return False, "Login ou senha inválidos."
+
+    usuarios[login_norm]["ultimo_acesso"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    salvar_usuarios(usuarios)
+    st.session_state.usuario_logado = {
+        "login": login_norm,
+        "nome": usuario.get("nome", login_norm),
+        "email": usuario.get("email", ""),
+        "perfil": usuario.get("perfil", "Usuário"),
+    }
+    return True, "Login realizado com sucesso."
+
+
+def recuperar_senha(login: str, email: str, resposta: str, nova_senha: str) -> tuple[bool, str]:
+    usuarios = carregar_usuarios()
+    login_norm = _normalizar_login(login)
+    email_norm = _normalizar_login(email)
+    usuario = usuarios.get(login_norm)
+
+    if not usuario or _normalizar_login(usuario.get("email")) != email_norm:
+        return False, "Login ou e-mail não localizado."
+    if len(nova_senha) < 6:
+        return False, "A nova senha deve ter pelo menos 6 caracteres."
+    if not _verificar_senha(_normalizar_login(resposta), usuario.get("resposta_hash", "")):
+        return False, "Resposta de recuperação incorreta."
+
+    usuarios[login_norm]["senha_hash"] = _hash_senha(nova_senha)
+    salvar_usuarios(usuarios)
+    return True, "Senha alterada com sucesso. Faça login com a nova senha."
+
+
+def usuario_eh_admin() -> bool:
+    usuario = st.session_state.get("usuario_logado", {})
+    return usuario.get("perfil") == "Administrador"
+
+
+def tela_autenticacao() -> None:
+    st.title("🔐 Acesso ao Sistema de Controle de Atendimentos")
+    st.caption("Entre com login e senha para acessar o sistema. O primeiro usuário cadastrado será o administrador.")
+
+    usuarios = carregar_usuarios()
+    if not usuarios:
+        st.info("Nenhum usuário cadastrado. Crie o primeiro usuário; ele será definido como Administrador.")
+
+    aba_login, aba_cadastro, aba_recuperacao = st.tabs(["Entrar", "Cadastrar usuário", "Recuperar senha"])
+
+    with aba_login:
+        with st.form("form_login"):
+            login = st.text_input("Login")
+            senha = st.text_input("Senha", type="password")
+            entrar = st.form_submit_button("Entrar", type="primary")
+        if entrar:
+            ok, msg = autenticar(login, senha)
+            if ok:
+                st.success(msg)
+                st.rerun()
+            else:
+                st.error(msg)
+
+    with aba_cadastro:
+        if usuarios:
+            st.warning("Após o primeiro administrador, novos cadastros ficam como Usuário comum. O administrador pode ativar, inativar ou alterar perfis na área 'Usuários'.")
+        with st.form("form_cadastro_usuario"):
+            nome = st.text_input("Nome completo")
+            login_cad = st.text_input("Login desejado", help="Use letras e números, sem espaços.")
+            email = st.text_input("E-mail")
+            col1, col2 = st.columns(2)
+            with col1:
+                senha_cad = st.text_input("Senha", type="password")
+            with col2:
+                confirmar = st.text_input("Confirmar senha", type="password")
+            pergunta = st.selectbox("Pergunta de recuperação", PERGUNTAS_RECUPERACAO)
+            resposta = st.text_input("Resposta de recuperação", type="password")
+            cadastrar = st.form_submit_button("Cadastrar")
+        if cadastrar:
+            if senha_cad != confirmar:
+                st.error("As senhas não conferem.")
+            else:
+                ok, msg = criar_usuario(nome, login_cad, email, senha_cad, pergunta, resposta)
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
+    with aba_recuperacao:
+        login_rec = st.text_input("Login", key="rec_login")
+        email_rec = st.text_input("E-mail cadastrado", key="rec_email")
+        usuarios_atual = carregar_usuarios()
+        pergunta_usuario = "Informe login e e-mail para visualizar a pergunta."
+        usuario = usuarios_atual.get(_normalizar_login(login_rec))
+        if usuario and _normalizar_login(usuario.get("email")) == _normalizar_login(email_rec):
+            pergunta_usuario = usuario.get("pergunta_recuperacao", pergunta_usuario)
+        st.info(f"Pergunta: {pergunta_usuario}")
+
+        with st.form("form_recuperar_senha"):
+            resposta_rec = st.text_input("Resposta", type="password")
+            nova_senha = st.text_input("Nova senha", type="password")
+            confirmar_nova = st.text_input("Confirmar nova senha", type="password")
+            recuperar = st.form_submit_button("Alterar senha")
+        if recuperar:
+            if nova_senha != confirmar_nova:
+                st.error("As senhas não conferem.")
+            else:
+                ok, msg = recuperar_senha(login_rec, email_rec, resposta_rec, nova_senha)
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
+
+def pagina_usuarios() -> None:
+    st.subheader("🔐 Usuários do sistema")
+    if not usuario_eh_admin():
+        st.error("Apenas administradores podem acessar esta área.")
+        return
+
+    usuarios = carregar_usuarios()
+    if not usuarios:
+        st.info("Nenhum usuário cadastrado.")
+        return
+
+    linhas = []
+    for login, u in usuarios.items():
+        linhas.append({
+            "LOGIN": login,
+            "NOME": u.get("nome", ""),
+            "E-MAIL": u.get("email", ""),
+            "PERFIL": u.get("perfil", "Usuário"),
+            "ATIVO": bool(u.get("ativo", True)),
+            "CRIADO EM": u.get("criado_em", ""),
+            "ÚLTIMO ACESSO": u.get("ultimo_acesso", ""),
+        })
+
+    df_usuarios = pd.DataFrame(linhas)
+    st.caption("Edite perfil e situação do usuário. Não é possível visualizar senhas, apenas redefini-las.")
+    editado = st.data_editor(
+        df_usuarios,
+        use_container_width=True,
+        hide_index=True,
+        disabled=["LOGIN", "CRIADO EM", "ÚLTIMO ACESSO"],
+        column_config={
+            "PERFIL": st.column_config.SelectboxColumn("Perfil", options=["Administrador", "Usuário"]),
+            "ATIVO": st.column_config.CheckboxColumn("Ativo"),
+        },
+        key="editor_usuarios",
+    )
+
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        if st.button("Salvar usuários", type="primary"):
+            usuarios_novos = carregar_usuarios()
+            admins_ativos = 0
+            for _, linha in editado.iterrows():
+                login = _normalizar_login(linha["LOGIN"])
+                if login in usuarios_novos:
+                    usuarios_novos[login]["nome"] = str(linha["NOME"]).strip()
+                    usuarios_novos[login]["email"] = _normalizar_login(linha["E-MAIL"])
+                    usuarios_novos[login]["perfil"] = linha["PERFIL"]
+                    usuarios_novos[login]["ativo"] = bool(linha["ATIVO"])
+                    if linha["PERFIL"] == "Administrador" and bool(linha["ATIVO"]):
+                        admins_ativos += 1
+            if admins_ativos == 0:
+                st.error("É necessário manter pelo menos um administrador ativo.")
+            else:
+                salvar_usuarios(usuarios_novos)
+                st.success("Usuários atualizados.")
+                st.rerun()
+
+    with col2:
+        st.caption("Para excluir um acesso, desmarque ATIVO. Assim o histórico fica preservado.")
+
+    st.markdown("### Redefinir senha de usuário")
+    with st.form("form_admin_reset"):
+        login_reset = st.selectbox("Usuário", sorted(usuarios.keys()))
+        nova = st.text_input("Nova senha temporária", type="password")
+        confirma = st.text_input("Confirmar nova senha temporária", type="password")
+        resetar = st.form_submit_button("Redefinir senha")
+    if resetar:
+        if len(nova) < 6:
+            st.error("A senha deve ter pelo menos 6 caracteres.")
+        elif nova != confirma:
+            st.error("As senhas não conferem.")
+        else:
+            usuarios = carregar_usuarios()
+            usuarios[login_reset]["senha_hash"] = _hash_senha(nova)
+            salvar_usuarios(usuarios)
+            st.success("Senha redefinida. Informe a senha temporária ao usuário por meio seguro.")
+
+
 # -----------------------------
 # Estado inicial do app
 # -----------------------------
@@ -272,6 +569,13 @@ if "base" not in st.session_state:
 if "servidores" not in st.session_state:
     st.session_state.servidores = criar_servidores_iniciais()
 
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = None
+
+if not st.session_state.usuario_logado:
+    tela_autenticacao()
+    st.stop()
+
 
 # -----------------------------
 # Layout
@@ -280,18 +584,25 @@ if "servidores" not in st.session_state:
 st.title("📧 Controle de Atendimentos - SEPRO")
 st.caption("Sistema para registrar, acompanhar, filtrar e extrair relatórios dos atendimentos de e-mail e telefone.")
 
+usuario_atual = st.session_state.usuario_logado
+st.sidebar.success(f"Logado como: {usuario_atual['nome']} ({usuario_atual['perfil']})")
+if st.sidebar.button("Sair"):
+    st.session_state.usuario_logado = None
+    st.rerun()
+
 st.sidebar.markdown("# Menu")
-pagina = st.sidebar.radio(
-    "Escolha uma área",
-    [
-        "Painel",
-        "Novo atendimento",
-        "Base de atendimentos",
-        "Servidores",
-        "Relatórios",
-        "Importar / Exportar",
-    ],
-)
+opcoes_menu = [
+    "Painel",
+    "Novo atendimento",
+    "Base de atendimentos",
+    "Servidores",
+    "Relatórios",
+    "Importar / Exportar",
+]
+if usuario_eh_admin():
+    opcoes_menu.append("Usuários")
+
+pagina = st.sidebar.radio("Escolha uma área", opcoes_menu)
 
 # -----------------------------
 # Importação rápida pela lateral
@@ -597,6 +908,14 @@ elif pagina == "Relatórios":
 
 
 # -----------------------------
+# PÁGINA: USUÁRIOS
+# -----------------------------
+
+elif pagina == "Usuários":
+    pagina_usuarios()
+
+
+# -----------------------------
 # PÁGINA: IMPORTAR / EXPORTAR
 # -----------------------------
 
@@ -619,6 +938,6 @@ elif pagina == "Importar / Exportar":
     st.write("Use a opção da barra lateral para carregar uma planilha Excel antiga ou um backup exportado pelo sistema.")
 
     st.info(
-        "Importante: no Streamlit Community Cloud, os dados podem não ficar gravados para sempre no servidor. "
-        "Por isso, baixe o backup Excel ao final do expediente ou sempre que fizer alterações importantes."
+        "Importante: no Streamlit Community Cloud, os dados e usuários gravados em arquivos locais podem não ficar salvos para sempre se o app for reiniciado. "
+        "Para uso definitivo com vários usuários, recomenda-se ligar o sistema a um banco de dados. Por enquanto, baixe o backup Excel ao final do expediente ou sempre que fizer alterações importantes."
     )
