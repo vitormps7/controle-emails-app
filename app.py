@@ -22,6 +22,7 @@ st.set_page_config(
 ARQ_USUARIOS = Path("usuarios_controle_emails_v3.json")
 ARQ_ATENDIMENTOS = Path("atendimentos_controle_emails_v1.json")
 ARQ_ASSUNTOS = Path("assuntos_controle_emails_v1.json")
+ARQ_SESSOES = Path("sessoes_usuarios_logados_v1.json")
 
 DOMINIO_INSTITUCIONAL = "@tre-ba.jus.br"
 
@@ -339,6 +340,52 @@ def salvar_assuntos(lista):
     salvar_json(ARQ_ASSUNTOS, sorted(set([str(x).strip() for x in lista if str(x).strip()])))
 
 
+def registrar_usuario_logado(usuario):
+    """Registra o usuário como logado/ativo.
+
+    Observação: em hospedagens sem banco de dados permanente, esse controle
+    funciona como indicador operacional simples. Ele considera usuários que
+    fizeram login e ainda não clicaram em Sair.
+    """
+    if not usuario:
+        return
+
+    sessoes = carregar_json(ARQ_SESSOES, {})
+    email = normalizar_email(usuario.get("email"))
+    if not email:
+        return
+
+    sessoes[email] = {
+        "nome": usuario.get("nome", email),
+        "email": email,
+        "perfil": usuario.get("perfil", "Usuário"),
+        "ultimo_login": agora_iso(),
+        "ativo": True,
+    }
+    salvar_json(ARQ_SESSOES, sessoes)
+
+
+def remover_usuario_logado():
+    usuario = usuario_logado()
+    if not usuario:
+        return
+
+    sessoes = carregar_json(ARQ_SESSOES, {})
+    email = normalizar_email(usuario.get("email"))
+    if email in sessoes:
+        sessoes[email]["ativo"] = False
+        sessoes[email]["ultimo_logout"] = agora_iso()
+        salvar_json(ARQ_SESSOES, sessoes)
+
+
+def usuarios_logados():
+    sessoes = carregar_json(ARQ_SESSOES, {})
+    return [
+        dados for dados in sessoes.values()
+        if isinstance(dados, dict) and dados.get("ativo", False)
+    ]
+
+
 def email_institucional(email):
     return normalizar_email(email).endswith(DOMINIO_INSTITUCIONAL)
 
@@ -597,6 +644,7 @@ def tela_login():
                 st.error("Senha inválida.")
             else:
                 st.session_state["usuario"] = encontrado
+                registrar_usuario_logado(encontrado)
                 st.success("Login realizado com sucesso.")
                 st.rerun()
 
@@ -735,6 +783,7 @@ def sidebar_menu():
 
     st.sidebar.divider()
     if st.sidebar.button("Sair"):
+        remover_usuario_logado()
         st.session_state.pop("usuario", None)
         st.rerun()
 
@@ -1010,13 +1059,15 @@ def tela_dashboard():
     )
 
     st.markdown("<div class='dash-section-title'>Indicadores gerais</div><div class='dash-row-grid'>", unsafe_allow_html=True)
-    cols = st.columns(5)
+    usuarios_online = usuarios_logados()
+    cols = st.columns(6)
     metricas = [
         ('Total de registros', numero_br(total), '#174A7C'),
         ('Respondidos', numero_br(realizados), '#74B24A'),
         ('Pendentes', numero_br(pendentes), '#F2A365'),
         ('% respondido', percentual_br(percentual), '#7A60A8'),
         ('Datas inválidas', numero_br(datas_invalidas), '#D62828'),
+        ('Usuários logados', numero_br(len(usuarios_online)), '#0F766E'),
     ]
     for col, (label, value, color) in zip(cols, metricas):
         with col:
@@ -1099,6 +1150,35 @@ def tela_dashboard():
             meses_maior['Total'] = meses_maior['Total'].map(numero_br)
             ultimos_meses = mensal.sort_values('MesRef', ascending=False).head(8)[['Mes', 'Total']].copy()
             ultimos_meses['Total'] = ultimos_meses['Total'].map(numero_br)
+
+    situacao_usuario = pd.DataFrame(columns=['Servidor(a)', 'Triagem', 'Em atendimento', 'Atendimento realizado', 'Total'])
+    if not df.empty:
+        base_usuario = df.copy()
+        base_usuario['Servidor(a)'] = base_usuario['Servidor(a)'].fillna('Não informado').replace('', 'Não informado')
+        situacao_usuario = (
+            pd.crosstab(base_usuario['Servidor(a)'], base_usuario['Status'])
+            .reset_index()
+        )
+
+        for coluna in STATUS_OPCOES:
+            if coluna not in situacao_usuario.columns:
+                situacao_usuario[coluna] = 0
+
+        situacao_usuario['Total'] = situacao_usuario[STATUS_OPCOES].sum(axis=1)
+        situacao_usuario = situacao_usuario.sort_values('Total', ascending=False)
+
+        situacao_usuario = situacao_usuario[
+            ['Servidor(a)', STATUS_CADASTRADO, STATUS_EM_ATENDIMENTO, STATUS_REALIZADO, 'Total']
+        ].rename(columns={
+            STATUS_CADASTRADO: 'Triagem',
+            STATUS_EM_ATENDIMENTO: 'Em atendimento',
+            STATUS_REALIZADO: 'Atendimento realizado',
+        })
+
+        for coluna in ['Triagem', 'Em atendimento', 'Atendimento realizado', 'Total']:
+            situacao_usuario[coluna] = situacao_usuario[coluna].map(numero_br)
+
+    bloco_tabela_dashboard('Situação dos atendimentos por usuário', situacao_usuario)
 
     area1, area2, area3 = st.columns([2.2, 2.2, 0.9])
     with area1:
