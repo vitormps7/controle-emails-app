@@ -903,6 +903,43 @@ def pagina_usuarios() -> None:
             salvar_usuarios(usuarios)
             st.success("Senha redefinida. Informe a senha temporária ao usuário por meio seguro.")
 
+    st.markdown("### Excluir usuário")
+    st.warning("A exclusão remove o usuário do controle de acesso. Registros de atendimentos já lançados permanecem preservados na base.")
+    usuarios_para_excluir = carregar_usuarios()
+    login_atual = st.session_state.get("usuario_logado", {}).get("login")
+    opcoes_exclusao = sorted(usuarios_para_excluir.keys())
+
+    with st.form("form_excluir_usuario"):
+        login_excluir = st.selectbox("Usuário a excluir", opcoes_exclusao, key="select_excluir_usuario")
+        confirmar_exclusao = st.checkbox("Confirmo que desejo excluir este usuário do sistema")
+        excluir = st.form_submit_button("Excluir usuário", type="secondary")
+
+    if excluir:
+        usuarios_para_excluir = carregar_usuarios()
+        if login_excluir not in usuarios_para_excluir:
+            st.error("Usuário não localizado.")
+        elif login_excluir == login_atual:
+            st.error("Você não pode excluir o próprio usuário enquanto está logado.")
+        elif not confirmar_exclusao:
+            st.error("Marque a confirmação para excluir o usuário.")
+        else:
+            usuario_alvo = usuarios_para_excluir[login_excluir]
+            admins_ativos_restantes = sum(
+                1
+                for login_item, usuario_item in usuarios_para_excluir.items()
+                if login_item != login_excluir
+                and usuario_item.get("perfil", "Usuário") == "Administrador"
+                and usuario_item.get("ativo", True)
+            )
+            if usuario_alvo.get("perfil", "Usuário") == "Administrador" and admins_ativos_restantes == 0:
+                st.error("Não é possível excluir o último administrador ativo do sistema.")
+            else:
+                nome_excluido = usuario_alvo.get("nome", login_excluir)
+                del usuarios_para_excluir[login_excluir]
+                salvar_usuarios(usuarios_para_excluir)
+                st.success(f"Usuário {nome_excluido} excluído com sucesso.")
+                st.rerun()
+
 # -----------------------------
 # Estado inicial do app
 # -----------------------------
