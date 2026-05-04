@@ -279,7 +279,8 @@ def card(label, valor, ajuda=None):
 # Autenticação de usuários com validação institucional
 # -----------------------------
 
-USUARIOS_ARQUIVO = "usuarios_controle_emails.json"
+# Base nova de usuários. Esta alteração ignora cadastros antigos incompatíveis com a validação institucional.
+USUARIOS_ARQUIVO = "usuarios_controle_emails_v2.json"
 DOMINIO_INSTITUCIONAL = "tre-ba.jus.br"
 
 
