@@ -73,10 +73,27 @@ st.markdown(
     <style>
     .main-header {
         background: linear-gradient(90deg, #174A7C 0%, #1F5F99 55%, #2C8C6A 100%);
-        padding: 18px 22px;
+        padding: 14px 18px;
         border-radius: 10px;
         color: white;
         margin-bottom: 18px;
+    }
+    .logo-box {
+        background: white;
+        border-radius: 10px;
+        width: 230px;
+        height: 96px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+    .logo-box img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
     }
     .main-header h1 {
         margin: 0;
@@ -455,9 +472,7 @@ def tela_login():
     st.markdown(
         f"""
         <div class="main-header" style="display:flex;align-items:center;gap:18px;">
-            <div style="background:white;border-radius:10px;padding:8px;display:flex;align-items:center;justify-content:center;min-width:92px;">
-                <img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}" style="height:70px;max-width:180px;object-fit:contain;">
-            </div>
+            <div class="logo-box"><img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}"></div>
             <div>
                 <h1>📧 Sistema SEPRO - Controle de Atendimentos</h1>
                 <p>Corregedoria Regional Eleitoral da Bahia</p>
@@ -603,9 +618,7 @@ def cabecalho():
     st.markdown(
         f"""
         <div class="main-header" style="display:flex;align-items:center;gap:18px;">
-            <div style="background:white;border-radius:10px;padding:8px;display:flex;align-items:center;justify-content:center;min-width:92px;">
-                <img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}" style="height:70px;max-width:180px;object-fit:contain;">
-            </div>
+            <div class="logo-box"><img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}"></div>
             <div>
                 <h1>📧 Sistema SEPRO - Controle de Atendimentos</h1>
                 <p>Corregedoria Regional Eleitoral da Bahia</p>
@@ -727,6 +740,8 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 if item.get("id") == atendimento.get("id"):
                     item["status"] = novo_status
                     item["atualizado_em"] = agora_iso()
+                    if novo_status == STATUS_CADASTRADO:
+                        item["servidor"] = "Aguardando triagem"
                     if novo_status == STATUS_REALIZADO:
                         item["data_realizacao"] = hoje_ddmmaaaa()
                     salvar_atendimentos(lista)
@@ -849,7 +864,7 @@ def tela_dashboard():
 def tela_novo_atendimento():
     st.subheader("Novo atendimento")
 
-    st.info("Todo novo atendimento entra primeiro na base **Triagem**. Depois ele pode ser movido para **Em atendimento** e, ao final, para **Atendimento realizado**.")
+    st.info("Todo novo atendimento entra primeiro na base **Triagem**. Na Triagem, será escolhido o usuário responsável; ao designar o usuário, a demanda seguirá para **Em atendimento**.")
 
     servidores = nomes_usuarios_ativos()
     if not servidores:
@@ -861,7 +876,6 @@ def tela_novo_atendimento():
         with col1:
             data_atendimento = st.date_input("Data do atendimento", value=date.today(), format="DD/MM/YYYY")
             fonte = st.selectbox("Fonte", FONTES)
-            servidor = st.selectbox("Servidor(a) responsável", servidores)
 
         with col2:
             assunto = st.selectbox("Assunto", assuntos())
@@ -871,7 +885,8 @@ def tela_novo_atendimento():
         with col3:
             protocolo = st.text_input("Protocolo ou referência, se houver")
             prioridade = st.selectbox("Prioridade", ["Normal", "Alta", "Urgente", "Baixa"])
-            status_inicial = st.selectbox("Status inicial", [STATUS_CADASTRADO, STATUS_EM_ATENDIMENTO])
+            status_inicial = STATUS_CADASTRADO
+            st.info("O atendimento será enviado para a Triagem, onde será designado o servidor responsável.")
 
         descricao = st.text_area("Descrição da demanda")
         observacoes = st.text_area("Observações internas")
@@ -884,7 +899,7 @@ def tela_novo_atendimento():
                 "id": proximo_id(lista),
                 "data": data_atendimento.strftime("%d/%m/%Y"),
                 "status": status_inicial,
-                "servidor": servidor,
+                "servidor": "Aguardando triagem",
                 "fonte": fonte,
                 "assunto": assunto,
                 "zona_eleitoral": zona,
@@ -903,6 +918,80 @@ def tela_novo_atendimento():
             st.success(f"Atendimento nº {novo['id']} triagem com sucesso na base: {status_inicial}.")
 
 
+
+def card_triagem(atendimento, chave_prefixo):
+    with st.container(border=True):
+        col1, col2, col3 = st.columns([1.2, 2.2, 1.3])
+
+        with col1:
+            st.markdown(f"**ID:** {atendimento.get('id')}")
+            st.markdown(f"**Data:** {data_para_exibir(atendimento.get('data'))}")
+            st.markdown(status_badge(STATUS_CADASTRADO), unsafe_allow_html=True)
+
+        with col2:
+            st.markdown(f"**Assunto:** {atendimento.get('assunto', '')}")
+            st.markdown(f"**Origem:** {atendimento.get('origem', '')}")
+            st.markdown(f"**Zona:** {atendimento.get('zona_eleitoral', '')}")
+            st.markdown(f"**Descrição:** {atendimento.get('descricao', '')}")
+
+        with col3:
+            st.markdown(f"**Fonte:** {atendimento.get('fonte', '')}")
+            st.markdown(f"**Prioridade:** {atendimento.get('prioridade', 'Normal')}")
+            st.markdown(f"**Criado em:** {iso_para_exibir(atendimento.get('criado_em'))}")
+
+        if atendimento.get("observacoes"):
+            st.markdown(f"**Observações:** {atendimento.get('observacoes')}")
+
+        st.divider()
+        st.markdown("##### Designar responsável pela demanda")
+
+        servidores = nomes_usuarios_ativos()
+        if not servidores:
+            st.warning("Não há usuários ativos e validados para receber a demanda.")
+            return
+
+        col_a, col_b = st.columns([2, 1])
+
+        with col_a:
+            servidor_escolhido = st.selectbox(
+                "Usuário que irá tratar a demanda",
+                servidores,
+                key=f"{chave_prefixo}_designar_{atendimento.get('id')}"
+            )
+
+        with col_b:
+            st.write("")
+            st.write("")
+            if st.button("Encaminhar para Em atendimento", key=f"{chave_prefixo}_encaminhar_{atendimento.get('id')}", type="primary"):
+                lista = atendimentos()
+                for item in lista:
+                    if item.get("id") == atendimento.get("id"):
+                        item["servidor"] = servidor_escolhido
+                        item["status"] = STATUS_EM_ATENDIMENTO
+                        item["atualizado_em"] = agora_iso()
+                        item["triado_por"] = usuario_logado().get("email", "")
+                        item["triado_em"] = agora_iso()
+                        salvar_atendimentos(lista)
+                        st.success(f"Demanda encaminhada para {servidor_escolhido}.")
+                        st.rerun()
+
+        with st.expander("Editar observações da triagem"):
+            nova_obs = st.text_area(
+                "Observações",
+                value=atendimento.get("observacoes", ""),
+                key=f"{chave_prefixo}_obs_triagem_{atendimento.get('id')}"
+            )
+            if st.button("Salvar observações", key=f"{chave_prefixo}_salvar_obs_{atendimento.get('id')}"):
+                lista = atendimentos()
+                for item in lista:
+                    if item.get("id") == atendimento.get("id"):
+                        item["observacoes"] = nova_obs
+                        item["atualizado_em"] = agora_iso()
+                        salvar_atendimentos(lista)
+                        st.success("Observações salvas.")
+                        st.rerun()
+
+
 def tela_status(nome_status, titulo, texto_ajuda):
     st.subheader(titulo)
     st.caption(texto_ajuda)
@@ -918,7 +1007,10 @@ def tela_status(nome_status, titulo, texto_ajuda):
     lista_ordenada = sorted(lista, key=lambda x: int(x.get("id", 0)), reverse=True)
 
     for item in lista_ordenada:
-        card_atendimento(item, f"card_{nome_status.replace(' ', '_')}")
+        if nome_status == STATUS_CADASTRADO:
+            card_triagem(item, f"card_triagem")
+        else:
+            card_atendimento(item, f"card_{nome_status.replace(' ', '_')}")
 
 
 def tela_base_geral():
@@ -1129,7 +1221,7 @@ def main():
         tela_status(
             STATUS_CADASTRADO,
             "Triagem",
-            "Atendimentos cadastrados, ainda aguardando triagem ou início do atendimento."
+            "Demandas aguardando escolha do usuário responsável. Ao designar o responsável, o atendimento segue para Em atendimento."
         )
 
     elif escolha == "Em atendimento":
