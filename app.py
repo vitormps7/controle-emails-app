@@ -1186,6 +1186,8 @@ if pagina == "Painel":
     )
 
     st.markdown('<div class="section-title">Canais e qualidade da base</div>', unsafe_allow_html=True)
+
+    # Renderização em partes para evitar que o Streamlit mostre HTML cru na tela.
     st.markdown(
         f"""
         <div class="channel-grid">
@@ -1193,14 +1195,18 @@ if pagina == "Painel":
             {_box('Atendimentos por telefone', _fmt_int(qtd_telefone), 'green')}
             {_box('Atendimentos por WhatsApp', _fmt_int(qtd_whatsapp), 'teal')}
             {_box('Outros / sem fonte', _fmt_int(qtd_outros), 'orange')}
-            <div>
-                <div class="section-title" style="margin-top:0;border-radius:4px 4px 0 0;">Leitura rápida</div>
-                <div class="reading-box"><ul>{leitura_html}</ul></div>
-            </div>
+            {_box('Total no recorte', _fmt_int(total), 'purple')}
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    st.markdown('<div class="section-title" style="margin-top:0;border-radius:4px 4px 0 0;">Leitura rápida</div>', unsafe_allow_html=True)
+    if total == 0:
+        st.info("Nenhum registro encontrado com os filtros atuais. Limpe ou altere os filtros na barra lateral para visualizar os dados no dashboard.")
+    else:
+        for item in leitura:
+            st.markdown(f"- {item}")
 
     st.markdown(
         f"""
