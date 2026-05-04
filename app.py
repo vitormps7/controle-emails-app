@@ -3,6 +3,7 @@ import pandas as pd
 from io import BytesIO
 from pathlib import Path
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 import json
 import hashlib
 import secrets
@@ -23,6 +24,7 @@ ARQ_USUARIOS = Path("usuarios_controle_emails_v3.json")
 ARQ_ATENDIMENTOS = Path("atendimentos_controle_emails_v1.json")
 ARQ_ASSUNTOS = Path("assuntos_controle_emails_v1.json")
 ARQ_SESSOES = Path("sessoes_usuarios_logados_v1.json")
+FUSO_HORARIO_BRASILIA = ZoneInfo("America/Sao_Paulo")
 
 DOMINIO_INSTITUCIONAL = "@tre-ba.jus.br"
 
@@ -243,12 +245,17 @@ st.markdown(
 # FUNÇÕES AUXILIARES
 # ============================================================
 
+def agora_brasilia():
+    """Retorna a data/hora atual no fuso de Brasília."""
+    return datetime.now(FUSO_HORARIO_BRASILIA)
+
+
 def agora_iso():
-    return datetime.now().isoformat(timespec="seconds")
+    return agora_brasilia().isoformat(timespec="seconds")
 
 
 def hoje_ddmmaaaa():
-    return datetime.now().strftime("%d/%m/%Y")
+    return agora_brasilia().strftime("%d/%m/%Y")
 
 
 def parse_data(valor):
@@ -1054,7 +1061,7 @@ def tela_dashboard():
         periodo_fim = datas_parse.max().strftime('%d/%m/%Y')
 
     st.markdown(
-        f"<div class='dashboard-subinfo'>Base: registros do sistema | Registros: {numero_br(total)} | Período válido: {periodo_ini or '-'} a {periodo_fim or '-'} | Atualizado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>",
+        f"<div class='dashboard-subinfo'>Base: registros do sistema | Registros: {numero_br(total)} | Período válido: {periodo_ini or '-'} a {periodo_fim or '-'} | Atualizado em: {agora_brasilia().strftime('%d/%m/%Y %H:%M')}</div>",
         unsafe_allow_html=True,
     )
 
@@ -1415,7 +1422,7 @@ def tela_relatorios_exportacao():
     st.download_button(
         "Baixar relatório em Excel",
         data=buffer.getvalue(),
-        file_name=f"relatorio_atendimentos_sepro_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+        file_name=f"relatorio_atendimentos_sepro_{agora_brasilia().strftime('%Y%m%d_%H%M')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
@@ -1423,7 +1430,7 @@ def tela_relatorios_exportacao():
     st.download_button(
         "Baixar base em CSV",
         data=csv,
-        file_name=f"base_atendimentos_sepro_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        file_name=f"base_atendimentos_sepro_{agora_brasilia().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv"
     )
 
