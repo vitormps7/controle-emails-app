@@ -45,10 +45,11 @@ st.markdown(
 # -----------------------------
 
 SITUACOES = ["Pendente", "Em atendimento", "Respondido", "Outro", "Arquivado"]
-FONTES = ["E-mail", "Telefone"]
+FONTES = ["E-mail", "Telefone", "WhatsApp"]
 
-# Assuntos extraídos da planilha-base.
-ASSUNTOS = ['ADVOGADO DATIVO', 'AIJE', 'AIME', 'APOIAMENTO DE PARTIDO', 'ARQUIVAMENTO', 'ASE', 'Ação Penal', 'CADIN', 'CARTA DE ORDEM', 'CARTA PRECATÓRIA', 'CONTA DEPÓSITO JUDICIAL', 'CONTAGEM DE PRAZOS PROCESSUAIS', 'Cumprimento de Sentença', 'DECLINAÇÃO DE COMPETÊNCIA', 'DEFENSOR DATIVO', 'Depósito Judicial', 'Destinação Valores Feitos Criminais', 'Destinação Valores Procedimentos Criminais', 'Diplomação', 'DÚVIDAS PROCESSUAIS', 'ELO', 'EXECUÇÃO DE MULTA', 'EXECUÇÃO FISCAL', 'EXECUÇÃO PENAL', 'INFOJUD', 'Inquérito', 'JUIZ DE GARANTIA', 'LISTA DE APOIAMENTO', 'Medidas despenalizadoras', 'MULTA', 'Núcleo das Garantias', 'Outros', 'Parcelamento de Multa Eleitoral', 'PRESTAÇÃO DE CONTAS', 'Prestação de Contas Anual', 'Prestação de Contas Eleitorais', 'PROCESSO DE CRIAÇÃO DE PARTIDO', 'PROCESSO INVESTIGATÓRIO CRIMINAL', 'PROVIMENTO 01/2025', 'RENAJUD', 'REPRESENTAÇÃO', 'Representação - Direito de resposta', 'Representação - Propaganda', 'RROPCO', 'SERASAJUD', 'SICO', 'Sisbajud', 'Sistemas', 'TCO', 'TRANSAÇÃO PENAL', 'TRÂNSITO EM JULGADO']
+# Assuntos iniciais extraídos da planilha-base.
+# A lista pode ser ampliada/reduzida no menu Assuntos por usuário administrador.
+ASSUNTOS_PADRAO = ['ADVOGADO DATIVO', 'AIJE', 'AIME', 'APOIAMENTO DE PARTIDO', 'ARQUIVAMENTO', 'ASE', 'Ação Penal', 'CADIN', 'CARTA DE ORDEM', 'CARTA PRECATÓRIA', 'CONTA DEPÓSITO JUDICIAL', 'CONTAGEM DE PRAZOS PROCESSUAIS', 'Cumprimento de Sentença', 'DECLINAÇÃO DE COMPETÊNCIA', 'DEFENSOR DATIVO', 'Depósito Judicial', 'Destinação Valores Feitos Criminais', 'Destinação Valores Procedimentos Criminais', 'Diplomação', 'DÚVIDAS PROCESSUAIS', 'ELO', 'EXECUÇÃO DE MULTA', 'EXECUÇÃO FISCAL', 'EXECUÇÃO PENAL', 'INFOJUD', 'Inquérito', 'JUIZ DE GARANTIA', 'LISTA DE APOIAMENTO', 'Medidas despenalizadoras', 'MULTA', 'Núcleo das Garantias', 'Outros', 'Parcelamento de Multa Eleitoral', 'PRESTAÇÃO DE CONTAS', 'Prestação de Contas Anual', 'Prestação de Contas Eleitorais', 'PROCESSO DE CRIAÇÃO DE PARTIDO', 'PROCESSO INVESTIGATÓRIO CRIMINAL', 'PROVIMENTO 01/2025', 'RENAJUD', 'REPRESENTAÇÃO', 'Representação - Direito de resposta', 'Representação - Propaganda', 'RROPCO', 'SERASAJUD', 'SICO', 'Sisbajud', 'Sistemas', 'TCO', 'TRANSAÇÃO PENAL', 'TRÂNSITO EM JULGADO']
 
 # Zonas eleitorais da Bahia para seleção no sistema.
 # Mantive "NA" para casos sem zona eleitoral definida.
@@ -133,6 +134,32 @@ def criar_base_vazia() -> pd.DataFrame:
     return pd.DataFrame(columns=COLUNAS_BASE)
 
 
+def formatar_data_br(valor):
+    """Retorna datas no padrão brasileiro dd/mm/aaaa para exibição e relatórios."""
+    if pd.isna(valor) or valor == "":
+        return ""
+    try:
+        data = pd.to_datetime(valor, errors="coerce")
+        if pd.isna(data):
+            return ""
+        return data.strftime("%d/%m/%Y")
+    except Exception:
+        return str(valor)
+
+
+def preparar_para_exibicao(df: pd.DataFrame) -> pd.DataFrame:
+    """Copia a tabela e formata a coluna DATA como dd/mm/aaaa sem alterar a base original."""
+    tabela = df.copy()
+    if "DATA" in tabela.columns:
+        tabela["DATA"] = tabela["DATA"].apply(formatar_data_br)
+    return tabela
+
+
+def preparar_para_exportacao_csv(df: pd.DataFrame) -> pd.DataFrame:
+    """Garante que relatórios CSV saiam com DATA no formato dd/mm/aaaa."""
+    return preparar_para_exibicao(df)
+
+
 def criar_servidores_iniciais() -> pd.DataFrame:
     return pd.DataFrame({
         "SERVIDOR(A)": SERVIDORES_INICIAIS,
@@ -185,7 +212,7 @@ def gerar_excel_relatorio(df: pd.DataFrame, servidores: pd.DataFrame) -> bytes:
 
             mensal = (
                 base.dropna(subset=["DATA"])
-                .assign(MÊS=lambda x: x["DATA"].dt.to_period("M").astype(str))
+                .assign(MÊS=lambda x: x["DATA"].dt.strftime("%m/%Y"))
                 .groupby("MÊS", as_index=False)
                 .size()
                 .rename(columns={"size": "Quantidade"})
@@ -212,6 +239,13 @@ def gerar_excel_relatorio(df: pd.DataFrame, servidores: pd.DataFrame) -> bytes:
                 cell.font = cell.font.copy(bold=True)
                 cell.alignment = cell.alignment.copy(horizontal="center")
 
+            # Formata colunas de data no Excel como dd/mm/aaaa.
+            for idx, cell in enumerate(ws[1], start=1):
+                if str(cell.value).strip().upper() in ["DATA", "CRIADO_EM", "ÚLTIMO ACESSO", "ULTIMO ACESSO"]:
+                    for data_cell in ws.iter_cols(min_col=idx, max_col=idx, min_row=2):
+                        for item in data_cell:
+                            item.number_format = "DD/MM/YYYY"
+
     return buffer.getvalue()
 
 
@@ -229,7 +263,8 @@ def aplicar_filtros(df: pd.DataFrame) -> pd.DataFrame:
                 "Período",
                 value=(data_min.date(), data_max.date()),
                 min_value=data_min.date(),
-                max_value=data_max.date()
+                max_value=data_max.date(),
+                format="DD/MM/YYYY"
             )
             if isinstance(intervalo, tuple) and len(intervalo) == 2:
                 inicio, fim = intervalo
@@ -248,7 +283,7 @@ def aplicar_filtros(df: pd.DataFrame) -> pd.DataFrame:
     if fontes:
         filtrado = filtrado[filtrado["FONTE"].isin(fontes)]
 
-    assuntos = st.sidebar.multiselect("Assunto", ASSUNTOS)
+    assuntos = st.sidebar.multiselect("Assunto", obter_assuntos_para_filtro(df))
     if assuntos:
         filtrado = filtrado[filtrado["ASSUNTO"].isin(assuntos)]
 
@@ -273,6 +308,111 @@ def card(label, valor, ajuda=None):
     st.metric(label, valor, help=ajuda)
 
 
+# -----------------------------
+# Cadastro de assuntos
+# -----------------------------
+
+ASSUNTOS_ARQUIVO = "assuntos_controle_emails_v1.json"
+
+
+def _normalizar_assunto(valor: str) -> str:
+    return str(valor or "").strip()
+
+
+def _ordenar_textos(valores: list[str]) -> list[str]:
+    return sorted([v for v in valores if str(v).strip()], key=lambda x: str(x).casefold())
+
+
+def carregar_assuntos() -> list[str]:
+    """Carrega os assuntos cadastrados. Se o arquivo ainda não existir, usa a lista padrão."""
+    if not os.path.exists(ASSUNTOS_ARQUIVO):
+        return _ordenar_textos(list(dict.fromkeys(ASSUNTOS_PADRAO)))
+    try:
+        with open(ASSUNTOS_ARQUIVO, "r", encoding="utf-8") as f:
+            dados = json.load(f)
+        if not isinstance(dados, list):
+            return _ordenar_textos(list(dict.fromkeys(ASSUNTOS_PADRAO)))
+        assuntos = [_normalizar_assunto(x) for x in dados]
+        return _ordenar_textos(list(dict.fromkeys(assuntos)))
+    except Exception:
+        return _ordenar_textos(list(dict.fromkeys(ASSUNTOS_PADRAO)))
+
+
+def salvar_assuntos(assuntos: list[str]) -> None:
+    assuntos_limpos = _ordenar_textos(list(dict.fromkeys([_normalizar_assunto(a) for a in assuntos])))
+    with open(ASSUNTOS_ARQUIVO, "w", encoding="utf-8") as f:
+        json.dump(assuntos_limpos, f, ensure_ascii=False, indent=2)
+
+
+def obter_assuntos_cadastrados() -> list[str]:
+    return carregar_assuntos()
+
+
+def obter_assuntos_para_filtro(df: pd.DataFrame | None = None) -> list[str]:
+    assuntos = set(obter_assuntos_cadastrados())
+    if df is not None and "ASSUNTO" in df.columns:
+        assuntos.update([_normalizar_assunto(x) for x in df["ASSUNTO"].dropna().astype(str).tolist()])
+    return _ordenar_textos(list(assuntos))
+
+
+def pagina_assuntos() -> None:
+    st.subheader("🗂️ Cadastro de assuntos")
+    st.caption("Inclua ou exclua as opções de assunto disponíveis no registro e na edição dos atendimentos.")
+
+    assuntos = obter_assuntos_cadastrados()
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.markdown("### Incluir assunto")
+        with st.form("form_incluir_assunto", clear_on_submit=True):
+            novo_assunto = st.text_input("Novo assunto", placeholder="Digite o nome do assunto")
+            incluir = st.form_submit_button("Incluir assunto", type="primary")
+
+        if incluir:
+            novo = _normalizar_assunto(novo_assunto)
+            if not novo:
+                st.error("Informe o nome do assunto.")
+            elif novo.casefold() in [a.casefold() for a in assuntos]:
+                st.warning("Este assunto já está cadastrado.")
+            else:
+                assuntos.append(novo)
+                salvar_assuntos(assuntos)
+                st.success("Assunto incluído com sucesso.")
+                st.rerun()
+
+    with col2:
+        st.markdown("### Excluir assunto")
+        if not assuntos:
+            st.info("Não há assuntos cadastrados.")
+        else:
+            assunto_excluir = st.selectbox("Assunto a excluir", assuntos)
+            em_uso = 0
+            if "base" in st.session_state and not st.session_state.base.empty and "ASSUNTO" in st.session_state.base.columns:
+                em_uso = (st.session_state.base["ASSUNTO"].astype(str).str.casefold() == assunto_excluir.casefold()).sum()
+
+            if em_uso:
+                st.warning(f"Este assunto aparece em {int(em_uso)} atendimento(s). A exclusão remove apenas a opção para novos lançamentos; os registros antigos permanecem na base.")
+            confirmar = st.checkbox("Confirmo a exclusão deste assunto da lista de opções")
+            if st.button("Excluir assunto", disabled=not confirmar):
+                assuntos = [a for a in assuntos if a.casefold() != assunto_excluir.casefold()]
+                salvar_assuntos(assuntos)
+                st.success("Assunto excluído da lista de opções.")
+                st.rerun()
+
+    st.divider()
+    st.markdown("### Assuntos cadastrados")
+    tabela = pd.DataFrame({"Assunto": obter_assuntos_cadastrados()})
+    st.dataframe(tabela, use_container_width=True, hide_index=True)
+
+    buffer = BytesIO()
+    tabela.to_excel(buffer, index=False, sheet_name="Assuntos")
+    st.download_button(
+        "Baixar lista de assuntos em Excel",
+        data=buffer.getvalue(),
+        file_name="assuntos_cadastrados.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 
 # -----------------------------
@@ -801,6 +941,7 @@ opcoes_menu = [
     "Importar / Exportar",
 ]
 if usuario_eh_admin():
+    opcoes_menu.append("Assuntos")
     opcoes_menu.append("Usuários")
 
 pagina = st.sidebar.radio("Escolha uma área", opcoes_menu)
@@ -880,7 +1021,7 @@ if pagina == "Painel":
             st.dataframe(tabela_assuntos, use_container_width=True, hide_index=True)
 
         st.subheader("Base filtrada")
-        st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+        st.dataframe(preparar_para_exibicao(df_filtrado), use_container_width=True, hide_index=True)
 
 
 # -----------------------------
@@ -898,7 +1039,7 @@ elif pagina == "Novo atendimento":
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            data_atendimento = st.date_input("Data", value=date.today())
+            data_atendimento = st.date_input("Data", value=date.today(), format="DD/MM/YYYY")
             situacao = st.selectbox("Situação", SITUACOES, index=0)
             fonte = st.selectbox("Fonte", FONTES)
 
@@ -907,7 +1048,7 @@ elif pagina == "Novo atendimento":
             servidor = st.selectbox("Servidor(a) responsável", servidores_ativos if servidores_ativos else [""])
 
         with col3:
-            assunto = st.selectbox("Assunto", ASSUNTOS)
+            assunto = st.selectbox("Assunto", obter_assuntos_cadastrados())
             remetente = st.text_input("Quem originou a chamada / remetente", placeholder="Digite livremente")
 
         observacoes = st.text_area("Observações", placeholder="Registre detalhes do atendimento, protocolo, encaminhamento, retorno etc.")
@@ -952,7 +1093,7 @@ elif pagina == "Base de atendimentos":
                 "ZE": st.column_config.SelectboxColumn("ZE", options=ZONAS_ELEITORAIS_BA),
                 "SERVIDOR(A)": st.column_config.SelectboxColumn("Servidor(a)", options=obter_servidores_ativos()),
                 "FONTE": st.column_config.SelectboxColumn("Fonte", options=FONTES),
-                "ASSUNTO": st.column_config.SelectboxColumn("Assunto", options=ASSUNTOS),
+                "ASSUNTO": st.column_config.SelectboxColumn("Assunto", options=obter_assuntos_cadastrados()),
                 "DATA": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
             },
             key="editor_base"
@@ -1018,7 +1159,7 @@ elif pagina == "Relatórios":
             temp["DATA"] = pd.to_datetime(temp["DATA"], errors="coerce")
             rel = (
                 temp.dropna(subset=["DATA"])
-                .assign(MÊS=lambda x: x["DATA"].dt.to_period("M").astype(str))
+                .assign(MÊS=lambda x: x["DATA"].dt.strftime("%m/%Y"))
                 .groupby("MÊS", as_index=False)
                 .size()
                 .rename(columns={"size": "Quantidade"})
@@ -1026,9 +1167,9 @@ elif pagina == "Relatórios":
         else:
             rel = df_filtrado[df_filtrado["SITUAÇÃO"].astype(str).str.contains("pend|andamento", case=False, na=False)]
 
-        st.dataframe(rel, use_container_width=True, hide_index=True)
+        st.dataframe(preparar_para_exibicao(rel), use_container_width=True, hide_index=True)
 
-        csv = rel.to_csv(index=False, sep=";").encode("utf-8-sig")
+        csv = preparar_para_exportacao_csv(rel).to_csv(index=False, sep=";").encode("utf-8-sig")
         st.download_button(
             "Baixar este relatório em CSV",
             data=csv,
@@ -1043,6 +1184,14 @@ elif pagina == "Relatórios":
             file_name="relatorio_completo_controle_atendimentos.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+
+# -----------------------------
+# PÁGINA: ASSUNTOS
+# -----------------------------
+
+elif pagina == "Assuntos":
+    pagina_assuntos()
 
 
 # -----------------------------
