@@ -755,6 +755,20 @@ def filtros_base(lista):
     servidores = sorted(df["Servidor(a)"].dropna().astype(str).unique()) if not df.empty else []
     filtro_servidores = st.sidebar.multiselect("Servidor(a)", servidores)
 
+    st.sidebar.markdown("**Período do atendimento**")
+    data_de = st.sidebar.date_input(
+        "De",
+        value=None,
+        format="DD/MM/YYYY",
+        key="filtro_data_de"
+    )
+    data_ate = st.sidebar.date_input(
+        "Até",
+        value=None,
+        format="DD/MM/YYYY",
+        key="filtro_data_ate"
+    )
+
     if df.empty:
         return []
 
@@ -780,6 +794,18 @@ def filtros_base(lista):
 
     if filtro_servidores:
         df = df[df["Servidor(a)"].isin(filtro_servidores)]
+
+    if data_de or data_ate:
+        datas = pd.to_datetime(df["Data"], dayfirst=True, errors="coerce")
+
+        if data_de:
+            data_de_ts = pd.Timestamp(data_de)
+            df = df[datas >= data_de_ts]
+            datas = pd.to_datetime(df["Data"], dayfirst=True, errors="coerce")
+
+        if data_ate:
+            data_ate_ts = pd.Timestamp(data_ate)
+            df = df[datas <= data_ate_ts]
 
     ids_filtrados = set(df["ID"].tolist()) & ids_validos
 
