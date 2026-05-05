@@ -9,6 +9,7 @@ import hashlib
 import secrets
 import smtplib
 from email.message import EmailMessage
+from supabase import create_client
 
 # ============================================================
 # CONFIGURAÇÕES GERAIS
@@ -24,7 +25,9 @@ ARQ_USUARIOS = Path("usuarios_controle_emails_v3.json")
 ARQ_ATENDIMENTOS = Path("atendimentos_controle_emails_v1.json")
 ARQ_ASSUNTOS = Path("assuntos_controle_emails_v1.json")
 ARQ_SESSOES = Path("sessoes_usuarios_logados_v1.json")
+PASTA_BACKUPS = Path("backups_sistema_sepro")
 FUSO_HORARIO_BRASILIA = ZoneInfo("America/Sao_Paulo")
+USAR_SUPABASE = True
 
 DOMINIO_INSTITUCIONAL = "@tre-ba.jus.br"
 
@@ -315,61 +318,259 @@ def salvar_json(caminho, dados):
     caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+@st.cache_resource
+def supabase_client():
+    """Cria a conexão com o Supabase.
+
+    Os valores SUPABASE_URL e SUPABASE_KEY devem estar nos Secrets do Streamlit.
+    """
+    url = st.secrets.get("SUPABASE_URL", "")
+    key = st.secrets.get("SUPABASE_KEY", "")
+
+    if not url or not key:
+        st.error(
+            "Supabase não configurado. Configure SUPABASE_URL e SUPABASE_KEY "
+            "em Gerenciar aplicativo > Settings > Secrets."
+        )
+        st.stop()
+
+    return create_client(url, key)
+
+
+def executar_supabase(operacao, mensagem_erro="Erro ao acessar o Supabase."):
+    try:
+        return operacao().execute()
+    except Exception as erro:
+        st.error(mensagem_erro)
+        st.write(erro)
+        st.stop()
+
+
+def data_db(valor):
+    d = parse_data(valor)
+    return d.isoformat() if d else None
+
+
+def data_app(valor):
+    return data_para_exibir(valor)
+
+
+def usuario_db_para_app(row):
+    return {
+        "id": row.get("id"),
+        "nome": row.get("nome", ""),
+        "email": row.get("email", ""),
+        "senha_hash": row.get("senha_hash", ""),
+        "perfil": row.get("perfil", "Usuário"),
+        "ativo": row.get("ativo", True),
+        "validado": row.get("validado", False),
+        "token_validacao": row.get("token_validacao") or "",
+        "token_recuperacao": row.get("token_recuperacao") or "",
+        "criado_em": row.get("criado_em") or "",
+        "atualizado_em": row.get("atualizado_em") or "",
+    }
+
+
+def usuario_app_para_db(u):
+    return {
+        "id": u.get("id"),
+        "nome": u.get("nome", ""),
+        "email": normalizar_email(u.get("email", "")),
+        "senha_hash": u.get("senha_hash", ""),
+        "perfil": u.get("perfil", "Usuário"),
+        "ativo": bool(u.get("ativo", True)),
+        "validado": bool(u.get("validado", False)),
+        "token_validacao": u.get("token_validacao") or None,
+        "token_recuperacao": u.get("token_recuperacao") or None,
+        "criado_em": u.get("criado_em") or agora_iso(),
+        "atualizado_em": agora_iso(),
+    }
+
+
+def atendimento_db_para_app(row):
+    return {
+        "id": row.get("id"),
+        "data": data_app(row.get("data_atendimento")),
+        "status": row.get("status", STATUS_CADASTRADO),
+        "servidor": row.get("servidor") or "Aguardando triagem",
+        "fonte": row.get("fonte") or "",
+        "assunto": row.get("assunto") or "",
+        "zona_eleitoral": row.get("zona_eleitoral") or "",
+        "origem": row.get("origem") or "",
+        "protocolo": row.get("protocolo") or "",
+        "prioridade": row.get("prioridade") or "Normal",
+        "descricao": row.get("descricao") or "",
+        "observacoes": row.get("observacoes") or "",
+        "criado_por": row.get("criado_por") or "",
+        "criado_em": row.get("criado_em") or "",
+        "atualizado_em": row.get("atualizado_em") or "",
+        "data_realizacao": data_app(row.get("data_realizacao")),
+        "triado_por": row.get("triado_por") or "",
+        "triado_em": row.get("triado_em") or "",
+    }
+
+
+def atendimento_app_para_db(a):
+    return {
+        "id": a.get("id"),
+        "data_atendimento": data_db(a.get("data")),
+        "status": a.get("status", STATUS_CADASTRADO),
+        "servidor": a.get("servidor") or "Aguardando triagem",
+        "fonte": a.get("fonte") or None,
+        "assunto": a.get("assunto") or None,
+        "zona_eleitoral": a.get("zona_eleitoral") or None,
+        "origem": a.get("origem") or None,
+        "protocolo": a.get("protocolo") or None,
+        "prioridade": a.get("prioridade") or "Normal",
+        "descricao": a.get("descricao") or None,
+        "observacoes": a.get("observacoes") or None,
+        "criado_por": a.get("criado_por") or None,
+        "criado_em": a.get("criado_em") or agora_iso(),
+        "atualizado_em": agora_iso(),
+        "data_realizacao": data_db(a.get("data_realizacao")),
+        "triado_por": a.get("triado_por") or None,
+        "triado_em": a.get("triado_em") or None,
+    }
+
+
+def limpar_tabela(nome_tabela, coluna_chave="id"):
+    sb = supabase_client()
+    if coluna_chave == "email":
+        sb.table(nome_tabela).delete().neq("email", "__nunca__").execute()
+    else:
+        sb.table(nome_tabela).delete().neq("id", -1).execute()
+
+
+def montar_backup_completo():
+    return {
+        "sistema": "Sistema SEPRO - Controle de Atendimentos",
+        "versao_backup": "2.0-supabase",
+        "gerado_em": agora_iso(),
+        "observacao": "Backup completo gerado a partir do banco Supabase.",
+        "atendimentos": atendimentos(),
+        "usuarios": usuarios(),
+        "assuntos": assuntos(),
+        "sessoes": {s.get("email"): s for s in usuarios_logados()},
+    }
+
+
+def criar_backup_automatico(motivo="alteracao"):
+    """Cria uma cópia local temporária.
+
+    Os dados oficiais ficam no Supabase. Este backup local é apenas uma camada extra
+    para download rápido e pode ser apagado pela hospedagem.
+    """
+    try:
+        PASTA_BACKUPS.mkdir(exist_ok=True)
+        timestamp = agora_brasilia().strftime("%Y%m%d_%H%M%S")
+        caminho = PASTA_BACKUPS / f"backup_{motivo}_{timestamp}.json"
+        salvar_json(caminho, montar_backup_completo())
+
+        backups = sorted(PASTA_BACKUPS.glob("backup_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for antigo in backups[20:]:
+            try:
+                antigo.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def restaurar_backup_completo(dados_backup):
+    if not isinstance(dados_backup, dict):
+        raise ValueError("Arquivo de backup inválido.")
+
+    atend = dados_backup.get("atendimentos")
+    usrs = dados_backup.get("usuarios")
+    ass = dados_backup.get("assuntos")
+
+    if atend is None or usrs is None or ass is None:
+        raise ValueError("O backup não contém todos os campos obrigatórios.")
+
+    criar_backup_automatico("antes_restauracao")
+    salvar_atendimentos(atend)
+    salvar_usuarios(usrs)
+    salvar_assuntos(ass)
+
+
 def normalizar_email(email):
     return str(email or "").strip().lower()
 
 
 def usuarios():
-    return carregar_json(ARQ_USUARIOS, [])
+    sb = supabase_client()
+    resp = executar_supabase(lambda: sb.table("usuarios").select("*").order("id"))
+    return [usuario_db_para_app(row) for row in (resp.data or [])]
 
 
 def salvar_usuarios(lista):
-    salvar_json(ARQ_USUARIOS, lista)
+    criar_backup_automatico("antes_salvar_usuarios")
+    sb = supabase_client()
+    limpar_tabela("usuarios")
+    rows = [usuario_app_para_db(u) for u in lista]
+    rows = [r for r in rows if r.get("email")]
+    if rows:
+        executar_supabase(lambda: sb.table("usuarios").insert(rows), "Erro ao salvar usuários no Supabase.")
+    criar_backup_automatico("apos_salvar_usuarios")
 
 
 def atendimentos():
-    return carregar_json(ARQ_ATENDIMENTOS, [])
+    sb = supabase_client()
+    resp = executar_supabase(lambda: sb.table("atendimentos").select("*").order("id"))
+    return [atendimento_db_para_app(row) for row in (resp.data or [])]
 
 
 def salvar_atendimentos(lista):
-    salvar_json(ARQ_ATENDIMENTOS, lista)
+    criar_backup_automatico("antes_salvar_atendimentos")
+    sb = supabase_client()
+    limpar_tabela("atendimentos")
+    rows = [atendimento_app_para_db(a) for a in lista]
+    if rows:
+        executar_supabase(lambda: sb.table("atendimentos").insert(rows), "Erro ao salvar atendimentos no Supabase.")
+    criar_backup_automatico("apos_salvar_atendimentos")
 
 
 def assuntos():
-    lista = carregar_json(ARQ_ASSUNTOS, [])
+    sb = supabase_client()
+    resp = executar_supabase(lambda: sb.table("assuntos").select("nome, ativo").eq("ativo", True).order("nome"))
+    lista = [row.get("nome", "").strip() for row in (resp.data or []) if row.get("nome")]
+
     if not lista:
+        salvar_assuntos(ASSUNTOS_PADRAO)
         lista = ASSUNTOS_PADRAO
-        salvar_json(ARQ_ASSUNTOS, lista)
+
     return sorted(set([str(x).strip() for x in lista if str(x).strip()]))
 
 
 def salvar_assuntos(lista):
-    salvar_json(ARQ_ASSUNTOS, sorted(set([str(x).strip() for x in lista if str(x).strip()])))
+    criar_backup_automatico("antes_salvar_assuntos")
+    sb = supabase_client()
+    limpar_tabela("assuntos")
+    rows = [{"nome": str(nome).strip(), "ativo": True} for nome in sorted(set(lista)) if str(nome).strip()]
+    if rows:
+        executar_supabase(lambda: sb.table("assuntos").insert(rows), "Erro ao salvar assuntos no Supabase.")
+    criar_backup_automatico("apos_salvar_assuntos")
 
 
 def registrar_usuario_logado(usuario):
-    """Registra o usuário como logado/ativo.
-
-    Observação: em hospedagens sem banco de dados permanente, esse controle
-    funciona como indicador operacional simples. Ele considera usuários que
-    fizeram login e ainda não clicaram em Sair.
-    """
     if not usuario:
         return
 
-    sessoes = carregar_json(ARQ_SESSOES, {})
     email = normalizar_email(usuario.get("email"))
     if not email:
         return
 
-    sessoes[email] = {
-        "nome": usuario.get("nome", email),
+    row = {
         "email": email,
+        "nome": usuario.get("nome", email),
         "perfil": usuario.get("perfil", "Usuário"),
-        "ultimo_login": agora_iso(),
         "ativo": True,
+        "ultimo_login": agora_iso(),
+        "ultimo_logout": None,
     }
-    salvar_json(ARQ_SESSOES, sessoes)
+
+    sb = supabase_client()
+    executar_supabase(lambda: sb.table("sessoes").upsert(row), "Erro ao registrar sessão no Supabase.")
 
 
 def remover_usuario_logado():
@@ -377,20 +578,21 @@ def remover_usuario_logado():
     if not usuario:
         return
 
-    sessoes = carregar_json(ARQ_SESSOES, {})
     email = normalizar_email(usuario.get("email"))
-    if email in sessoes:
-        sessoes[email]["ativo"] = False
-        sessoes[email]["ultimo_logout"] = agora_iso()
-        salvar_json(ARQ_SESSOES, sessoes)
+    if not email:
+        return
+
+    sb = supabase_client()
+    executar_supabase(
+        lambda: sb.table("sessoes").update({"ativo": False, "ultimo_logout": agora_iso()}).eq("email", email),
+        "Erro ao encerrar sessão no Supabase."
+    )
 
 
 def usuarios_logados():
-    sessoes = carregar_json(ARQ_SESSOES, {})
-    return [
-        dados for dados in sessoes.values()
-        if isinstance(dados, dict) and dados.get("ativo", False)
-    ]
+    sb = supabase_client()
+    resp = executar_supabase(lambda: sb.table("sessoes").select("*").eq("ativo", True).order("ultimo_login", desc=True))
+    return resp.data or []
 
 
 def email_institucional(email):
@@ -781,6 +983,7 @@ def sidebar_menu():
         "Atendimento realizado",
         "Base geral",
         "Relatórios e exportação",
+        "Backup e restauração",
     ]
 
     if eh_admin():
@@ -1546,6 +1749,107 @@ def tela_usuarios():
                     st.rerun()
 
 
+
+def tela_backup_restauracao():
+    st.subheader("Backup e restauração")
+    st.warning(
+        "O Streamlit Community Cloud pode apagar arquivos internos quando o aplicativo reinicia. "
+        "Por isso, baixe um backup regularmente, especialmente ao final do expediente ou após muitos lançamentos."
+    )
+
+    backup = montar_backup_completo()
+    nome_backup = f"backup_completo_sistema_sepro_{agora_brasilia().strftime('%Y%m%d_%H%M%S')}.json"
+    dados_json = json.dumps(backup, ensure_ascii=False, indent=2).encode("utf-8")
+
+    st.markdown("### Baixar backup completo")
+    st.write("Este arquivo permite restaurar atendimentos, usuários e assuntos caso o sistema perca os registros.")
+
+    st.download_button(
+        "Baixar backup completo em JSON",
+        data=dados_json,
+        file_name=nome_backup,
+        mime="application/json",
+        type="primary"
+    )
+
+    atend = atendimentos_df(atendimentos())
+    usuarios_df = pd.DataFrame(usuarios())
+    assuntos_df = pd.DataFrame({"Assunto": assuntos()})
+
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        atend.to_excel(writer, index=False, sheet_name="Atendimentos")
+        usuarios_df.drop(columns=[c for c in ["senha_hash", "token_validacao", "token_recuperacao"] if c in usuarios_df.columns], errors="ignore").to_excel(writer, index=False, sheet_name="Usuarios")
+        assuntos_df.to_excel(writer, index=False, sheet_name="Assuntos")
+
+    st.download_button(
+        "Baixar cópia em Excel para conferência",
+        data=buffer.getvalue(),
+        file_name=f"copia_conferencia_sistema_sepro_{agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    st.divider()
+
+    st.markdown("### Restaurar backup")
+    st.info("Use esta opção quando os registros sumirem ou quando for necessário recuperar uma cópia anterior.")
+
+    arquivo_backup = st.file_uploader("Enviar arquivo de backup JSON", type=["json"])
+
+    if arquivo_backup is not None:
+        try:
+            conteudo = arquivo_backup.read().decode("utf-8")
+            dados = json.loads(conteudo)
+
+            st.write("Backup carregado para conferência:")
+            st.write(f"- Atendimentos: **{len(dados.get('atendimentos', []))}**")
+            st.write(f"- Usuários: **{len(dados.get('usuarios', []))}**")
+            st.write(f"- Assuntos: **{len(dados.get('assuntos', []))}**")
+
+            confirmar = st.checkbox("Confirmo que desejo restaurar este backup e substituir os dados atuais.")
+
+            if st.button("Restaurar backup", type="primary"):
+                if not confirmar:
+                    st.warning("Marque a confirmação antes de restaurar.")
+                else:
+                    restaurar_backup_completo(dados)
+                    st.success("Backup restaurado com sucesso. Reinicie ou atualize o aplicativo.")
+                    st.rerun()
+
+        except Exception as erro:
+            st.error("Não foi possível ler ou restaurar o backup.")
+            st.write(erro)
+
+    st.divider()
+
+    st.markdown("### Backups locais automáticos")
+    st.caption(
+        "O sistema tenta criar backups locais a cada alteração. Eles ajudam em reinicializações curtas, "
+        "mas não substituem o download do backup completo, pois arquivos locais podem ser apagados pela hospedagem."
+    )
+
+    try:
+        PASTA_BACKUPS.mkdir(exist_ok=True)
+        arquivos = sorted(PASTA_BACKUPS.glob("backup_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+
+        if not arquivos:
+            st.info("Ainda não há backup local automático disponível.")
+        else:
+            for arq in arquivos[:10]:
+                with open(arq, "rb") as f:
+                    st.download_button(
+                        f"Baixar {arq.name}",
+                        data=f.read(),
+                        file_name=arq.name,
+                        mime="application/json",
+                        key=f"download_{arq.name}"
+                    )
+    except Exception as erro:
+        st.warning("Não foi possível listar os backups locais automáticos.")
+        st.write(erro)
+
+
+
 # ============================================================
 # EXECUÇÃO PRINCIPAL
 # ============================================================
@@ -1590,6 +1894,9 @@ def main():
 
     elif escolha == "Relatórios e exportação":
         tela_relatorios_exportacao()
+
+    elif escolha == "Backup e restauração":
+        tela_backup_restauracao()
 
     elif escolha == "Assuntos" and eh_admin():
         tela_assuntos()
