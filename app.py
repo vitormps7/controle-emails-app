@@ -318,20 +318,32 @@ def salvar_json(caminho, dados):
     caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-@st.cache_resource
+def supabase_config():
+    """Lê e normaliza as configurações do Supabase nos Secrets."""
+    url = str(st.secrets.get("SUPABASE_URL", "")).strip().strip('"').strip("'").rstrip("/")
+    key = str(st.secrets.get("SUPABASE_KEY", "")).strip().strip('"').strip("'")
+
+    return url, key
+
+
 def supabase_client():
     """Cria a conexão com o Supabase.
 
-    Os valores SUPABASE_URL e SUPABASE_KEY devem estar nos Secrets do Streamlit.
+    Importante: não usamos cache aqui para evitar que o Streamlit mantenha
+    uma URL antiga depois de alterações nos Secrets.
     """
-    url = st.secrets.get("SUPABASE_URL", "")
-    key = st.secrets.get("SUPABASE_KEY", "")
+    url, key = supabase_config()
 
     if not url or not key:
         st.error(
             "Supabase não configurado. Configure SUPABASE_URL e SUPABASE_KEY "
             "em Gerenciar aplicativo > Settings > Secrets."
         )
+        st.stop()
+
+    if not url.startswith("https://") or not url.endswith(".supabase.co"):
+        st.error("SUPABASE_URL em formato inválido nos Secrets.")
+        st.code(f'SUPABASE_URL = "{url}"')
         st.stop()
 
     return create_client(url, key)
@@ -341,7 +353,13 @@ def executar_supabase(operacao, mensagem_erro="Erro ao acessar o Supabase."):
     try:
         return operacao().execute()
     except Exception as erro:
+        url, _ = supabase_config()
         st.error(mensagem_erro)
+        st.warning(
+            "O aplicativo tentou acessar este endereço do Supabase. "
+            "Confira se ele é exatamente igual ao endereço do painel do Supabase."
+        )
+        st.code(f'SUPABASE_URL lida pelo aplicativo: {url}')
         st.write(erro)
         st.stop()
 
