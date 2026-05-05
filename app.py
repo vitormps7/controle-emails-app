@@ -9,7 +9,7 @@ import hashlib
 import secrets
 import smtplib
 from email.message import EmailMessage
-from supabase import create_client
+import requests
 
 # ============================================================
 # CONFIGURAÇÕES GERAIS
@@ -322,16 +322,20 @@ def supabase_config():
     """Lê e normaliza as configurações do Supabase nos Secrets."""
     url = str(st.secrets.get("SUPABASE_URL", "")).strip().strip('"').strip("'").rstrip("/")
     key = str(st.secrets.get("SUPABASE_KEY", "")).strip().strip('"').strip("'")
-
     return url, key
 
 
-def supabase_client():
-    """Cria a conexão com o Supabase.
+def supabase_headers():
+    _, key = supabase_config()
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
 
-    Importante: não usamos cache aqui para evitar que o Streamlit mantenha
-    uma URL antiga depois de alterações nos Secrets.
-    """
+
+def supabase_rest_url(tabela):
     url, key = supabase_config()
 
     if not url or not key:
@@ -346,20 +350,104 @@ def supabase_client():
         st.code(f'SUPABASE_URL = "{url}"')
         st.stop()
 
-    return create_client(url, key)
+    return f"{url}/rest/v1/{tabela}"
 
 
-def executar_supabase(operacao, mensagem_erro="Erro ao acessar o Supabase."):
+def supabase_get(tabela, params=None):
     try:
-        return operacao().execute()
+        resp = requests.get(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            params=params or {},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
     except Exception as erro:
         url, _ = supabase_config()
-        st.error(mensagem_erro)
-        st.warning(
-            "O aplicativo tentou acessar este endereço do Supabase. "
-            "Confira se ele é exatamente igual ao endereço do painel do Supabase."
+        st.error("Erro ao acessar o Supabase.")
+        st.warning("O aplicativo tentou acessar este endereço do Supabase pela API REST:")
+        st.code(f"{url}/rest/v1/{tabela}")
+        st.write(erro)
+        st.stop()
+
+
+def supabase_insert(tabela, rows):
+    if not rows:
+        return []
+    try:
+        resp = requests.post(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            data=json.dumps(rows, ensure_ascii=False),
+            timeout=30,
         )
-        st.code(f'SUPABASE_URL lida pelo aplicativo: {url}')
+        resp.raise_for_status()
+        return resp.json() if resp.text else []
+    except Exception as erro:
+        url, _ = supabase_config()
+        st.error(f"Erro ao inserir dados na tabela {tabela}.")
+        st.code(f"{url}/rest/v1/{tabela}")
+        st.write(erro)
+        st.stop()
+
+
+def supabase_update(tabela, dados, coluna, valor):
+    try:
+        params = {coluna: f"eq.{valor}"}
+        resp = requests.patch(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            params=params,
+            data=json.dumps(dados, ensure_ascii=False),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json() if resp.text else []
+    except Exception as erro:
+        url, _ = supabase_config()
+        st.error(f"Erro ao atualizar dados na tabela {tabela}.")
+        st.code(f"{url}/rest/v1/{tabela}")
+        st.write(erro)
+        st.stop()
+
+
+def supabase_upsert(tabela, row, on_conflict):
+    try:
+        headers = supabase_headers()
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+        params = {"on_conflict": on_conflict}
+        resp = requests.post(
+            supabase_rest_url(tabela),
+            headers=headers,
+            params=params,
+            data=json.dumps(row, ensure_ascii=False),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json() if resp.text else []
+    except Exception as erro:
+        url, _ = supabase_config()
+        st.error(f"Erro ao gravar dados na tabela {tabela}.")
+        st.code(f"{url}/rest/v1/{tabela}")
+        st.write(erro)
+        st.stop()
+
+
+def supabase_delete_all(tabela, coluna_chave="id"):
+    try:
+        params = {coluna_chave: "neq.__nunca__"} if coluna_chave == "email" else {coluna_chave: "neq.-1"}
+        resp = requests.delete(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            params=params,
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except Exception as erro:
+        url, _ = supabase_config()
+        st.error(f"Erro ao limpar tabela {tabela}.")
+        st.code(f"{url}/rest/v1/{tabela}")
         st.write(erro)
         st.stop()
 
@@ -429,7 +517,7 @@ def atendimento_db_para_app(row):
 
 
 def atendimento_app_para_db(a):
-    return {
+    dados = {
         "id": a.get("id"),
         "data_atendimento": data_db(a.get("data")),
         "status": a.get("status", STATUS_CADASTRADO),
@@ -449,20 +537,13 @@ def atendimento_app_para_db(a):
         "triado_por": a.get("triado_por") or None,
         "triado_em": a.get("triado_em") or None,
     }
-
-
-def limpar_tabela(nome_tabela, coluna_chave="id"):
-    sb = supabase_client()
-    if coluna_chave == "email":
-        sb.table(nome_tabela).delete().neq("email", "__nunca__").execute()
-    else:
-        sb.table(nome_tabela).delete().neq("id", -1).execute()
+    return dados
 
 
 def montar_backup_completo():
     return {
         "sistema": "Sistema SEPRO - Controle de Atendimentos",
-        "versao_backup": "2.0-supabase",
+        "versao_backup": "2.1-supabase-rest",
         "gerado_em": agora_iso(),
         "observacao": "Backup completo gerado a partir do banco Supabase.",
         "atendimentos": atendimentos(),
@@ -473,11 +554,6 @@ def montar_backup_completo():
 
 
 def criar_backup_automatico(motivo="alteracao"):
-    """Cria uma cópia local temporária.
-
-    Os dados oficiais ficam no Supabase. Este backup local é apenas uma camada extra
-    para download rápido e pode ser apagado pela hospedagem.
-    """
     try:
         PASTA_BACKUPS.mkdir(exist_ok=True)
         timestamp = agora_brasilia().strftime("%Y%m%d_%H%M%S")
@@ -516,42 +592,37 @@ def normalizar_email(email):
 
 
 def usuarios():
-    sb = supabase_client()
-    resp = executar_supabase(lambda: sb.table("usuarios").select("*").order("id"))
-    return [usuario_db_para_app(row) for row in (resp.data or [])]
+    rows = supabase_get("usuarios", {"select": "*", "order": "id.asc"})
+    return [usuario_db_para_app(row) for row in (rows or [])]
 
 
 def salvar_usuarios(lista):
     criar_backup_automatico("antes_salvar_usuarios")
-    sb = supabase_client()
-    limpar_tabela("usuarios")
+    supabase_delete_all("usuarios")
     rows = [usuario_app_para_db(u) for u in lista]
     rows = [r for r in rows if r.get("email")]
     if rows:
-        executar_supabase(lambda: sb.table("usuarios").insert(rows), "Erro ao salvar usuários no Supabase.")
+        supabase_insert("usuarios", rows)
     criar_backup_automatico("apos_salvar_usuarios")
 
 
 def atendimentos():
-    sb = supabase_client()
-    resp = executar_supabase(lambda: sb.table("atendimentos").select("*").order("id"))
-    return [atendimento_db_para_app(row) for row in (resp.data or [])]
+    rows = supabase_get("atendimentos", {"select": "*", "order": "id.asc"})
+    return [atendimento_db_para_app(row) for row in (rows or [])]
 
 
 def salvar_atendimentos(lista):
     criar_backup_automatico("antes_salvar_atendimentos")
-    sb = supabase_client()
-    limpar_tabela("atendimentos")
+    supabase_delete_all("atendimentos")
     rows = [atendimento_app_para_db(a) for a in lista]
     if rows:
-        executar_supabase(lambda: sb.table("atendimentos").insert(rows), "Erro ao salvar atendimentos no Supabase.")
+        supabase_insert("atendimentos", rows)
     criar_backup_automatico("apos_salvar_atendimentos")
 
 
 def assuntos():
-    sb = supabase_client()
-    resp = executar_supabase(lambda: sb.table("assuntos").select("nome, ativo").eq("ativo", True).order("nome"))
-    lista = [row.get("nome", "").strip() for row in (resp.data or []) if row.get("nome")]
+    rows = supabase_get("assuntos", {"select": "nome,ativo", "ativo": "eq.true", "order": "nome.asc"})
+    lista = [row.get("nome", "").strip() for row in (rows or []) if row.get("nome")]
 
     if not lista:
         salvar_assuntos(ASSUNTOS_PADRAO)
@@ -562,11 +633,10 @@ def assuntos():
 
 def salvar_assuntos(lista):
     criar_backup_automatico("antes_salvar_assuntos")
-    sb = supabase_client()
-    limpar_tabela("assuntos")
+    supabase_delete_all("assuntos")
     rows = [{"nome": str(nome).strip(), "ativo": True} for nome in sorted(set(lista)) if str(nome).strip()]
     if rows:
-        executar_supabase(lambda: sb.table("assuntos").insert(rows), "Erro ao salvar assuntos no Supabase.")
+        supabase_insert("assuntos", rows)
     criar_backup_automatico("apos_salvar_assuntos")
 
 
@@ -587,8 +657,7 @@ def registrar_usuario_logado(usuario):
         "ultimo_logout": None,
     }
 
-    sb = supabase_client()
-    executar_supabase(lambda: sb.table("sessoes").upsert(row), "Erro ao registrar sessão no Supabase.")
+    supabase_upsert("sessoes", row, "email")
 
 
 def remover_usuario_logado():
@@ -600,17 +669,11 @@ def remover_usuario_logado():
     if not email:
         return
 
-    sb = supabase_client()
-    executar_supabase(
-        lambda: sb.table("sessoes").update({"ativo": False, "ultimo_logout": agora_iso()}).eq("email", email),
-        "Erro ao encerrar sessão no Supabase."
-    )
+    supabase_update("sessoes", {"ativo": False, "ultimo_logout": agora_iso()}, "email", email)
 
 
 def usuarios_logados():
-    sb = supabase_client()
-    resp = executar_supabase(lambda: sb.table("sessoes").select("*").eq("ativo", True).order("ultimo_login", desc=True))
-    return resp.data or []
+    return supabase_get("sessoes", {"select": "*", "ativo": "eq.true", "order": "ultimo_login.desc"}) or []
 
 
 def email_institucional(email):
