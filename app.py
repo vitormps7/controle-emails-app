@@ -991,7 +991,14 @@ def tela_login():
                     ok, msg = enviar_email(
                         email,
                         "Validação de cadastro - Sistema SEPRO",
-                        f"Olá, {nome}.\n\nPara validar seu cadastro no Sistema SEPRO, acesse o link abaixo:\n\n{link}\n\nCaso não tenha solicitado o cadastro, ignore esta mensagem."
+                        (
+                            f"Olá, {nome}.\n\n"
+                            "Recebemos seu cadastro no Sistema SEPRO - Controle de Atendimentos.\n\n"
+                            "Para validar seu acesso ao sistema, acesse o link abaixo:\n\n"
+                            f"{link}\n\n"
+                            "Este link é destinado exclusivamente à validação de cadastro.\n"
+                            "Caso você não tenha solicitado o cadastro, ignore esta mensagem."
+                        )
                     )
                     if ok:
                         st.success("Usuário triagem. Link de validação enviado ao e-mail informado.")
@@ -1000,6 +1007,7 @@ def tela_login():
 
     with aba_recuperar:
         st.subheader("Recuperação de senha")
+        st.caption("Use esta opção apenas para recuperar o acesso de usuário já cadastrado.")
         email_rec = normalizar_email(st.text_input("E-mail triagem", key="rec_email"))
 
         if st.button("Gerar link de recuperação"):
@@ -1022,13 +1030,20 @@ def tela_login():
                 ok, msg = enviar_email(
                     email_rec,
                     "Recuperação de senha - Sistema SEPRO",
-                    f"Olá.\n\nPara redefinir sua senha, acesse o link abaixo:\n\n{link}\n\nCaso não tenha solicitado, ignore esta mensagem."
+                    (
+                        "Olá.\n\n"
+                        "Recebemos uma solicitação de recuperação de senha para o Sistema SEPRO - Controle de Atendimentos.\n\n"
+                        "Para criar uma nova senha, acesse o link abaixo:\n\n"
+                        f"{link}\n\n"
+                        "Este link é destinado exclusivamente à recuperação de senha.\n"
+                        "Caso você não tenha solicitado essa recuperação, ignore esta mensagem."
+                    )
                 )
 
                 if ok:
                     st.success("Link de recuperação enviado ao e-mail triagem.")
                 else:
-                    st.warning(f"{msg} Link de recuperação gerado: {link}")
+                    st.warning(f"{msg} Link de recuperação de senha gerado: {link}")
 
 
 # ============================================================
