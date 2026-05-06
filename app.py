@@ -620,6 +620,15 @@ def salvar_atendimentos(lista):
     criar_backup_automatico("apos_salvar_atendimentos")
 
 
+def excluir_atendimento_por_id(id_atendimento):
+    lista = atendimentos()
+    nova_lista = [a for a in lista if int(a.get("id", -1)) != int(id_atendimento)]
+    if len(nova_lista) == len(lista):
+        return False
+    salvar_atendimentos(nova_lista)
+    return True
+
+
 def assuntos():
     rows = supabase_get("assuntos", {"select": "nome,ativo", "ativo": "eq.true", "order": "nome.asc"})
     lista = [row.get("nome", "").strip() for row in (rows or []) if row.get("nome")]
@@ -1203,7 +1212,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
 
         def salvar_status(novo_status):
             for item in lista:
-                if item.get("id") == atendimento.get("id"):
+                if int(item.get("id")) == int(atendimento.get("id")):
                     item["status"] = novo_status
                     item["atualizado_em"] = agora_iso()
                     if novo_status == STATUS_CADASTRADO:
@@ -1251,7 +1260,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
 
                 if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
                     for item in lista:
-                        if item.get("id") == atendimento.get("id"):
+                        if int(item.get("id")) == int(atendimento.get("id")):
                             item["observacoes"] = nova_obs
                             item["status"] = novo_status
                             item["servidor"] = novo_servidor
@@ -1262,6 +1271,22 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             st.success("Alterações salvas.")
                             st.rerun()
 
+        if eh_admin():
+            with st.expander("Excluir atendimento"):
+                st.warning("Esta ação excluirá definitivamente este atendimento da base.")
+                confirmar_exclusao = st.checkbox(
+                    f"Confirmo a exclusão do atendimento nº {atendimento.get('id')}",
+                    key=f"{chave_prefixo}_conf_excluir_{atendimento.get('id')}"
+                )
+                if st.button("Excluir atendimento", key=f"{chave_prefixo}_excluir_{atendimento.get('id')}", type="secondary"):
+                    if not confirmar_exclusao:
+                        st.warning("Marque a confirmação antes de excluir.")
+                    else:
+                        if excluir_atendimento_por_id(atendimento.get("id")):
+                            st.success("Atendimento excluído com sucesso.")
+                            st.rerun()
+                        else:
+                            st.error("Atendimento não encontrado para exclusão.")
 
 
 def numero_br(valor):
@@ -1594,48 +1619,184 @@ def card_triagem(atendimento, chave_prefixo):
         servidores = nomes_usuarios_ativos()
         if not servidores:
             st.warning("Não há usuários ativos e validados para receber a demanda.")
-            return
+        else:
+            col_a, col_b = st.columns([2, 1])
 
-        col_a, col_b = st.columns([2, 1])
+            with col_a:
+                servidor_atual = atendimento.get("servidor", "")
+                index_servidor = servidores.index(servidor_atual) if servidor_atual in servidores else 0
+                servidor_escolhido = st.selectbox(
+                    "Usuário que irá tratar a demanda",
+                    servidores,
+                    index=index_servidor,
+                    key=f"{chave_prefixo}_designar_{atendimento.get('id')}"
+                )
 
-        with col_a:
-            servidor_escolhido = st.selectbox(
-                "Usuário que irá tratar a demanda",
-                servidores,
-                key=f"{chave_prefixo}_designar_{atendimento.get('id')}"
+            with col_b:
+                st.write("")
+                st.write("")
+                if st.button("Encaminhar para Em atendimento", key=f"{chave_prefixo}_encaminhar_{atendimento.get('id')}", type="primary"):
+                    lista = atendimentos()
+                    for item in lista:
+                        if int(item.get("id")) == int(atendimento.get("id")):
+                            item["servidor"] = servidor_escolhido
+                            item["status"] = STATUS_EM_ATENDIMENTO
+                            item["atualizado_em"] = agora_iso()
+                            item["triado_por"] = usuario_logado().get("email", "")
+                            item["triado_em"] = agora_iso()
+                            salvar_atendimentos(lista)
+                            st.success(f"Demanda encaminhada para {servidor_escolhido}.")
+                            st.rerun()
+
+        st.divider()
+
+        with st.expander("Editar todos os campos da Triagem"):
+            st.caption("Use esta área para corrigir qualquer informação do atendimento antes de encaminhar ou manter em triagem.")
+
+            data_atual = parse_data(atendimento.get("data")) or date.today()
+            fonte_atual = atendimento.get("fonte", "")
+            assunto_atual = atendimento.get("assunto", "")
+            zona_atual = atendimento.get("zona_eleitoral", "")
+            prioridade_atual = atendimento.get("prioridade", "Normal")
+            status_atual = atendimento.get("status", STATUS_CADASTRADO)
+
+            lista_assuntos = assuntos()
+            if assunto_atual and assunto_atual not in lista_assuntos:
+                lista_assuntos = [assunto_atual] + lista_assuntos
+
+            lista_zonas = ZONAS_BAHIA
+            if zona_atual and zona_atual not in lista_zonas:
+                lista_zonas = [zona_atual] + lista_zonas
+
+            lista_fontes = FONTES
+            if fonte_atual and fonte_atual not in lista_fontes:
+                lista_fontes = [fonte_atual] + lista_fontes
+
+            lista_prioridades = ["Normal", "Alta", "Urgente", "Baixa"]
+            if prioridade_atual and prioridade_atual not in lista_prioridades:
+                lista_prioridades = [prioridade_atual] + lista_prioridades
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                nova_data = st.date_input(
+                    "Data do atendimento",
+                    value=data_atual,
+                    format="DD/MM/YYYY",
+                    key=f"{chave_prefixo}_edit_data_{atendimento.get('id')}"
+                )
+                nova_fonte = st.selectbox(
+                    "Fonte",
+                    lista_fontes,
+                    index=lista_fontes.index(fonte_atual) if fonte_atual in lista_fontes else 0,
+                    key=f"{chave_prefixo}_edit_fonte_{atendimento.get('id')}"
+                )
+                novo_status = st.selectbox(
+                    "Status",
+                    STATUS_OPCOES,
+                    index=STATUS_OPCOES.index(status_atual) if status_atual in STATUS_OPCOES else 0,
+                    key=f"{chave_prefixo}_edit_status_{atendimento.get('id')}"
+                )
+
+            with col2:
+                novo_assunto = st.selectbox(
+                    "Assunto",
+                    lista_assuntos,
+                    index=lista_assuntos.index(assunto_atual) if assunto_atual in lista_assuntos else 0,
+                    key=f"{chave_prefixo}_edit_assunto_{atendimento.get('id')}"
+                )
+                nova_zona = st.selectbox(
+                    "Zona eleitoral",
+                    lista_zonas,
+                    index=lista_zonas.index(zona_atual) if zona_atual in lista_zonas else 0,
+                    key=f"{chave_prefixo}_edit_zona_{atendimento.get('id')}"
+                )
+                nova_prioridade = st.selectbox(
+                    "Prioridade",
+                    lista_prioridades,
+                    index=lista_prioridades.index(prioridade_atual) if prioridade_atual in lista_prioridades else 0,
+                    key=f"{chave_prefixo}_edit_prioridade_{atendimento.get('id')}"
+                )
+
+            with col3:
+                nova_origem = st.text_input(
+                    "Quem originou a demanda/chamada",
+                    value=atendimento.get("origem", ""),
+                    key=f"{chave_prefixo}_edit_origem_{atendimento.get('id')}"
+                )
+                novo_protocolo = st.text_input(
+                    "Protocolo ou referência",
+                    value=atendimento.get("protocolo", ""),
+                    key=f"{chave_prefixo}_edit_protocolo_{atendimento.get('id')}"
+                )
+                servidores_edicao = ["Aguardando triagem"] + nomes_usuarios_ativos()
+                servidor_atual = atendimento.get("servidor", "Aguardando triagem")
+                if servidor_atual not in servidores_edicao:
+                    servidores_edicao = [servidor_atual] + servidores_edicao
+                novo_servidor = st.selectbox(
+                    "Servidor(a) responsável",
+                    servidores_edicao,
+                    index=servidores_edicao.index(servidor_atual) if servidor_atual in servidores_edicao else 0,
+                    key=f"{chave_prefixo}_edit_servidor_{atendimento.get('id')}"
+                )
+
+            nova_descricao = st.text_area(
+                "Descrição da demanda",
+                value=atendimento.get("descricao", ""),
+                key=f"{chave_prefixo}_edit_descricao_{atendimento.get('id')}"
             )
-
-        with col_b:
-            st.write("")
-            st.write("")
-            if st.button("Encaminhar para Em atendimento", key=f"{chave_prefixo}_encaminhar_{atendimento.get('id')}", type="primary"):
-                lista = atendimentos()
-                for item in lista:
-                    if item.get("id") == atendimento.get("id"):
-                        item["servidor"] = servidor_escolhido
-                        item["status"] = STATUS_EM_ATENDIMENTO
-                        item["atualizado_em"] = agora_iso()
-                        item["triado_por"] = usuario_logado().get("email", "")
-                        item["triado_em"] = agora_iso()
-                        salvar_atendimentos(lista)
-                        st.success(f"Demanda encaminhada para {servidor_escolhido}.")
-                        st.rerun()
-
-        with st.expander("Editar observações da triagem"):
             nova_obs = st.text_area(
-                "Observações",
+                "Observações internas",
                 value=atendimento.get("observacoes", ""),
-                key=f"{chave_prefixo}_obs_triagem_{atendimento.get('id')}"
+                key=f"{chave_prefixo}_edit_obs_{atendimento.get('id')}"
             )
-            if st.button("Salvar observações", key=f"{chave_prefixo}_salvar_obs_{atendimento.get('id')}"):
+
+            if st.button("Salvar edição da triagem", key=f"{chave_prefixo}_salvar_edicao_{atendimento.get('id')}", type="primary"):
                 lista = atendimentos()
                 for item in lista:
-                    if item.get("id") == atendimento.get("id"):
-                        item["observacoes"] = nova_obs
+                    if int(item.get("id")) == int(atendimento.get("id")):
+                        item["data"] = nova_data.strftime("%d/%m/%Y")
+                        item["fonte"] = nova_fonte
+                        item["assunto"] = novo_assunto
+                        item["zona_eleitoral"] = nova_zona
+                        item["origem"] = nova_origem.strip()
+                        item["protocolo"] = novo_protocolo.strip()
+                        item["prioridade"] = nova_prioridade
+                        item["descricao"] = nova_descricao.strip()
+                        item["observacoes"] = nova_obs.strip()
+                        item["servidor"] = novo_servidor
+                        item["status"] = novo_status
                         item["atualizado_em"] = agora_iso()
+
+                        if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
+                            item["data_realizacao"] = hoje_ddmmaaaa()
+                        elif novo_status != STATUS_REALIZADO:
+                            item["data_realizacao"] = ""
+
+                        if novo_status == STATUS_EM_ATENDIMENTO and novo_servidor != "Aguardando triagem":
+                            item["triado_por"] = usuario_logado().get("email", "")
+                            item["triado_em"] = agora_iso()
+
                         salvar_atendimentos(lista)
-                        st.success("Observações salvas.")
+                        st.success("Campos da triagem atualizados com sucesso.")
                         st.rerun()
+
+        if eh_admin():
+            with st.expander("Excluir atendimento"):
+                st.warning("Esta ação excluirá definitivamente este atendimento da base.")
+                confirmar_exclusao = st.checkbox(
+                    f"Confirmo a exclusão do atendimento nº {atendimento.get('id')}",
+                    key=f"{chave_prefixo}_triagem_conf_excluir_{atendimento.get('id')}"
+                )
+                if st.button("Excluir atendimento", key=f"{chave_prefixo}_triagem_excluir_{atendimento.get('id')}", type="secondary"):
+                    if not confirmar_exclusao:
+                        st.warning("Marque a confirmação antes de excluir.")
+                    else:
+                        if excluir_atendimento_por_id(atendimento.get("id")):
+                            st.success("Atendimento excluído com sucesso.")
+                            st.rerun()
+                        else:
+                            st.error("Atendimento não encontrado para exclusão.")
 
 
 def tela_status(nome_status, titulo, texto_ajuda):
