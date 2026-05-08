@@ -300,15 +300,6 @@ def data_para_exibir(valor):
 
 
 def formatar_data_hora_brasilia(valor):
-    import re
-    """Formata qualquer data/hora para dd/mm/aaaa hh:mm no horário de Brasília.
-
-    Exemplos aceitos:
-    - 2026-05-08T23:14:13+00:00
-    - 2026-05-08 23:14:13+00:00
-    - 2026-05-08T23:14:13Z
-    - 08/05/2026 20:14
-    """
     if valor is None or valor == "":
         return ""
 
@@ -316,22 +307,18 @@ def formatar_data_hora_brasilia(valor):
     if not texto:
         return ""
 
-    # Já está correto.
     if re.match(r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}$", texto):
         return texto
 
     try:
-        # UTC com final Z.
         if texto.endswith("Z"):
             texto = texto[:-1] + "+00:00"
 
-        # ISO com espaço em vez de T.
         if " " in texto and "T" not in texto:
             texto = texto.replace(" ", "T")
 
         dt = datetime.fromisoformat(texto)
 
-        # Se não houver fuso, considerar UTC, pois o Supabase armazena timestamptz em UTC.
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
 
@@ -341,7 +328,6 @@ def formatar_data_hora_brasilia(valor):
 
 
 def iso_para_exibir(valor):
-    """Compatibilidade: usa a formatação oficial de Brasília."""
     return formatar_data_hora_brasilia(valor)
 
 
