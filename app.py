@@ -9,6 +9,7 @@ import secrets
 import smtplib
 from email.message import EmailMessage
 import requests
+import re
 
 # ============================================================
 # CONFIGURAÇÕES GERAIS
@@ -299,6 +300,7 @@ def data_para_exibir(valor):
 
 
 def formatar_data_hora_brasilia(valor):
+    import re
     """Formata qualquer data/hora para dd/mm/aaaa hh:mm no horário de Brasília.
 
     Exemplos aceitos:
