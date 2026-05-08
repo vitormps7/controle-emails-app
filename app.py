@@ -299,14 +299,7 @@ def data_para_exibir(valor):
 
 
 def iso_para_exibir(valor):
-    """Exibe data/hora sempre no horário oficial de Brasília, UTC-03:00.
-
-    O Supabase armazena campos timestamptz em UTC. Em alguns retornos,
-    o valor vem com offset (+00:00 ou Z) e, em outros casos, pode vir
-    sem offset explícito. Para evitar exibição 3 horas adiantada,
-    todo horário vindo do banco é tratado como UTC quando não houver
-    indicação clara de fuso.
-    """
+    """Exibe data/hora no formato brasileiro: dd/mm/aaaa hh:mm."""
     if not valor:
         return ""
 
@@ -319,21 +312,23 @@ def iso_para_exibir(valor):
         if re.match(r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}$", texto):
             return texto
 
-        # Normaliza o formato vindo do Supabase.
-        texto = texto.replace(" ", "T") if " " in texto and "T" not in texto else texto
-
         # Supabase/PostgreSQL pode retornar UTC com final Z.
         if texto.endswith("Z"):
             texto = texto[:-1] + "+00:00"
 
+        # Python aceita ISO com T. Se vier com espaço, também normaliza.
+        if " " in texto and "T" not in texto:
+            texto = texto.replace(" ", "T")
+
         dt = datetime.fromisoformat(texto)
 
-        # Se não houver fuso explícito, considerar UTC, pois é assim que
-        # o Supabase costuma retornar timestamptz já normalizado.
+        # Se vier sem fuso, assume UTC, pois o Supabase usa timestamptz em UTC.
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
 
+        # Converte para Brasília/UTC-03.
         dt_brasilia = dt.astimezone(FUSO_HORARIO_BRASILIA)
+
         return dt_brasilia.strftime("%d/%m/%Y %H:%M")
 
     except Exception:
