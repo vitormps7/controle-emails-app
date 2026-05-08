@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from pathlib import Path
-from datetime import datetime, date, timezone, timedelta, timezone, timedelta
+from datetime import datetime, date, timezone, timedelta
 import json
 import hashlib
 import secrets
@@ -298,23 +298,27 @@ def data_para_exibir(valor):
     return ""
 
 
-def iso_para_exibir(valor):
-    """Converte qualquer horário para exibição no formato dd/mm/aaaa hh:mm, horário de Brasília."""
-    if not valor:
+def formatar_data_hora_brasilia(valor):
+    """Formata qualquer data/hora para dd/mm/aaaa hh:mm no horário de Brasília.
+
+    Exemplos aceitos:
+    - 2026-05-08T23:14:13+00:00
+    - 2026-05-08 23:14:13+00:00
+    - 2026-05-08T23:14:13Z
+    - 08/05/2026 20:14
+    """
+    if valor is None or valor == "":
         return ""
 
+    texto = str(valor).strip().replace("\n", "").replace("\r", "")
+    if not texto:
+        return ""
+
+    # Já está correto.
+    if re.match(r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}$", texto):
+        return texto
+
     try:
-        texto = str(valor).strip()
-        if not texto:
-            return ""
-
-        # Se já estiver no formato brasileiro, mantém.
-        if re.match(r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}$", texto):
-            return texto
-
-        # Supabase pode retornar com quebra visual, espaço ou T.
-        texto = texto.replace("\n", "").replace("\r", "").strip()
-
         # UTC com final Z.
         if texto.endswith("Z"):
             texto = texto[:-1] + "+00:00"
@@ -325,14 +329,18 @@ def iso_para_exibir(valor):
 
         dt = datetime.fromisoformat(texto)
 
-        # Se não houver fuso explícito, assume UTC, pois timestamptz do Supabase é UTC.
+        # Se não houver fuso, considerar UTC, pois o Supabase armazena timestamptz em UTC.
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
 
         return dt.astimezone(FUSO_HORARIO_BRASILIA).strftime("%d/%m/%Y %H:%M")
-
     except Exception:
-        return str(valor)
+        return texto
+
+
+def iso_para_exibir(valor):
+    """Compatibilidade: usa a formatação oficial de Brasília."""
+    return formatar_data_hora_brasilia(valor)
 
 
 def senha_hash(senha):
@@ -506,8 +514,8 @@ def usuario_db_para_app(row):
         "validado": row.get("validado", False),
         "token_validacao": row.get("token_validacao") or "",
         "token_recuperacao": row.get("token_recuperacao") or "",
-        "criado_em": iso_para_exibir(row.get("criado_em")) if row.get("criado_em") else "",
-        "atualizado_em": iso_para_exibir(row.get("atualizado_em")) if row.get("atualizado_em") else "",
+        "criado_em": formatar_data_hora_brasilia(row.get("criado_em")) if row.get("criado_em") else "",
+        "atualizado_em": formatar_data_hora_brasilia(row.get("atualizado_em")) if row.get("atualizado_em") else "",
     }
 
 
@@ -542,11 +550,11 @@ def atendimento_db_para_app(row):
         "descricao": row.get("descricao") or "",
         "observacoes": row.get("observacoes") or "",
         "criado_por": row.get("criado_por") or "",
-        "criado_em": iso_para_exibir(row.get("criado_em")) if row.get("criado_em") else "",
-        "atualizado_em": iso_para_exibir(row.get("atualizado_em")) if row.get("atualizado_em") else "",
+        "criado_em": formatar_data_hora_brasilia(row.get("criado_em")) if row.get("criado_em") else "",
+        "atualizado_em": formatar_data_hora_brasilia(row.get("atualizado_em")) if row.get("atualizado_em") else "",
         "data_realizacao": data_app(row.get("data_realizacao")),
         "triado_por": row.get("triado_por") or "",
-        "triado_em": iso_para_exibir(row.get("triado_em")) if row.get("triado_em") else "",
+        "triado_em": formatar_data_hora_brasilia(row.get("triado_em")) if row.get("triado_em") else "",
     }
 
 
@@ -1212,6 +1220,10 @@ def filtros_base(lista):
 
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
     status = atendimento.get("status", STATUS_CADASTRADO)
+    atualizado_formatado = formatar_data_hora_brasilia(atendimento.get("atualizado_em"))
+    criado_formatado = formatar_data_hora_brasilia(atendimento.get("criado_em"))
+    triado_formatado = formatar_data_hora_brasilia(atendimento.get("triado_em"))
+
 
     with st.container(border=True):
         col1, col2, col3 = st.columns([1.2, 2.2, 1.3])
@@ -1230,7 +1242,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         with col3:
             st.markdown(f"**Servidor(a):** {atendimento.get('servidor', '')}")
             st.markdown(f"**Fonte:** {atendimento.get('fonte', '')}")
-            st.markdown(f"**Atualizado:** {iso_para_exibir(atendimento.get('atualizado_em'))}")
+            st.markdown(f"**Atualizado:** {atualizado_formatado}")
 
         if atendimento.get("observacoes"):
             st.markdown(f"**Observações:** {atendimento.get('observacoes')}")
@@ -1625,6 +1637,10 @@ def tela_novo_atendimento():
 
 
 def card_triagem(atendimento, chave_prefixo):
+    criado_formatado = formatar_data_hora_brasilia(atendimento.get("criado_em"))
+    atualizado_formatado = formatar_data_hora_brasilia(atendimento.get("atualizado_em"))
+    triado_formatado = formatar_data_hora_brasilia(atendimento.get("triado_em"))
+
     with st.container(border=True):
         col1, col2, col3 = st.columns([1.2, 2.2, 1.3])
 
@@ -1642,7 +1658,7 @@ def card_triagem(atendimento, chave_prefixo):
         with col3:
             st.markdown(f"**Fonte:** {atendimento.get('fonte', '')}")
             st.markdown(f"**Prioridade:** {atendimento.get('prioridade', 'Normal')}")
-            st.markdown(f"**Criado em:** {iso_para_exibir(atendimento.get('criado_em'))}")
+            st.markdown(f"**Criado em:** {criado_formatado}")
 
         if atendimento.get("observacoes"):
             st.markdown(f"**Observações:** {atendimento.get('observacoes')}")
