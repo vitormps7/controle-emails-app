@@ -299,7 +299,7 @@ def data_para_exibir(valor):
 
 
 def iso_para_exibir(valor):
-    """Exibe data/hora no formato brasileiro: dd/mm/aaaa hh:mm."""
+    """Converte qualquer horário para exibição no formato dd/mm/aaaa hh:mm, horário de Brasília."""
     if not valor:
         return ""
 
@@ -308,28 +308,28 @@ def iso_para_exibir(valor):
         if not texto:
             return ""
 
-        # Se já estiver no formato brasileiro, retorna como está.
+        # Se já estiver no formato brasileiro, mantém.
         if re.match(r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}$", texto):
             return texto
 
-        # Supabase/PostgreSQL pode retornar UTC com final Z.
+        # Supabase pode retornar com quebra visual, espaço ou T.
+        texto = texto.replace("\n", "").replace("\r", "").strip()
+
+        # UTC com final Z.
         if texto.endswith("Z"):
             texto = texto[:-1] + "+00:00"
 
-        # Python aceita ISO com T. Se vier com espaço, também normaliza.
+        # ISO com espaço em vez de T.
         if " " in texto and "T" not in texto:
             texto = texto.replace(" ", "T")
 
         dt = datetime.fromisoformat(texto)
 
-        # Se vier sem fuso, assume UTC, pois o Supabase usa timestamptz em UTC.
+        # Se não houver fuso explícito, assume UTC, pois timestamptz do Supabase é UTC.
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
 
-        # Converte para Brasília/UTC-03.
-        dt_brasilia = dt.astimezone(FUSO_HORARIO_BRASILIA)
-
-        return dt_brasilia.strftime("%d/%m/%Y %H:%M")
+        return dt.astimezone(FUSO_HORARIO_BRASILIA).strftime("%d/%m/%Y %H:%M")
 
     except Exception:
         return str(valor)
