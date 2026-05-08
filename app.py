@@ -2,8 +2,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from pathlib import Path
-from datetime import datetime, date
-from zoneinfo import ZoneInfo
+from datetime import datetime, date, timezone, timedelta, timezone, timedelta
 import json
 import hashlib
 import secrets
@@ -26,7 +25,7 @@ ARQ_ATENDIMENTOS = Path("atendimentos_controle_emails_v1.json")
 ARQ_ASSUNTOS = Path("assuntos_controle_emails_v1.json")
 ARQ_SESSOES = Path("sessoes_usuarios_logados_v1.json")
 PASTA_BACKUPS = Path("backups_sistema_sepro")
-FUSO_HORARIO_BRASILIA = ZoneInfo("America/Sao_Paulo")
+FUSO_HORARIO_BRASILIA = timezone(timedelta(hours=-3), name="BRT")
 USAR_SUPABASE = True
 
 DOMINIO_INSTITUCIONAL = "@tre-ba.jus.br"
@@ -249,15 +248,22 @@ st.markdown(
 # ============================================================
 
 def agora_brasilia():
-    """Retorna a data/hora atual no fuso de Brasília."""
-    return datetime.now(FUSO_HORARIO_BRASILIA)
+    """Retorna a data/hora atual no horário oficial de Brasília, UTC-03:00."""
+    return datetime.now(timezone.utc).astimezone(FUSO_HORARIO_BRASILIA)
 
 
 def agora_iso():
-    return agora_brasilia().isoformat(timespec="seconds")
+    """Retorna data/hora atual de Brasília em ISO-8601 com deslocamento -03:00."""
+    return agora_brasilia().replace(microsecond=0).isoformat()
+
+
+def agora_texto_brasilia():
+    """Retorna data/hora atual de Brasília para exibição."""
+    return agora_texto_brasilia()
 
 
 def hoje_ddmmaaaa():
+    """Retorna a data atual de Brasília no formato dd/mm/aaaa."""
     return agora_brasilia().strftime("%d/%m/%Y")
 
 
@@ -293,10 +299,43 @@ def data_para_exibir(valor):
 
 
 def iso_para_exibir(valor):
+    """Exibe data/hora sempre no horário oficial de Brasília, UTC-03:00.
+
+    O Supabase armazena campos timestamptz em UTC. Em alguns retornos,
+    o valor vem com offset (+00:00 ou Z) e, em outros casos, pode vir
+    sem offset explícito. Para evitar exibição 3 horas adiantada,
+    todo horário vindo do banco é tratado como UTC quando não houver
+    indicação clara de fuso.
+    """
     if not valor:
         return ""
+
     try:
-        return datetime.fromisoformat(str(valor)).strftime("%d/%m/%Y %H:%M")
+        texto = str(valor).strip()
+        if not texto:
+            return ""
+
+        # Se já estiver no formato brasileiro, retorna como está.
+        if re.match(r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}$", texto):
+            return texto
+
+        # Normaliza o formato vindo do Supabase.
+        texto = texto.replace(" ", "T") if " " in texto and "T" not in texto else texto
+
+        # Supabase/PostgreSQL pode retornar UTC com final Z.
+        if texto.endswith("Z"):
+            texto = texto[:-1] + "+00:00"
+
+        dt = datetime.fromisoformat(texto)
+
+        # Se não houver fuso explícito, considerar UTC, pois é assim que
+        # o Supabase costuma retornar timestamptz já normalizado.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        dt_brasilia = dt.astimezone(FUSO_HORARIO_BRASILIA)
+        return dt_brasilia.strftime("%d/%m/%Y %H:%M")
+
     except Exception:
         return str(valor)
 
@@ -472,8 +511,8 @@ def usuario_db_para_app(row):
         "validado": row.get("validado", False),
         "token_validacao": row.get("token_validacao") or "",
         "token_recuperacao": row.get("token_recuperacao") or "",
-        "criado_em": row.get("criado_em") or "",
-        "atualizado_em": row.get("atualizado_em") or "",
+        "criado_em": iso_para_exibir(row.get("criado_em")) if row.get("criado_em") else "",
+        "atualizado_em": iso_para_exibir(row.get("atualizado_em")) if row.get("atualizado_em") else "",
     }
 
 
@@ -508,11 +547,11 @@ def atendimento_db_para_app(row):
         "descricao": row.get("descricao") or "",
         "observacoes": row.get("observacoes") or "",
         "criado_por": row.get("criado_por") or "",
-        "criado_em": row.get("criado_em") or "",
-        "atualizado_em": row.get("atualizado_em") or "",
+        "criado_em": iso_para_exibir(row.get("criado_em")) if row.get("criado_em") else "",
+        "atualizado_em": iso_para_exibir(row.get("atualizado_em")) if row.get("atualizado_em") else "",
         "data_realizacao": data_app(row.get("data_realizacao")),
         "triado_por": row.get("triado_por") or "",
-        "triado_em": row.get("triado_em") or "",
+        "triado_em": iso_para_exibir(row.get("triado_em")) if row.get("triado_em") else "",
     }
 
 
@@ -643,7 +682,7 @@ def assuntos():
 def salvar_assuntos(lista):
     criar_backup_automatico("antes_salvar_assuntos")
     supabase_delete_all("assuntos")
-    rows = [{"nome": str(nome).strip(), "ativo": True} for nome in sorted(set(lista)) if str(nome).strip()]
+    rows = [{"nome": str(nome).strip(), "ativo": True, "criado_em": agora_iso()} for nome in sorted(set(lista)) if str(nome).strip()]
     if rows:
         supabase_insert("assuntos", rows)
     criar_backup_automatico("apos_salvar_assuntos")
@@ -1385,7 +1424,7 @@ def tela_dashboard():
         periodo_fim = datas_parse.max().strftime('%d/%m/%Y')
 
     st.markdown(
-        f"<div class='dashboard-subinfo'>Base: registros do sistema | Registros: {numero_br(total)} | Período válido: {periodo_ini or '-'} a {periodo_fim or '-'} | Atualizado em: {agora_brasilia().strftime('%d/%m/%Y %H:%M')}</div>",
+        f"<div class='dashboard-subinfo'>Base: registros do sistema | Registros: {numero_br(total)} | Período válido: {periodo_ini or '-'} a {periodo_fim or '-'} | Atualizado em: {agora_texto_brasilia()}</div>",
         unsafe_allow_html=True,
     )
 
@@ -1545,7 +1584,7 @@ def tela_novo_atendimento():
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            data_atendimento = st.date_input("Data do atendimento", value=date.today(), format="DD/MM/YYYY")
+            data_atendimento = st.date_input("Data do atendimento", value=agora_brasilia().date(), format="DD/MM/YYYY")
             fonte = st.selectbox("Fonte", FONTES)
 
         with col2:
@@ -1653,7 +1692,7 @@ def card_triagem(atendimento, chave_prefixo):
         with st.expander("Editar todos os campos da Triagem"):
             st.caption("Use esta área para corrigir qualquer informação do atendimento antes de encaminhar ou manter em triagem.")
 
-            data_atual = parse_data(atendimento.get("data")) or date.today()
+            data_atual = parse_data(atendimento.get("data")) or agora_brasilia().date()
             fonte_atual = atendimento.get("fonte", "")
             assunto_atual = atendimento.get("assunto", "")
             zona_atual = atendimento.get("zona_eleitoral", "")
