@@ -259,7 +259,7 @@ def agora_iso():
 
 def agora_texto_brasilia():
     """Retorna data/hora atual de Brasília para exibição."""
-    return agora_texto_brasilia()
+    return agora_brasilia().strftime("%d/%m/%Y %H:%M")
 
 
 def hoje_ddmmaaaa():
