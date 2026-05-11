@@ -44,6 +44,7 @@ STATUS_OPCOES = [
 ]
 
 FONTES = [
+    "Não informado",
     "E-mail",
     "Telefone",
     "WhatsApp",
@@ -1714,7 +1715,8 @@ def tela_novo_atendimento():
         col4, col5, col6 = st.columns(3)
 
         with col4:
-            fonte = st.selectbox("Fonte", FONTES)
+            idx_fonte = FONTES.index("Não informado") if "Não informado" in FONTES else 0
+            fonte = st.selectbox("Fonte", FONTES, index=idx_fonte)
 
         with col5:
             lista_assuntos = assuntos()
@@ -1722,7 +1724,8 @@ def tela_novo_atendimento():
             assunto = st.selectbox("Assunto", lista_assuntos, index=idx_assunto)
 
         with col6:
-            prioridade = st.selectbox("Prioridade", ["Normal", "Alta", "Urgente", "Baixa"])
+            prioridades = ["Não informado", "Normal", "Alta", "Urgente", "Baixa"]
+            prioridade = st.selectbox("Prioridade", prioridades, index=0)
 
         protocolo = st.text_input("Protocolo ou referência, se houver")
 
@@ -1848,7 +1851,7 @@ def card_triagem(atendimento, chave_prefixo):
             if fonte_atual and fonte_atual not in lista_fontes:
                 lista_fontes = [fonte_atual] + lista_fontes
 
-            lista_prioridades = ["Normal", "Alta", "Urgente", "Baixa"]
+            lista_prioridades = ["Não informado", "Normal", "Alta", "Urgente", "Baixa"]
             if prioridade_atual and prioridade_atual not in lista_prioridades:
                 lista_prioridades = [prioridade_atual] + lista_prioridades
 
