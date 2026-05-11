@@ -418,6 +418,10 @@ def supabase_insert(tabela, rows):
         url, _ = supabase_config()
         st.error(f"Erro ao inserir dados na tabela {tabela}.")
         st.code(f"{url}/rest/v1/{tabela}")
+        try:
+            st.write("Resposta do Supabase:", resp.text)
+        except Exception:
+            pass
         st.write(erro)
         st.stop()
 
@@ -464,6 +468,61 @@ def supabase_upsert(tabela, row, on_conflict):
         st.stop()
 
 
+def supabase_upsert_many(tabela, rows, on_conflict="id"):
+    if not rows:
+        return []
+    try:
+        headers = supabase_headers()
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+        params = {"on_conflict": on_conflict}
+        resp = requests.post(
+            supabase_rest_url(tabela),
+            headers=headers,
+            params=params,
+            data=json.dumps(rows, ensure_ascii=False),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json() if resp.text else []
+    except Exception as erro:
+        url, _ = supabase_config()
+        st.error(f"Erro ao gravar dados na tabela {tabela}.")
+        st.code(f"{url}/rest/v1/{tabela}")
+        try:
+            st.write("Resposta do Supabase:", resp.text)
+        except Exception:
+            pass
+        st.write(erro)
+        st.stop()
+
+
+def supabase_delete_not_in(tabela, coluna_chave, valores):
+    try:
+        valores_limpos = [str(v) for v in valores if v not in ("", None)]
+
+        if not valores_limpos:
+            return
+
+        params = {coluna_chave: f"not.in.({','.join(valores_limpos)})"}
+        resp = requests.delete(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            params=params,
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except Exception as erro:
+        url, _ = supabase_config()
+        st.error(f"Erro ao remover registros antigos da tabela {tabela}.")
+        st.code(f"{url}/rest/v1/{tabela}")
+        try:
+            st.write("Resposta do Supabase:", resp.text)
+        except Exception:
+            pass
+        st.write(erro)
+        st.stop()
+
+
 def supabase_delete_all(tabela, coluna_chave="id"):
     try:
         params = {coluna_chave: "neq.__nunca__"} if coluna_chave == "email" else {coluna_chave: "neq.-1"}
@@ -487,6 +546,36 @@ def data_db(valor):
     return d.isoformat() if d else None
 
 
+def data_hora_db(valor):
+    if valor is None or valor == "":
+        return None
+
+    texto = str(valor).strip()
+    if not texto:
+        return None
+
+    try:
+        if re.match(r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}$", texto):
+            dt = datetime.strptime(texto, "%d/%m/%Y %H:%M")
+            dt = dt.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+            return dt.isoformat(timespec="seconds")
+
+        if texto.endswith("Z"):
+            texto = texto[:-1] + "+00:00"
+
+        if " " in texto and "T" not in texto:
+            texto = texto.replace(" ", "T")
+
+        dt = datetime.fromisoformat(texto)
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+
+        return dt.isoformat(timespec="seconds")
+    except Exception:
+        return agora_iso()
+
+
 def data_app(valor):
     return data_para_exibir(valor)
 
@@ -508,7 +597,7 @@ def usuario_db_para_app(row):
 
 
 def usuario_app_para_db(u):
-    return {
+    dados = {
         "id": u.get("id"),
         "nome": u.get("nome", ""),
         "email": normalizar_email(u.get("email", "")),
@@ -518,9 +607,14 @@ def usuario_app_para_db(u):
         "validado": bool(u.get("validado", False)),
         "token_validacao": u.get("token_validacao") or None,
         "token_recuperacao": u.get("token_recuperacao") or None,
-        "criado_em": u.get("criado_em") or agora_iso(),
+        "criado_em": data_hora_db(u.get("criado_em")) or agora_iso(),
         "atualizado_em": agora_iso(),
     }
+
+    if dados.get("id") in ("", None):
+        dados.pop("id", None)
+
+    return dados
 
 
 def atendimento_db_para_app(row):
@@ -561,12 +655,16 @@ def atendimento_app_para_db(a):
         "descricao": a.get("descricao") or None,
         "observacoes": a.get("observacoes") or None,
         "criado_por": a.get("criado_por") or None,
-        "criado_em": a.get("criado_em") or agora_iso(),
-        "atualizado_em": agora_iso(),
+        "criado_em": data_hora_db(a.get("criado_em")) or agora_iso(),
+        "atualizado_em": data_hora_db(a.get("atualizado_em")) or agora_iso(),
         "data_realizacao": data_db(a.get("data_realizacao")),
         "triado_por": a.get("triado_por") or None,
-        "triado_em": a.get("triado_em") or None,
+        "triado_em": data_hora_db(a.get("triado_em")) if a.get("triado_em") else None,
     }
+
+    if dados.get("id") in ("", None):
+        dados.pop("id", None)
+
     return dados
 
 
@@ -612,9 +710,10 @@ def restaurar_backup_completo(dados_backup):
         raise ValueError("O backup não contém todos os campos obrigatórios.")
 
     criar_backup_automatico("antes_restauracao")
-    salvar_atendimentos(atend)
+
     salvar_usuarios(usrs)
     salvar_assuntos(ass)
+    salvar_atendimentos(atend)
 
 
 def normalizar_email(email):
@@ -628,11 +727,13 @@ def usuarios():
 
 def salvar_usuarios(lista):
     criar_backup_automatico("antes_salvar_usuarios")
-    supabase_delete_all("usuarios")
     rows = [usuario_app_para_db(u) for u in lista]
     rows = [r for r in rows if r.get("email")]
     if rows:
-        supabase_insert("usuarios", rows)
+        for r in rows:
+            r.pop("id", None)
+        supabase_upsert_many("usuarios", rows, on_conflict="email")
+        supabase_delete_not_in("usuarios", "email", [r.get("email") for r in rows])
     criar_backup_automatico("apos_salvar_usuarios")
 
 
@@ -643,10 +744,18 @@ def atendimentos():
 
 def salvar_atendimentos(lista):
     criar_backup_automatico("antes_salvar_atendimentos")
-    supabase_delete_all("atendimentos")
     rows = [atendimento_app_para_db(a) for a in lista]
+    rows = [r for r in rows if r.get("assunto") or r.get("descricao") or r.get("origem")]
+
     if rows:
-        supabase_insert("atendimentos", rows)
+        # Grava/atualiza primeiro. Somente depois remove registros antigos.
+        supabase_upsert_many("atendimentos", rows, on_conflict="id")
+        ids = [r.get("id") for r in rows if r.get("id") not in ("", None)]
+        if ids:
+            supabase_delete_not_in("atendimentos", "id", ids)
+    else:
+        supabase_delete_all("atendimentos")
+
     criar_backup_automatico("apos_salvar_atendimentos")
 
 
