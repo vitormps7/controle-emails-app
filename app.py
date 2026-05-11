@@ -1700,7 +1700,7 @@ def tela_novo_atendimento():
     st.info("Todo novo atendimento entra primeiro na base **Triagem**. Na Triagem, será escolhido o usuário responsável; ao designar o usuário, a demanda seguirá para **Em atendimento**.")
 
     with st.form("form_novo_atendimento", clear_on_submit=True):
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
             data_atendimento = st.date_input("Data do atendimento", value=agora_brasilia().date(), format="DD/MM/YYYY")
@@ -1708,26 +1708,23 @@ def tela_novo_atendimento():
         with col2:
             origem = st.text_input("Quem originou a demanda/chamada")
 
-        col3, col4, col5 = st.columns(3)
-
         with col3:
-            fonte = st.selectbox("Fonte", FONTES)
+            zona = st.selectbox("Zona eleitoral", ZONAS_BAHIA)
+
+        col4, col5, col6 = st.columns(3)
 
         with col4:
+            fonte = st.selectbox("Fonte", FONTES)
+
+        with col5:
             lista_assuntos = assuntos()
             idx_assunto = lista_assuntos.index("Não informado") if "Não informado" in lista_assuntos else 0
             assunto = st.selectbox("Assunto", lista_assuntos, index=idx_assunto)
 
-        with col5:
-            zona = st.selectbox("Zona eleitoral", ZONAS_BAHIA)
-
-        col6, col7 = st.columns(2)
-
         with col6:
-            protocolo = st.text_input("Protocolo ou referência, se houver")
-
-        with col7:
             prioridade = st.selectbox("Prioridade", ["Normal", "Alta", "Urgente", "Baixa"])
+
+        protocolo = st.text_input("Protocolo ou referência, se houver")
 
         descricao = st.text_area("Descrição da demanda")
         observacoes = st.text_area("Observações internas")
