@@ -51,6 +51,7 @@ FONTES = [
 ]
 
 ASSUNTOS_PADRAO = [
+    "Não informado",
     "Cumprimento de Sentença",
     "Prestação de Contas Eleitorais",
     "Prestação de Contas Anual",
@@ -622,7 +623,7 @@ def atendimento_db_para_app(row):
         "id": row.get("id"),
         "data": data_app(row.get("data_atendimento")),
         "status": row.get("status", STATUS_CADASTRADO),
-        "servidor": row.get("servidor") or "Aguardando triagem",
+        "servidor": row.get("servidor") or "Não informado",
         "fonte": row.get("fonte") or "",
         "assunto": row.get("assunto") or "",
         "zona_eleitoral": row.get("zona_eleitoral") or "",
@@ -645,7 +646,7 @@ def atendimento_app_para_db(a):
         "id": a.get("id"),
         "data_atendimento": data_db(a.get("data")),
         "status": a.get("status", STATUS_CADASTRADO),
-        "servidor": a.get("servidor") or "Aguardando triagem",
+        "servidor": a.get("servidor") or "Não informado",
         "fonte": a.get("fonte") or None,
         "assunto": a.get("assunto") or None,
         "zona_eleitoral": a.get("zona_eleitoral") or None,
@@ -772,20 +773,38 @@ def assuntos():
     rows = supabase_get("assuntos", {"select": "nome,ativo", "ativo": "eq.true", "order": "nome.asc"})
     lista = [row.get("nome", "").strip() for row in (rows or []) if row.get("nome")]
 
+    if "Não informado" not in lista:
+        lista.append("Não informado")
+
     if not lista:
         salvar_assuntos(ASSUNTOS_PADRAO)
         lista = ASSUNTOS_PADRAO
 
-    return sorted(set([str(x).strip() for x in lista if str(x).strip()]))
+    lista = sorted(set([str(x).strip() for x in lista if str(x).strip()]), key=lambda x: x.casefold())
+
+    if "Não informado" in lista:
+        lista.remove("Não informado")
+        lista = ["Não informado"] + lista
+
+    return lista
+
 
 
 def salvar_assuntos(lista):
     criar_backup_automatico("antes_salvar_assuntos")
     supabase_delete_all("assuntos")
-    rows = [{"nome": str(nome).strip(), "ativo": True, "criado_em": agora_iso()} for nome in sorted(set(lista)) if str(nome).strip()]
+
+    lista_limpa = [str(nome).strip() for nome in lista if str(nome).strip()]
+    if "Não informado" not in lista_limpa:
+        lista_limpa.append("Não informado")
+
+    lista_limpa = sorted(set(lista_limpa), key=lambda x: x.casefold())
+
+    rows = [{"nome": nome, "ativo": True, "criado_em": agora_iso()} for nome in lista_limpa]
     if rows:
         supabase_insert("assuntos", rows)
     criar_backup_automatico("apos_salvar_assuntos")
+
 
 
 def registrar_usuario_logado(usuario):
@@ -1359,7 +1378,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     item["status"] = novo_status
                     item["atualizado_em"] = agora_iso()
                     if novo_status == STATUS_CADASTRADO:
-                        item["servidor"] = "Aguardando triagem"
+                        item["servidor"] = "Não informado"
                     if novo_status == STATUS_REALIZADO:
                         item["data_realizacao"] = hoje_ddmmaaaa()
                     salvar_atendimentos(lista)
@@ -1680,27 +1699,35 @@ def tela_novo_atendimento():
 
     st.info("Todo novo atendimento entra primeiro na base **Triagem**. Na Triagem, será escolhido o usuário responsável; ao designar o usuário, a demanda seguirá para **Em atendimento**.")
 
-    servidores = nomes_usuarios_ativos()
-    if not servidores:
-        servidores = [usuario_logado().get("nome", "Não definido")]
-
     with st.form("form_novo_atendimento", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
 
         with col1:
             data_atendimento = st.date_input("Data do atendimento", value=agora_brasilia().date(), format="DD/MM/YYYY")
-            fonte = st.selectbox("Fonte", FONTES)
 
         with col2:
-            assunto = st.selectbox("Assunto", assuntos())
-            zona = st.selectbox("Zona eleitoral", ZONAS_BAHIA)
             origem = st.text_input("Quem originou a demanda/chamada")
 
+        col3, col4, col5 = st.columns(3)
+
         with col3:
+            fonte = st.selectbox("Fonte", FONTES)
+
+        with col4:
+            lista_assuntos = assuntos()
+            idx_assunto = lista_assuntos.index("Não informado") if "Não informado" in lista_assuntos else 0
+            assunto = st.selectbox("Assunto", lista_assuntos, index=idx_assunto)
+
+        with col5:
+            zona = st.selectbox("Zona eleitoral", ZONAS_BAHIA)
+
+        col6, col7 = st.columns(2)
+
+        with col6:
             protocolo = st.text_input("Protocolo ou referência, se houver")
+
+        with col7:
             prioridade = st.selectbox("Prioridade", ["Normal", "Alta", "Urgente", "Baixa"])
-            status_inicial = STATUS_CADASTRADO
-            st.info("O atendimento será enviado para a Triagem, onde será designado o servidor responsável.")
 
         descricao = st.text_area("Descrição da demanda")
         observacoes = st.text_area("Observações internas")
@@ -1712,10 +1739,10 @@ def tela_novo_atendimento():
             novo = {
                 "id": proximo_id(lista),
                 "data": data_atendimento.strftime("%d/%m/%Y"),
-                "status": status_inicial,
-                "servidor": "Aguardando triagem",
+                "status": STATUS_CADASTRADO,
+                "servidor": "Não informado",
                 "fonte": fonte,
-                "assunto": assunto,
+                "assunto": assunto or "Não informado",
                 "zona_eleitoral": zona,
                 "origem": origem.strip(),
                 "protocolo": protocolo.strip(),
@@ -1726,10 +1753,13 @@ def tela_novo_atendimento():
                 "criado_em": agora_iso(),
                 "atualizado_em": agora_iso(),
                 "data_realizacao": "",
+                "triado_por": "",
+                "triado_em": "",
             }
             lista.append(novo)
             salvar_atendimentos(lista)
-            st.success(f"Atendimento nº {novo['id']} triagem com sucesso na base: {status_inicial}.")
+            st.success(f"Atendimento nº {novo['id']} cadastrado com sucesso na base: {STATUS_CADASTRADO}.")
+            st.rerun()
 
 
 
@@ -1763,26 +1793,28 @@ def card_triagem(atendimento, chave_prefixo):
         st.divider()
         st.markdown("##### Designar responsável pela demanda")
 
-        servidores = nomes_usuarios_ativos()
-        if not servidores:
-            st.warning("Não há usuários ativos e validados para receber a demanda.")
-        else:
-            col_a, col_b = st.columns([2, 1])
+        servidores = ["Não informado"] + nomes_usuarios_ativos()
+        col_a, col_b = st.columns([2, 1])
 
-            with col_a:
-                servidor_atual = atendimento.get("servidor", "")
-                index_servidor = servidores.index(servidor_atual) if servidor_atual in servidores else 0
-                servidor_escolhido = st.selectbox(
-                    "Usuário que irá tratar a demanda",
-                    servidores,
-                    index=index_servidor,
-                    key=f"{chave_prefixo}_designar_{atendimento.get('id')}"
-                )
+        with col_a:
+            servidor_atual = atendimento.get("servidor", "Não informado") or "Não informado"
+            if servidor_atual in ("Aguardando triagem", "", None):
+                servidor_atual = "Não informado"
+            index_servidor = servidores.index(servidor_atual) if servidor_atual in servidores else 0
+            servidor_escolhido = st.selectbox(
+                "Usuário que irá tratar a demanda",
+                servidores,
+                index=index_servidor,
+                key=f"{chave_prefixo}_designar_{atendimento.get('id')}"
+            )
 
-            with col_b:
-                st.write("")
-                st.write("")
-                if st.button("Encaminhar para Em atendimento", key=f"{chave_prefixo}_encaminhar_{atendimento.get('id')}", type="primary"):
+        with col_b:
+            st.write("")
+            st.write("")
+            if st.button("Encaminhar para Em atendimento", key=f"{chave_prefixo}_encaminhar_{atendimento.get('id')}", type="primary"):
+                if servidor_escolhido == "Não informado":
+                    st.warning("Selecione um usuário responsável antes de encaminhar.")
+                else:
                     lista = atendimentos()
                     for item in lista:
                         if int(item.get("id")) == int(atendimento.get("id")):
@@ -1876,8 +1908,10 @@ def card_triagem(atendimento, chave_prefixo):
                     value=atendimento.get("protocolo", ""),
                     key=f"{chave_prefixo}_edit_protocolo_{atendimento.get('id')}"
                 )
-                servidores_edicao = ["Aguardando triagem"] + nomes_usuarios_ativos()
-                servidor_atual = atendimento.get("servidor", "Aguardando triagem")
+                servidores_edicao = ["Não informado"] + nomes_usuarios_ativos()
+                servidor_atual = atendimento.get("servidor", "Não informado") or "Não informado"
+                if servidor_atual == "Aguardando triagem":
+                    servidor_atual = "Não informado"
                 if servidor_atual not in servidores_edicao:
                     servidores_edicao = [servidor_atual] + servidores_edicao
                 novo_servidor = st.selectbox(
@@ -1920,7 +1954,7 @@ def card_triagem(atendimento, chave_prefixo):
                         elif novo_status != STATUS_REALIZADO:
                             item["data_realizacao"] = ""
 
-                        if novo_status == STATUS_EM_ATENDIMENTO and novo_servidor != "Aguardando triagem":
+                        if novo_status == STATUS_EM_ATENDIMENTO and novo_servidor != "Não informado":
                             item["triado_por"] = usuario_logado().get("email", "")
                             item["triado_em"] = agora_iso()
 
@@ -1952,7 +1986,28 @@ def tela_status(nome_status, titulo, texto_ajuda):
 
     lista = [a for a in filtros_base(atendimentos()) if a.get("status") == nome_status]
 
-    st.metric("Total nesta base", len(lista))
+    if nome_status == STATUS_EM_ATENDIMENTO:
+        st.markdown("### Filtros da base Em atendimento")
+        colf1, colf2 = st.columns(2)
+
+        atendentes = sorted(set([a.get("servidor", "Não informado") or "Não informado" for a in lista]), key=lambda x: x.casefold())
+        zonas = sorted(set([a.get("zona_eleitoral", "Não informado") or "Não informado" for a in lista]), key=lambda x: x.casefold())
+
+        with colf1:
+            filtro_atendente = st.selectbox("Filtrar por atendente", ["Todos"] + atendentes, key="filtro_em_atendimento_atendente")
+
+        with colf2:
+            filtro_zona = st.selectbox("Filtrar por zona eleitoral", ["Todas"] + zonas, key="filtro_em_atendimento_zona")
+
+        if filtro_atendente != "Todos":
+            lista = [a for a in lista if (a.get("servidor") or "Não informado") == filtro_atendente]
+
+        if filtro_zona != "Todas":
+            lista = [a for a in lista if (a.get("zona_eleitoral") or "Não informado") == filtro_zona]
+
+        st.metric("Total nesta base após filtros", len(lista))
+    else:
+        st.metric("Total nesta base", len(lista))
 
     if not lista:
         st.info("Nenhum atendimento nesta etapa.")
@@ -1962,9 +2017,10 @@ def tela_status(nome_status, titulo, texto_ajuda):
 
     for item in lista_ordenada:
         if nome_status == STATUS_CADASTRADO:
-            card_triagem(item, f"card_triagem")
+            card_triagem(item, f"card_triagem_{item.get('id')}")
         else:
-            card_atendimento(item, f"card_{nome_status.replace(' ', '_')}")
+            card_atendimento(item, f"card_{nome_status.replace(' ', '_')}_{item.get('id')}")
+
 
 
 def tela_base_geral():
@@ -2046,30 +2102,71 @@ def tela_assuntos():
     st.subheader("Assuntos")
     st.caption("Área exclusiva do administrador.")
 
+    if not eh_admin():
+        st.warning("Apenas administradores podem gerenciar assuntos.")
+        return
+
     lista = assuntos()
 
+    st.markdown("### Incluir novo assunto")
     with st.form("form_assunto"):
         novo = st.text_input("Novo assunto")
-        if st.form_submit_button("Adicionar assunto"):
-            if not novo.strip():
+        if st.form_submit_button("Adicionar assunto", type="primary"):
+            novo = novo.strip()
+            if not novo:
                 st.warning("Informe um assunto.")
+            elif novo.casefold() in [a.casefold() for a in lista]:
+                st.warning("Este assunto já está cadastrado.")
             else:
-                lista.append(novo.strip())
+                lista.append(novo)
                 salvar_assuntos(lista)
                 st.success("Assunto adicionado.")
                 st.rerun()
 
     st.divider()
-    st.markdown("#### Assuntos triagems")
+    st.markdown("#### Assuntos cadastrados")
+    st.caption("Os assuntos são disponibilizados em ordem alfabética. A opção 'Não informado' permanece disponível para novos atendimentos.")
 
-    for assunto in lista:
-        col1, col2 = st.columns([4, 1])
-        col1.write(assunto)
-        if col2.button("Excluir", key=f"del_assunto_{assunto}"):
-            nova_lista = [a for a in lista if a != assunto]
-            salvar_assuntos(nova_lista)
-            st.success("Assunto removido da lista de opções. Registros antigos foram preservados.")
-            st.rerun()
+    for idx, assunto in enumerate(lista):
+        with st.container(border=True):
+            col1, col2, col3 = st.columns([3, 1, 1])
+
+            with col1:
+                editado = st.text_input("Assunto", value=assunto, key=f"assunto_edit_{idx}_{assunto}")
+
+            with col2:
+                st.write("")
+                st.write("")
+                if st.button("Salvar", key=f"assunto_salvar_{idx}_{assunto}"):
+                    editado = editado.strip()
+                    if not editado:
+                        st.warning("O assunto não pode ficar vazio.")
+                    elif assunto == "Não informado" and editado != "Não informado":
+                        st.warning("A opção 'Não informado' não pode ser renomeada.")
+                    elif editado.casefold() != assunto.casefold() and editado.casefold() in [a.casefold() for a in lista]:
+                        st.warning("Já existe outro assunto com este nome.")
+                    else:
+                        nova_lista = [editado if a == assunto else a for a in lista]
+                        salvar_assuntos(nova_lista)
+                        st.success("Assunto atualizado.")
+                        st.rerun()
+
+            with col3:
+                st.write("")
+                st.write("")
+                if assunto == "Não informado":
+                    st.button("Excluir", key=f"assunto_excluir_{idx}_{assunto}", disabled=True)
+                else:
+                    confirmar = st.checkbox("Confirmar", key=f"assunto_conf_{idx}_{assunto}")
+                    if st.button("Excluir", key=f"assunto_excluir_{idx}_{assunto}"):
+                        if not confirmar:
+                            st.warning("Marque a confirmação antes de excluir.")
+                        else:
+                            nova_lista = [a for a in lista if a != assunto]
+                            salvar_assuntos(nova_lista)
+                            st.success("Assunto removido da lista de opções. Registros antigos foram preservados.")
+                            st.rerun()
+
 
 
 def tela_usuarios():
