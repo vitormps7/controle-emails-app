@@ -1985,18 +1985,36 @@ def tela_status(nome_status, titulo, texto_ajuda):
 
     lista = [a for a in filtros_base(atendimentos()) if a.get("status") == nome_status]
 
-    if nome_status == STATUS_EM_ATENDIMENTO:
-        st.markdown("### Filtros da base Em atendimento")
+    if nome_status in [STATUS_EM_ATENDIMENTO, STATUS_REALIZADO]:
+        nome_base = "Em atendimento" if nome_status == STATUS_EM_ATENDIMENTO else "Atendimento realizado"
+        st.markdown(f"### Filtros da base {nome_base}")
+
         colf1, colf2 = st.columns(2)
 
-        atendentes = sorted(set([a.get("servidor", "Não informado") or "Não informado" for a in lista]), key=lambda x: x.casefold())
-        zonas = sorted(set([a.get("zona_eleitoral", "Não informado") or "Não informado" for a in lista]), key=lambda x: x.casefold())
+        atendentes = sorted(
+            set([a.get("servidor", "Não informado") or "Não informado" for a in lista]),
+            key=lambda x: x.casefold()
+        )
+        zonas = sorted(
+            set([a.get("zona_eleitoral", "Não informado") or "Não informado" for a in lista]),
+            key=lambda x: x.casefold()
+        )
+
+        sufixo_chave = "em_atendimento" if nome_status == STATUS_EM_ATENDIMENTO else "realizado"
 
         with colf1:
-            filtro_atendente = st.selectbox("Filtrar por atendente", ["Todos"] + atendentes, key="filtro_em_atendimento_atendente")
+            filtro_atendente = st.selectbox(
+                "Filtrar por atendente",
+                ["Todos"] + atendentes,
+                key=f"filtro_{sufixo_chave}_atendente"
+            )
 
         with colf2:
-            filtro_zona = st.selectbox("Filtrar por zona eleitoral", ["Todas"] + zonas, key="filtro_em_atendimento_zona")
+            filtro_zona = st.selectbox(
+                "Filtrar por zona eleitoral",
+                ["Todas"] + zonas,
+                key=f"filtro_{sufixo_chave}_zona"
+            )
 
         if filtro_atendente != "Todos":
             lista = [a for a in lista if (a.get("servidor") or "Não informado") == filtro_atendente]
@@ -2019,8 +2037,6 @@ def tela_status(nome_status, titulo, texto_ajuda):
             card_triagem(item, f"card_triagem_{item.get('id')}")
         else:
             card_atendimento(item, f"card_{nome_status.replace(' ', '_')}_{item.get('id')}")
-
-
 
 def tela_base_geral():
     st.subheader("Base geral de atendimentos")
