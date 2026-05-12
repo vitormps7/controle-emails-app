@@ -1554,13 +1554,12 @@ def tela_dashboard():
 
     st.markdown("<div class='dash-section-title'>Indicadores gerais</div><div class='dash-row-grid'>", unsafe_allow_html=True)
     usuarios_online = usuarios_logados()
-    cols = st.columns(6)
+    cols = st.columns(10)
     metricas = [
         ('Total de registros', numero_br(total), '#174A7C'),
         ('Respondidos', numero_br(realizados), '#74B24A'),
         ('Pendentes', numero_br(pendentes), '#F2A365'),
         ('% respondido', percentual_br(percentual), '#7A60A8'),
-        ('Datas inválidas', numero_br(datas_invalidas), '#D62828'),
         ('Usuários logados', numero_br(len(usuarios_online)), '#0F766E'),
     ]
     for col, (label, value, color) in zip(cols, metricas):
