@@ -1618,6 +1618,7 @@ def tela_dashboard():
     fonte_tbl = pd.DataFrame(columns=['Fonte', 'Qtd.'])
     top_servidores = pd.DataFrame(columns=['Servidor(a)', 'Qtd.'])
     top_assuntos = pd.DataFrame(columns=['Assunto', 'Qtd.'])
+    top_zonas = pd.DataFrame(columns=['Zona eleitoral', 'Qtd.'])
     meses_maior = pd.DataFrame(columns=['Mês', 'Total'])
     ultimos_meses = pd.DataFrame(columns=['Mês', 'Total'])
 
@@ -1637,6 +1638,18 @@ def tela_dashboard():
         top_assuntos = df['Assunto'].fillna('Não informado').replace('', 'Não informado').value_counts().head(8).reset_index()
         top_assuntos.columns = ['Assunto', 'Qtd.']
         top_assuntos['Qtd.'] = top_assuntos['Qtd.'].map(numero_br)
+
+        if 'Zona eleitoral' in df.columns:
+            top_zonas = (
+                df['Zona eleitoral']
+                .fillna('Não informado')
+                .replace('', 'Não informado')
+                .value_counts()
+                .head(5)
+                .reset_index()
+            )
+            top_zonas.columns = ['Zona eleitoral', 'Qtd.']
+            top_zonas['Qtd.'] = top_zonas['Qtd.'].map(numero_br)
 
         if not mensal.empty:
             meses_maior = mensal.sort_values(['Total', 'MesRef'], ascending=[False, False]).head(5)[['Mes', 'Total']].copy()
@@ -1672,6 +1685,7 @@ def tela_dashboard():
             situacao_usuario[coluna] = situacao_usuario[coluna].map(numero_br)
 
     bloco_tabela_dashboard('Situação dos atendimentos por usuário', situacao_usuario)
+    bloco_tabela_dashboard('5 zonas eleitorais que mais demandam', top_zonas)
 
     area1, area2, area3 = st.columns([2.2, 2.2, 0.9])
     with area1:
@@ -2061,6 +2075,12 @@ def tela_relatorios_exportacao():
 
     lista = filtros_base(atendimentos())
     df = atendimentos_df(lista)
+
+    zonas_relatorio = sorted(df["Zona eleitoral"].dropna().astype(str).unique()) if not df.empty and "Zona eleitoral" in df.columns else []
+    filtro_zona_relatorio = st.multiselect("Zona Eleitoral", zonas_relatorio)
+
+    if filtro_zona_relatorio:
+        df = df[df["Zona eleitoral"].isin(filtro_zona_relatorio)]
 
     if df.empty:
         st.info("Nenhum registro para exportar.")
