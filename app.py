@@ -9,6 +9,7 @@ import hashlib
 import secrets
 import smtplib
 from email.message import EmailMessage
+import requests
 import re
 try:
     import matplotlib.pyplot as plt
@@ -23,8 +24,6 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
 from reportlab.lib.utils import ImageReader
-quests
-import re
 
 # ============================================================
 # CONFIGURAÇÕES GERAIS
