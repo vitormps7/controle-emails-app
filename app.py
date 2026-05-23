@@ -4,11 +4,21 @@ from io import BytesIO
 from pathlib import Path
 from datetime import datetime, date, timezone, timedelta
 import json
+import base64
 import hashlib
 import secrets
 import smtplib
 from email.message import EmailMessage
-import requests
+import re
+import matplotlib.pyplot as plt
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
+from reportlab.lib.utils import ImageReader
+quests
 import re
 
 # ============================================================
@@ -2092,6 +2102,314 @@ def tela_base_geral():
                 card_atendimento(item, "base_geral")
 
 
+
+# ============================================================
+# RELATÓRIO PDF - SEPRO
+# ============================================================
+
+def grafico_barra_pdf(df, coluna, titulo, limite=10):
+    if df.empty or coluna not in df.columns:
+        return None
+
+    serie = (
+        df[coluna]
+        .fillna("Não informado")
+        .replace("", "Não informado")
+        .value_counts()
+        .head(limite)
+    )
+
+    if serie.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(7.5, 3.2))
+    serie.sort_values().plot(kind="barh", ax=ax)
+    ax.set_title(titulo)
+    ax.set_xlabel("Quantidade")
+    ax.set_ylabel("")
+    ax.grid(axis="x", alpha=0.25)
+    fig.tight_layout()
+
+    buffer = BytesIO()
+    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer
+
+
+def grafico_linha_pdf(df, titulo="Evolução mensal"):
+    if df.empty or "Data" not in df.columns:
+        return None
+
+    temp = df.copy()
+    temp["Data_dt"] = pd.to_datetime(temp["Data"], dayfirst=True, errors="coerce")
+    temp = temp.dropna(subset=["Data_dt"])
+
+    if temp.empty:
+        return None
+
+    serie = temp.groupby(temp["Data_dt"].dt.to_period("M")).size()
+    serie.index = serie.index.astype(str)
+
+    if serie.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(7.5, 3.2))
+    serie.plot(kind="line", marker="o", ax=ax)
+    ax.set_title(titulo)
+    ax.set_xlabel("Mês")
+    ax.set_ylabel("Quantidade")
+    ax.grid(alpha=0.25)
+    fig.autofmt_xdate(rotation=35)
+    fig.tight_layout()
+
+    buffer = BytesIO()
+    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer
+
+
+def texto_filtros_relatorio(filtros):
+    partes = []
+    for chave, valor in filtros.items():
+        if valor:
+            if isinstance(valor, (list, tuple)):
+                valor_txt = ", ".join([str(v) for v in valor]) if valor else "Todos"
+            else:
+                valor_txt = str(valor)
+            partes.append(f"<b>{chave}:</b> {valor_txt}")
+    return " | ".join(partes) if partes else "Sem filtros específicos aplicados."
+
+
+def cabecalho_relatorio(canvas_obj, doc):
+    canvas_obj.saveState()
+
+    largura, altura = landscape(A4)
+    margem = 1.1 * cm
+
+    try:
+        logo_bytes = BytesIO(base64.b64decode(LOGO_CORREGEDORIA_BASE64))
+        canvas_obj.drawImage(
+            ImageReader(logo_bytes),
+            margem,
+            altura - 2.25 * cm,
+            width=6.8 * cm,
+            height=1.35 * cm,
+            preserveAspectRatio=True,
+            mask="auto"
+        )
+    except Exception:
+        canvas_obj.setFont("Helvetica-Bold", 10)
+        canvas_obj.drawString(margem, altura - 1.6 * cm, "CORREGEDORIA REGIONAL ELEITORAL DA BAHIA")
+
+    canvas_obj.setFont("Helvetica-Bold", 12)
+    canvas_obj.setFillColor(colors.HexColor("#174A7C"))
+    canvas_obj.drawRightString(largura - margem, altura - 1.35 * cm, "Sistema SEPRO - Controle de Atendimentos")
+
+    canvas_obj.setFont("Helvetica", 8)
+    canvas_obj.setFillColor(colors.HexColor("#475569"))
+    canvas_obj.drawRightString(largura - margem, altura - 1.75 * cm, "Relatório gerencial gerado automaticamente")
+
+    canvas_obj.setStrokeColor(colors.HexColor("#D9E2EF"))
+    canvas_obj.line(margem, altura - 2.55 * cm, largura - margem, altura - 2.55 * cm)
+
+    canvas_obj.setFont("Helvetica", 8)
+    canvas_obj.setFillColor(colors.HexColor("#64748B"))
+    canvas_obj.drawString(margem, 0.75 * cm, f"Emitido em {agora_texto_brasilia()} - Horário oficial de Brasília")
+    canvas_obj.drawRightString(largura - margem, 0.75 * cm, f"Página {doc.page}")
+
+    canvas_obj.restoreState()
+
+
+def tabela_resumo_pdf(df):
+    total = len(df)
+    triagem = int((df["Status"] == STATUS_CADASTRADO).sum()) if not df.empty and "Status" in df.columns else 0
+    em_atendimento = int((df["Status"] == STATUS_EM_ATENDIMENTO).sum()) if not df.empty and "Status" in df.columns else 0
+    realizado = int((df["Status"] == STATUS_REALIZADO).sum()) if not df.empty and "Status" in df.columns else 0
+    percentual = (realizado / total * 100) if total else 0
+
+    dados = [
+        ["Indicador", "Resultado"],
+        ["Total de atendimentos", numero_br(total)],
+        ["Em triagem", numero_br(triagem)],
+        ["Em atendimento", numero_br(em_atendimento)],
+        ["Atendimentos realizados", numero_br(realizado)],
+        ["Percentual realizado", percentual_br(percentual)],
+    ]
+
+    tabela = Table(dados, colWidths=[7 * cm, 4 * cm])
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174A7C")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2EF")),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#F8FAFC"), colors.white]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    return tabela
+
+
+def tabela_dados_pdf(df, limite=80):
+    colunas_preferidas = [
+        "ID", "Data", "Zona eleitoral", "Assunto", "Servidor(a)",
+        "Fonte", "Status", "Prioridade", "Origem"
+    ]
+
+    colunas = [c for c in colunas_preferidas if c in df.columns]
+    temp = df[colunas].head(limite).copy() if not df.empty and colunas else pd.DataFrame()
+
+    if temp.empty:
+        return Paragraph("Não há registros para compor a tabela analítica.", ParagraphStyle("normal", fontSize=9))
+
+    dados = [colunas] + temp.fillna("").astype(str).values.tolist()
+
+    larguras = {
+        "ID": 1.2 * cm,
+        "Data": 2.0 * cm,
+        "Zona eleitoral": 4.2 * cm,
+        "Assunto": 4.2 * cm,
+        "Servidor(a)": 3.8 * cm,
+        "Fonte": 2.2 * cm,
+        "Status": 3.0 * cm,
+        "Prioridade": 2.0 * cm,
+        "Origem": 3.6 * cm,
+    }
+
+    tabela = Table(dados, colWidths=[larguras.get(c, 3 * cm) for c in colunas], repeatRows=1)
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174A7C")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("GRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#D9E2EF")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    return tabela
+
+
+def gerar_relatorio_pdf_sepro(df, filtros_aplicados):
+    buffer_pdf = BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer_pdf,
+        pagesize=landscape(A4),
+        rightMargin=1.1 * cm,
+        leftMargin=1.1 * cm,
+        topMargin=3.0 * cm,
+        bottomMargin=1.4 * cm,
+        title="Relatório de Atendimentos - SEPRO",
+    )
+
+    estilos = getSampleStyleSheet()
+    titulo = ParagraphStyle(
+        "TituloSEPRO",
+        parent=estilos["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        leading=20,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#174A7C"),
+        spaceAfter=8,
+    )
+    subtitulo = ParagraphStyle(
+        "SubtituloSEPRO",
+        parent=estilos["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#475569"),
+        spaceAfter=14,
+    )
+    h2 = ParagraphStyle(
+        "H2SEPRO",
+        parent=estilos["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#174A7C"),
+        spaceBefore=10,
+        spaceAfter=6,
+    )
+    normal = ParagraphStyle(
+        "NormalSEPRO",
+        parent=estilos["Normal"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor("#1F2937"),
+    )
+
+    elementos = []
+
+    elementos.append(Paragraph("RELATÓRIO GERENCIAL DE ATENDIMENTOS", titulo))
+    elementos.append(Paragraph("SEPRO / COAJUC - Sistema SEPRO - Controle de Atendimentos", subtitulo))
+
+    elementos.append(Paragraph("1. Identificação e filtros aplicados", h2))
+    elementos.append(Paragraph(f"<b>Usuário emissor:</b> {usuario_logado().get('nome', '')} ({usuario_logado().get('email', '')})", normal))
+    elementos.append(Paragraph(f"<b>Data e hora de emissão:</b> {agora_texto_brasilia()} - Horário oficial de Brasília", normal))
+    elementos.append(Paragraph(texto_filtros_relatorio(filtros_aplicados), normal))
+    elementos.append(Spacer(1, 0.25 * cm))
+
+    elementos.append(Paragraph("2. Resumo executivo", h2))
+    elementos.append(tabela_resumo_pdf(df))
+    elementos.append(Spacer(1, 0.3 * cm))
+
+    elementos.append(Paragraph("3. Indicadores estatísticos", h2))
+
+    graficos = [
+        grafico_barra_pdf(df, "Status", "Atendimentos por status", limite=6),
+        grafico_barra_pdf(df, "Assunto", "Atendimentos por assunto", limite=8),
+        grafico_barra_pdf(df, "Zona eleitoral", "Zonas eleitorais que mais demandam", limite=8),
+        grafico_barra_pdf(df, "Servidor(a)", "Atendimentos por servidor(a)", limite=8),
+        grafico_linha_pdf(df, "Evolução mensal dos atendimentos"),
+    ]
+
+    imagens = []
+    for grafico in graficos:
+        if grafico:
+            imagens.append(Image(grafico, width=11.5 * cm, height=5.0 * cm))
+
+    if imagens:
+        pares = []
+        for i in range(0, len(imagens), 2):
+            linha = imagens[i:i+2]
+            if len(linha) == 1:
+                linha.append("")
+            pares.append(linha)
+        tabela_graficos = Table(pares, colWidths=[12.0 * cm, 12.0 * cm])
+        tabela_graficos.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        elementos.append(tabela_graficos)
+    else:
+        elementos.append(Paragraph("Não há dados suficientes para geração de gráficos estatísticos.", normal))
+
+    elementos.append(PageBreak())
+
+    elementos.append(Paragraph("4. Tabela analítica dos atendimentos filtrados", h2))
+    elementos.append(Paragraph("A tabela abaixo apresenta os registros conforme os filtros aplicados. Para preservar a legibilidade do PDF, são exibidos até 80 registros.", normal))
+    elementos.append(Spacer(1, 0.2 * cm))
+    elementos.append(tabela_dados_pdf(df, limite=80))
+
+    doc.build(elementos, onFirstPage=cabecalho_relatorio, onLaterPages=cabecalho_relatorio)
+
+    buffer_pdf.seek(0)
+    return buffer_pdf.getvalue()
+
+
 def tela_relatorios_exportacao():
     st.subheader("Relatórios e exportação")
 
@@ -2110,6 +2428,25 @@ def tela_relatorios_exportacao():
 
     st.markdown("#### Base filtrada")
     st.dataframe(df, use_container_width=True, hide_index=True)
+
+    filtros_para_pdf = {
+        "Quantidade de registros": numero_br(len(df)),
+        "Zona Eleitoral": filtro_zona_relatorio if "filtro_zona_relatorio" in locals() else [],
+        "Data de emissão": agora_texto_brasilia(),
+    }
+
+    st.markdown("#### Relatório apresentável")
+    st.caption("Gera relatório em PDF com timbre, resumo gerencial, gráficos estatísticos e tabela analítica conforme a base filtrada.")
+
+    pdf_relatorio = gerar_relatorio_pdf_sepro(df, filtros_para_pdf)
+
+    st.download_button(
+        "Gerar relatório PDF apresentável",
+        data=pdf_relatorio,
+        file_name=f"relatorio_sepro_atendimentos_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
+        mime="application/pdf",
+        type="primary"
+    )
 
     st.divider()
 
