@@ -1402,7 +1402,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     salvar_status(STATUS_REALIZADO)
 
         with col_d:
-            with st.popover("Editar observação/status"):
+            with st.popover("Editar atendimento"):
                 nova_obs = st.text_area(
                     "Observações",
                     value=atendimento.get("observacoes", ""),
@@ -1414,11 +1414,33 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     index=STATUS_OPCOES.index(status) if status in STATUS_OPCOES else 0,
                     key=f"{chave_prefixo}_status_{atendimento.get('id')}"
                 )
+                servidores_disponiveis = nomes_usuarios_ativos() or []
+                servidor_atual = atendimento.get("servidor", "") or "Não informado"
+
+                if servidor_atual not in servidores_disponiveis:
+                    servidores_disponiveis = [servidor_atual] + servidores_disponiveis
+
+                if "Não informado" not in servidores_disponiveis:
+                    servidores_disponiveis = ["Não informado"] + servidores_disponiveis
+
                 novo_servidor = st.selectbox(
                     "Servidor(a)",
-                    nomes_usuarios_ativos() or [atendimento.get("servidor", "") or "Não definido"],
-                    index=0,
+                    servidores_disponiveis,
+                    index=servidores_disponiveis.index(servidor_atual) if servidor_atual in servidores_disponiveis else 0,
                     key=f"{chave_prefixo}_serv_{atendimento.get('id')}"
+                )
+
+                lista_assuntos_edicao = assuntos()
+                assunto_atual = atendimento.get("assunto", "") or "Não informado"
+
+                if assunto_atual not in lista_assuntos_edicao:
+                    lista_assuntos_edicao = [assunto_atual] + lista_assuntos_edicao
+
+                novo_assunto = st.selectbox(
+                    "Assunto",
+                    lista_assuntos_edicao,
+                    index=lista_assuntos_edicao.index(assunto_atual) if assunto_atual in lista_assuntos_edicao else 0,
+                    key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
                 )
 
                 if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
@@ -1427,6 +1449,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             item["observacoes"] = nova_obs
                             item["status"] = novo_status
                             item["servidor"] = novo_servidor
+                            item["assunto"] = novo_assunto
                             item["atualizado_em"] = agora_iso()
                             if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
                                 item["data_realizacao"] = hoje_ddmmaaaa()
