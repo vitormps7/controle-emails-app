@@ -1,4 +1,7 @@
 streamlit
 pandas
-openpyxl
+numpy
+requests
+reportlab
+matplotlib
 supabase
