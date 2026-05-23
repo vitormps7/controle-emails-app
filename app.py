@@ -10,7 +10,12 @@ import secrets
 import smtplib
 from email.message import EmailMessage
 import re
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_DISPONIVEL = True
+except Exception:
+    plt = None
+    MATPLOTLIB_DISPONIVEL = False
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4, landscape
@@ -2108,6 +2113,8 @@ def tela_base_geral():
 # ============================================================
 
 def grafico_barra_pdf(df, coluna, titulo, limite=10):
+    if not MATPLOTLIB_DISPONIVEL:
+        return None
     if df.empty or coluna not in df.columns:
         return None
 
@@ -2138,6 +2145,8 @@ def grafico_barra_pdf(df, coluna, titulo, limite=10):
 
 
 def grafico_linha_pdf(df, titulo="Evolução mensal"):
+    if not MATPLOTLIB_DISPONIVEL:
+        return None
     if df.empty or "Data" not in df.columns:
         return None
 
@@ -2434,6 +2443,9 @@ def tela_relatorios_exportacao():
         "Zona Eleitoral": filtro_zona_relatorio if "filtro_zona_relatorio" in locals() else [],
         "Data de emissão": agora_texto_brasilia(),
     }
+
+    if not MATPLOTLIB_DISPONIVEL:
+        st.warning("Biblioteca matplotlib não instalada no ambiente. O relatório PDF será gerado sem gráficos estatísticos.")
 
     st.markdown("#### Relatório apresentável")
     st.caption("Gera relatório em PDF com timbre, resumo gerencial, gráficos estatísticos e tabela analítica conforme a base filtrada.")
