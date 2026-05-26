@@ -1464,6 +1464,8 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             item["status"] = novo_status
                             item["servidor"] = novo_servidor
                             item["assunto"] = novo_assunto
+                            if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
+                                item["realizado_em"] = agora_iso()
                             item["atualizado_em"] = agora_iso()
                             if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
                                 item["data_realizacao"] = hoje_ddmmaaaa()
@@ -1487,6 +1489,166 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             st.rerun()
                         else:
                             st.error("Atendimento não encontrado para exclusão.")
+
+
+
+def obter_data_hora_atendimento(valor):
+    """
+    Converte datas/horas do sistema para datetime.
+    Aceita formatos ISO e dd/mm/aaaa hh:mm.
+    """
+    if valor is None:
+        return None
+
+    texto = str(valor).strip()
+    if not texto:
+        return None
+
+    for formato in ("%d/%m/%Y %H:%M", "%d/%m/%Y"):
+        try:
+            dt = datetime.strptime(texto, formato)
+            if formato == "%d/%m/%Y":
+                dt = datetime.combine(dt.date(), datetime.min.time())
+            return dt.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+        except Exception:
+            pass
+
+    try:
+        texto_iso = texto.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(texto_iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+        return dt.astimezone(FUSO_HORARIO_BRASILIA)
+    except Exception:
+        return None
+
+
+def calcular_horas_entre_triagem_realizacao(atendimento):
+    """
+    Calcula o tempo, em horas, entre a triagem e a realização.
+    Marco inicial: criado_em/data_hora_triagem/data.
+    Marco final: realizado_em/concluido_em/atualizado_em.
+    """
+    inicio = (
+        obter_data_hora_atendimento(atendimento.get("criado_em"))
+        or obter_data_hora_atendimento(atendimento.get("data_hora_triagem"))
+        or obter_data_hora_atendimento(atendimento.get("data"))
+    )
+
+    fim = (
+        obter_data_hora_atendimento(atendimento.get("realizado_em"))
+        or obter_data_hora_atendimento(atendimento.get("concluido_em"))
+        or obter_data_hora_atendimento(atendimento.get("atualizado_em"))
+    )
+
+    if not inicio or not fim:
+        return None
+
+    horas = (fim - inicio).total_seconds() / 3600
+    if horas < 0:
+        return None
+
+    return horas
+
+
+def formatar_tempo_horas(horas):
+    if horas is None:
+        return "Não calculado"
+
+    try:
+        horas = float(horas)
+    except Exception:
+        return "Não calculado"
+
+    if horas < 1:
+        minutos = round(horas * 60)
+        return f"{minutos} min"
+
+    dias = int(horas // 24)
+    resto_horas = int(round(horas % 24))
+
+    if dias > 0:
+        return f"{dias}d {resto_horas}h"
+
+    return f"{horas:.1f}h".replace(".", ",")
+
+
+def dataframe_tempo_medio_por_fonte(lista_atendimentos):
+    registros = []
+
+    for atendimento in lista_atendimentos:
+        if atendimento.get("status") != STATUS_REALIZADO:
+            continue
+
+        fonte = atendimento.get("fonte") or "Não informado"
+        horas = calcular_horas_entre_triagem_realizacao(atendimento)
+
+        if horas is None:
+            continue
+
+        registros.append({
+            "Fonte": fonte,
+            "Tempo em horas": horas,
+            "ID": atendimento.get("id"),
+        })
+
+    if not registros:
+        return pd.DataFrame(columns=["Tipo/Fonte", "Atendimentos realizados", "Tempo médio"])
+
+    df_tempo = pd.DataFrame(registros)
+    ordem_fontes = ["Telefone", "E-mail", "WhatsApp", "Outro"]
+    linhas = []
+
+    for fonte in ordem_fontes:
+        base = df_tempo[df_tempo["Fonte"].astype(str).str.casefold() == fonte.casefold()]
+        if base.empty:
+            continue
+        media = base["Tempo em horas"].mean()
+        linhas.append({
+            "Tipo/Fonte": fonte,
+            "Atendimentos realizados": len(base),
+            "Tempo médio": formatar_tempo_horas(media),
+        })
+
+    fontes_mapeadas = {f.casefold() for f in ordem_fontes}
+    for fonte in sorted(df_tempo["Fonte"].dropna().astype(str).unique(), key=lambda x: x.casefold()):
+        if fonte.casefold() in fontes_mapeadas:
+            continue
+        base = df_tempo[df_tempo["Fonte"] == fonte]
+        media = base["Tempo em horas"].mean()
+        linhas.append({
+            "Tipo/Fonte": fonte,
+            "Atendimentos realizados": len(base),
+            "Tempo médio": formatar_tempo_horas(media),
+        })
+
+    return pd.DataFrame(linhas)
+
+
+def aplicar_filtro_tempo_atendimento(lista_atendimentos, faixa):
+    if not faixa or faixa == "Todos":
+        return lista_atendimentos
+
+    resultado = []
+
+    for atendimento in lista_atendimentos:
+        horas = calcular_horas_entre_triagem_realizacao(atendimento)
+
+        if horas is None:
+            if faixa == "Sem tempo calculado":
+                resultado.append(atendimento)
+            continue
+
+        if faixa == "Até 24 horas" and horas <= 24:
+            resultado.append(atendimento)
+        elif faixa == "De 1 a 3 dias" and 24 < horas <= 72:
+            resultado.append(atendimento)
+        elif faixa == "De 3 a 7 dias" and 72 < horas <= 168:
+            resultado.append(atendimento)
+        elif faixa == "Acima de 7 dias" and horas > 168:
+            resultado.append(atendimento)
+
+    return resultado
 
 
 def numero_br(valor):
@@ -1722,6 +1884,9 @@ def tela_dashboard():
 
     bloco_tabela_dashboard('Situação dos atendimentos por usuário', situacao_usuario)
     bloco_tabela_dashboard('5 zonas eleitorais que mais demandam', top_zonas)
+    tempo_medio_fonte = dataframe_tempo_medio_por_fonte(lista)
+    bloco_tabela_dashboard('Tempo médio de atendimento por tipo/fonte', tempo_medio_fonte)
+
 
     area1, area2, area3 = st.columns([2.2, 2.2, 0.9])
     with area1:
@@ -2266,7 +2431,7 @@ def tabela_resumo_pdf(df):
 def tabela_dados_pdf(df, limite=80):
     colunas_preferidas = [
         "ID", "Data", "Zona eleitoral", "Assunto", "Servidor(a)",
-        "Fonte", "Status", "Prioridade", "Origem"
+        "Fonte", "Status", "Prioridade", "Origem", "Tempo de atendimento"
     ]
 
     colunas = [c for c in colunas_preferidas if c in df.columns]
@@ -2286,7 +2451,8 @@ def tabela_dados_pdf(df, limite=80):
         "Fonte": 2.2 * cm,
         "Status": 3.0 * cm,
         "Prioridade": 2.0 * cm,
-        "Origem": 3.6 * cm,
+        "Origem": 3.2 * cm,
+        "Tempo de atendimento": 2.6 * cm,
     }
 
     tabela = Table(dados, colWidths=[larguras.get(c, 3 * cm) for c in colunas], repeatRows=1)
@@ -2422,6 +2588,21 @@ def tela_relatorios_exportacao():
     st.subheader("Relatórios e exportação")
 
     lista = filtros_base(atendimentos())
+    filtro_tempo_atendimento_relatorio = st.selectbox(
+        "Tempo de atendimento",
+        [
+            "Todos",
+            "Até 24 horas",
+            "De 1 a 3 dias",
+            "De 3 a 7 dias",
+            "Acima de 7 dias",
+            "Sem tempo calculado",
+        ],
+        key="filtro_tempo_atendimento_relatorio"
+    )
+
+    lista = aplicar_filtro_tempo_atendimento(lista, filtro_tempo_atendimento_relatorio)
+
     df = atendimentos_df(lista)
 
     zonas_relatorio = sorted(df["Zona eleitoral"].dropna().astype(str).unique()) if not df.empty and "Zona eleitoral" in df.columns else []
@@ -2429,6 +2610,13 @@ def tela_relatorios_exportacao():
 
     if filtro_zona_relatorio:
         df = df[df["Zona eleitoral"].isin(filtro_zona_relatorio)]
+
+    if not df.empty:
+        mapa_horas = {}
+        for atendimento in lista:
+            mapa_horas[str(atendimento.get("id"))] = formatar_tempo_horas(calcular_horas_entre_triagem_realizacao(atendimento))
+        if "ID" in df.columns:
+            df["Tempo de atendimento"] = df["ID"].astype(str).map(mapa_horas).fillna("Não calculado")
 
     if df.empty:
         st.info("Nenhum registro para exportar.")
