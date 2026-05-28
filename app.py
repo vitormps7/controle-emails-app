@@ -65,6 +65,11 @@ FONTES = [
     "Outro",
 ]
 
+SECOES_ATENDIMENTO = [
+    "SEPRO",
+    "SEORZE",
+]
+
 ASSUNTOS_PADRAO = [
     "Não informado",
     "Cumprimento de Sentença",
@@ -347,6 +352,14 @@ def iso_para_exibir(valor):
     return formatar_data_hora_brasilia(valor)
 
 
+
+def normalizar_secao(valor):
+    texto = str(valor or "").strip().upper()
+    if texto in SECOES_ATENDIMENTO:
+        return texto
+    return "SEPRO"
+
+
 def senha_hash(senha):
     return hashlib.sha256(str(senha).encode("utf-8")).hexdigest()
 
@@ -603,6 +616,7 @@ def usuario_db_para_app(row):
         "email": row.get("email", ""),
         "senha_hash": row.get("senha_hash", ""),
         "perfil": row.get("perfil", "Usuário"),
+        "secao_operador": normalizar_secao(row.get("secao_operador") or row.get("secao") or "SEPRO"),
         "ativo": row.get("ativo", True),
         "validado": row.get("validado", False),
         "token_validacao": row.get("token_validacao") or "",
@@ -619,6 +633,7 @@ def usuario_app_para_db(u):
         "email": normalizar_email(u.get("email", "")),
         "senha_hash": u.get("senha_hash", ""),
         "perfil": u.get("perfil", "Usuário"),
+        "secao_operador": normalizar_secao(u.get("secao_operador") or u.get("secao") or "SEPRO"),
         "ativo": bool(u.get("ativo", True)),
         "validado": bool(u.get("validado", False)),
         "token_validacao": u.get("token_validacao") or None,
@@ -638,6 +653,7 @@ def atendimento_db_para_app(row):
         "id": row.get("id"),
         "data": data_app(row.get("data_atendimento")),
         "status": row.get("status", STATUS_CADASTRADO),
+        "secao": normalizar_secao(row.get("secao") or "SEPRO"),
         "servidor": row.get("servidor") or "Não informado",
         "fonte": row.get("fonte") or "",
         "assunto": row.get("assunto") or "",
@@ -661,6 +677,7 @@ def atendimento_app_para_db(a):
         "id": a.get("id"),
         "data_atendimento": data_db(a.get("data")),
         "status": a.get("status", STATUS_CADASTRADO),
+        "secao": normalizar_secao(a.get("secao") or "SEPRO"),
         "servidor": a.get("servidor") or "Não informado",
         "fonte": a.get("fonte") or None,
         "assunto": a.get("assunto") or None,
@@ -784,41 +801,111 @@ def excluir_atendimento_por_id(id_atendimento):
     return True
 
 
-def assuntos():
-    rows = supabase_get("assuntos", {"select": "nome,ativo", "ativo": "eq.true", "order": "nome.asc"})
-    lista = [row.get("nome", "").strip() for row in (rows or []) if row.get("nome")]
 
-    if "Não informado" not in lista:
-        lista.append("Não informado")
+def assunto_rows():
+    rows = supabase_get("assuntos", {"select": "*", "ativo": "eq.true", "order": "nome.asc"})
+    registros = []
 
-    if not lista:
-        salvar_assuntos(ASSUNTOS_PADRAO)
-        lista = ASSUNTOS_PADRAO
+    for row in (rows or []):
+        nome = str(row.get("nome") or "").strip()
+        if not nome:
+            continue
+        registros.append({
+            "nome": nome,
+            "secao": normalizar_secao(row.get("secao") or "SEPRO"),
+            "ativo": row.get("ativo", True),
+        })
 
-    lista = sorted(set([str(x).strip() for x in lista if str(x).strip()]), key=lambda x: x.casefold())
+    if not registros:
+        registros = [{"nome": nome, "secao": "SEPRO", "ativo": True} for nome in ASSUNTOS_PADRAO]
+        salvar_assuntos_registros(registros)
 
+    if not any(r["nome"] == "Não informado" for r in registros):
+        registros.append({"nome": "Não informado", "secao": "SEPRO", "ativo": True})
+
+    registros = sorted(
+        registros,
+        key=lambda r: (0 if r["nome"] == "Não informado" else 1, r["secao"], r["nome"].casefold())
+    )
+    return registros
+
+
+def assuntos(secao=None):
+    registros = assunto_rows()
+    secao_norm = normalizar_secao(secao) if secao else None
+
+    lista = []
+    for r in registros:
+        nome = r.get("nome", "").strip()
+        if not nome:
+            continue
+        if nome == "Não informado":
+            lista.append(nome)
+        elif secao_norm is None or normalizar_secao(r.get("secao")) == secao_norm:
+            lista.append(nome)
+
+    lista = sorted(set(lista), key=lambda x: x.casefold())
     if "Não informado" in lista:
         lista.remove("Não informado")
-        lista = ["Não informado"] + lista
-
-    return lista
+    return ["Não informado"] + lista
 
 
-
-def salvar_assuntos(lista):
+def salvar_assuntos_registros(registros):
     criar_backup_automatico("antes_salvar_assuntos")
     supabase_delete_all("assuntos")
 
-    lista_limpa = [str(nome).strip() for nome in lista if str(nome).strip()]
-    if "Não informado" not in lista_limpa:
-        lista_limpa.append("Não informado")
+    normalizados = []
+    vistos = set()
 
-    lista_limpa = sorted(set(lista_limpa), key=lambda x: x.casefold())
+    for r in registros:
+        if isinstance(r, dict):
+            nome = str(r.get("nome") or "").strip()
+            secao = normalizar_secao(r.get("secao") or "SEPRO")
+        else:
+            nome = str(r or "").strip()
+            secao = "SEPRO"
 
-    rows = [{"nome": nome, "ativo": True, "criado_em": agora_iso()} for nome in lista_limpa]
-    if rows:
-        supabase_insert("assuntos", rows)
+        if not nome:
+            continue
+
+        chave = (nome.casefold(), secao)
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+
+        normalizados.append({
+            "nome": nome,
+            "secao": secao,
+            "ativo": True,
+            "criado_em": agora_iso(),
+        })
+
+    if not any(r["nome"] == "Não informado" for r in normalizados):
+        normalizados.append({
+            "nome": "Não informado",
+            "secao": "SEPRO",
+            "ativo": True,
+            "criado_em": agora_iso(),
+        })
+
+    normalizados = sorted(
+        normalizados,
+        key=lambda r: (0 if r["nome"] == "Não informado" else 1, r["secao"], r["nome"].casefold())
+    )
+
+    if normalizados:
+        supabase_insert("assuntos", normalizados)
     criar_backup_automatico("apos_salvar_assuntos")
+
+
+def salvar_assuntos(lista):
+    registros = []
+    for item in lista:
+        if isinstance(item, dict):
+            registros.append(item)
+        else:
+            registros.append({"nome": item, "secao": "SEPRO", "ativo": True})
+    salvar_assuntos_registros(registros)
 
 
 
@@ -913,7 +1000,7 @@ def atendimentos_df(lista=None):
     dados = lista if lista is not None else atendimentos()
     if not dados:
         return pd.DataFrame(columns=[
-            "id", "data", "status", "servidor", "fonte", "assunto",
+            "id", "data", "status", "secao", "servidor", "fonte", "assunto",
             "zona_eleitoral", "origem", "descricao", "observacoes",
             "criado_por", "criado_em", "atualizado_em", "data_realizacao"
         ])
@@ -921,7 +1008,7 @@ def atendimentos_df(lista=None):
     df = pd.DataFrame(dados)
 
     for col in [
-        "id", "data", "status", "servidor", "fonte", "assunto",
+        "id", "data", "status", "secao", "servidor", "fonte", "assunto",
         "zona_eleitoral", "origem", "descricao", "observacoes",
         "criado_por", "criado_em", "atualizado_em", "data_realizacao"
     ]:
@@ -936,6 +1023,7 @@ def atendimentos_df(lista=None):
     df = df.rename(columns={
         "id": "ID",
         "status": "Status",
+        "secao": "Seção",
         "servidor": "Servidor(a)",
         "fonte": "Fonte",
         "assunto": "Assunto",
@@ -947,7 +1035,7 @@ def atendimentos_df(lista=None):
     })
 
     colunas = [
-        "ID", "Data", "Status", "Servidor(a)", "Fonte", "Assunto",
+        "ID", "Data", "Status", "Seção", "Servidor(a)", "Fonte", "Assunto",
         "Zona eleitoral", "Origem da demanda", "Descrição", "Observações",
         "Criado por", "Criado em", "Atualizado em", "Data de realização"
     ]
@@ -1156,6 +1244,7 @@ def tela_login():
                     "email": email,
                     "senha_hash": senha_hash(senha),
                     "perfil": "Administrador" if primeiro_usuario else "Usuário",
+                    "secao_operador": "SEPRO",
                     "ativo": True,
                     "validado": True if primeiro_usuario else False,
                     "token_validacao": "" if primeiro_usuario else token,
@@ -1285,6 +1374,7 @@ def filtros_base(lista):
 
     busca = st.sidebar.text_input("Busca livre")
     status = st.sidebar.multiselect("Status", STATUS_OPCOES)
+    filtro_secoes = st.sidebar.multiselect("Seção", SECOES_ATENDIMENTO)
     fontes = st.sidebar.multiselect("Fonte", FONTES)
     lista_assuntos = assuntos()
     filtro_assuntos = st.sidebar.multiselect("Assunto", lista_assuntos)
@@ -1322,6 +1412,9 @@ def filtros_base(lista):
 
     if status:
         df = df[df["Status"].isin(status)]
+
+    if filtro_secoes and "Seção" in df.columns:
+        df = df[df["Seção"].isin(filtro_secoes)]
 
     if fontes:
         df = df[df["Fonte"].isin(fontes)]
@@ -1366,6 +1459,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
 
         with col2:
             st.markdown(f"**Assunto:** {atendimento.get('assunto', '')}")
+            st.markdown(f"**Seção:** {normalizar_secao(atendimento.get('secao'))}")
             st.markdown(f"**Origem:** {atendimento.get('origem', '')}")
             st.markdown(f"**Zona:** {atendimento.get('zona_eleitoral', '')}")
             st.markdown(f"**Descrição:** {atendimento.get('descricao', '')}")
@@ -1428,6 +1522,13 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     index=STATUS_OPCOES.index(status) if status in STATUS_OPCOES else 0,
                     key=f"{chave_prefixo}_status_{atendimento.get('id')}"
                 )
+                secao_atual = normalizar_secao(atendimento.get("secao"))
+                nova_secao = st.selectbox(
+                    "Seção",
+                    SECOES_ATENDIMENTO,
+                    index=SECOES_ATENDIMENTO.index(secao_atual) if secao_atual in SECOES_ATENDIMENTO else 0,
+                    key=f"{chave_prefixo}_secao_{atendimento.get('id')}"
+                )
                 servidores_disponiveis = nomes_usuarios_ativos() or []
                 servidor_atual = atendimento.get("servidor", "") or "Não informado"
 
@@ -1444,7 +1545,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     key=f"{chave_prefixo}_serv_{atendimento.get('id')}"
                 )
 
-                lista_assuntos_edicao = assuntos()
+                lista_assuntos_edicao = assuntos(nova_secao)
                 assunto_atual = atendimento.get("assunto", "") or "Não informado"
 
                 if assunto_atual not in lista_assuntos_edicao:
@@ -1462,6 +1563,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         if int(item.get("id")) == int(atendimento.get("id")):
                             item["observacoes"] = nova_obs
                             item["status"] = novo_status
+                            item["secao"] = nova_secao
                             item["servidor"] = novo_servidor
                             item["assunto"] = novo_assunto
                             if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
@@ -1739,6 +1841,9 @@ def tela_dashboard():
     qtd_email = int((fontes_norm == 'E-mail').sum()) if not df.empty else 0
     qtd_telefone = int((fontes_norm == 'Telefone').sum()) if not df.empty else 0
     qtd_outros = int(total - qtd_email - qtd_telefone) if total else 0
+    secoes_norm = df["Seção"].apply(normalizar_secao) if not df.empty and "Seção" in df.columns else pd.Series(dtype="object")
+    qtd_sepro = int((secoes_norm == "SEPRO").sum()) if total else 0
+    qtd_seorze = int((secoes_norm == "SEORZE").sum()) if total else 0
 
     periodo_ini = ''
     periodo_fim = ''
@@ -1760,6 +1865,8 @@ def tela_dashboard():
         ('Pendentes', numero_br(pendentes), '#F2A365'),
         ('% respondido', percentual_br(percentual), '#7A60A8'),
         ('Usuários logados', numero_br(len(usuarios_online)), '#0F766E'),
+        ('SEPRO', numero_br(qtd_sepro), '#174A7C'),
+        ('SEORZE', numero_br(qtd_seorze), '#7A60A8'),
     ]
     for col, (label, value, color) in zip(cols, metricas):
         with col:
@@ -1814,6 +1921,7 @@ def tela_dashboard():
 
     situacao = pd.DataFrame(columns=['Situação', 'Qtd.'])
     fonte_tbl = pd.DataFrame(columns=['Fonte', 'Qtd.'])
+    secao_tbl = pd.DataFrame(columns=['Seção', 'Qtd.'])
     top_servidores = pd.DataFrame(columns=['Servidor(a)', 'Qtd.'])
     top_assuntos = pd.DataFrame(columns=['Assunto', 'Qtd.'])
     top_zonas = pd.DataFrame(columns=['Zona eleitoral', 'Qtd.'])
@@ -1828,6 +1936,11 @@ def tela_dashboard():
         fonte_tbl = fontes_norm.value_counts().reset_index()
         fonte_tbl.columns = ['Fonte', 'Qtd.']
         fonte_tbl['Qtd.'] = fonte_tbl['Qtd.'].map(numero_br)
+
+        if "Seção" in df.columns:
+            secao_tbl = df["Seção"].fillna("SEPRO").apply(normalizar_secao).value_counts().reset_index()
+            secao_tbl.columns = ["Seção", "Qtd."]
+            secao_tbl["Qtd."] = secao_tbl["Qtd."].map(numero_br)
 
         top_servidores = df['Servidor(a)'].fillna('Não informado').replace('', 'Não informado').value_counts().head(8).reset_index()
         top_servidores.columns = ['Servidor(a)', 'Qtd.']
@@ -1883,6 +1996,7 @@ def tela_dashboard():
             situacao_usuario[coluna] = situacao_usuario[coluna].map(numero_br)
 
     bloco_tabela_dashboard('Situação dos atendimentos por usuário', situacao_usuario)
+    bloco_tabela_dashboard('Atendimentos por seção', secao_tbl)
     bloco_tabela_dashboard('5 zonas eleitorais que mais demandam', top_zonas)
     tempo_medio_fonte = dataframe_tempo_medio_por_fonte(lista)
     bloco_tabela_dashboard('Tempo médio de atendimento por tipo/fonte', tempo_medio_fonte)
@@ -1915,7 +2029,7 @@ def tela_novo_atendimento():
     st.info("Todo novo atendimento entra primeiro na base **Triagem**. Na Triagem, será escolhido o usuário responsável; ao designar o usuário, a demanda seguirá para **Em atendimento**.")
 
     with st.form("form_novo_atendimento", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             data_atendimento = st.date_input("Data do atendimento", value=agora_brasilia().date(), format="DD/MM/YYYY")
@@ -1926,6 +2040,9 @@ def tela_novo_atendimento():
         with col3:
             zona = st.selectbox("Zona eleitoral", ZONAS_BAHIA)
 
+        with col4:
+            secao_atendimento = st.selectbox("Seção responsável", SECOES_ATENDIMENTO, index=0)
+
         col4, col5, col6 = st.columns(3)
 
         with col4:
@@ -1933,7 +2050,7 @@ def tela_novo_atendimento():
             fonte = st.selectbox("Fonte", FONTES, index=idx_fonte)
 
         with col5:
-            lista_assuntos = assuntos()
+            lista_assuntos = assuntos(secao_atendimento)
             idx_assunto = lista_assuntos.index("Não informado") if "Não informado" in lista_assuntos else 0
             assunto = st.selectbox("Assunto", lista_assuntos, index=idx_assunto)
 
@@ -1954,6 +2071,7 @@ def tela_novo_atendimento():
                 "id": proximo_id(lista),
                 "data": data_atendimento.strftime("%d/%m/%Y"),
                 "status": STATUS_CADASTRADO,
+                "secao": secao_atendimento,
                 "servidor": "Não informado",
                 "fonte": fonte,
                 "assunto": assunto or "Não informado",
@@ -1992,6 +2110,7 @@ def card_triagem(atendimento, chave_prefixo):
 
         with col2:
             st.markdown(f"**Assunto:** {atendimento.get('assunto', '')}")
+            st.markdown(f"**Seção:** {normalizar_secao(atendimento.get('secao'))}")
             st.markdown(f"**Origem:** {atendimento.get('origem', '')}")
             st.markdown(f"**Zona:** {atendimento.get('zona_eleitoral', '')}")
             st.markdown(f"**Descrição:** {atendimento.get('descricao', '')}")
@@ -2052,8 +2171,9 @@ def card_triagem(atendimento, chave_prefixo):
             zona_atual = atendimento.get("zona_eleitoral", "")
             prioridade_atual = atendimento.get("prioridade", "Normal")
             status_atual = atendimento.get("status", STATUS_CADASTRADO)
+            secao_atual = normalizar_secao(atendimento.get("secao"))
 
-            lista_assuntos = assuntos()
+            lista_assuntos = assuntos(secao_atual)
             if assunto_atual and assunto_atual not in lista_assuntos:
                 lista_assuntos = [assunto_atual] + lista_assuntos
 
@@ -2116,6 +2236,12 @@ def card_triagem(atendimento, chave_prefixo):
                     "Quem originou a demanda/chamada",
                     value=atendimento.get("origem", ""),
                     key=f"{chave_prefixo}_edit_origem_{atendimento.get('id')}"
+                )
+                nova_secao_triagem = st.selectbox(
+                    "Seção",
+                    SECOES_ATENDIMENTO,
+                    index=SECOES_ATENDIMENTO.index(secao_atual) if secao_atual in SECOES_ATENDIMENTO else 0,
+                    key=f"{chave_prefixo}_edit_secao_{atendimento.get('id')}"
                 )
                 novo_protocolo = st.text_input(
                     "Protocolo ou referência",
@@ -2430,7 +2556,7 @@ def tabela_resumo_pdf(df):
 
 def tabela_dados_pdf(df, limite=80):
     colunas_preferidas = [
-        "ID", "Data", "Zona eleitoral", "Assunto", "Servidor(a)",
+        "ID", "Data", "Seção", "Zona eleitoral", "Assunto", "Servidor(a)",
         "Fonte", "Status", "Prioridade", "Origem", "Tempo de atendimento"
     ]
 
@@ -2445,7 +2571,8 @@ def tabela_dados_pdf(df, limite=80):
     larguras = {
         "ID": 1.2 * cm,
         "Data": 2.0 * cm,
-        "Zona eleitoral": 4.2 * cm,
+        "Seção": 1.7 * cm,
+        "Zona eleitoral": 3.5 * cm,
         "Assunto": 4.2 * cm,
         "Servidor(a)": 3.8 * cm,
         "Fonte": 2.2 * cm,
@@ -2588,6 +2715,11 @@ def tela_relatorios_exportacao():
     st.subheader("Relatórios e exportação")
 
     lista = filtros_base(atendimentos())
+
+    filtro_secao_relatorio = st.multiselect("Seção", SECOES_ATENDIMENTO, key="filtro_secao_relatorio")
+    if filtro_secao_relatorio:
+        lista = [a for a in lista if normalizar_secao(a.get("secao")) in filtro_secao_relatorio]
+
     filtro_tempo_atendimento_relatorio = st.selectbox(
         "Tempo de atendimento",
         [
@@ -2627,6 +2759,7 @@ def tela_relatorios_exportacao():
 
     filtros_para_pdf = {
         "Quantidade de registros": numero_br(len(df)),
+        "Seção": filtro_secao_relatorio if "filtro_secao_relatorio" in locals() else [],
         "Zona Eleitoral": filtro_zona_relatorio if "filtro_zona_relatorio" in locals() else [],
         "Data de emissão": agora_texto_brasilia(),
     }
@@ -2665,6 +2798,10 @@ def tela_relatorios_exportacao():
         st.markdown("#### Relatório por fonte")
         st.dataframe(df["Fonte"].value_counts().rename_axis("Fonte").reset_index(name="Quantidade"), use_container_width=True, hide_index=True)
 
+        if "Seção" in df.columns:
+            st.markdown("#### Relatório por seção")
+            st.dataframe(df["Seção"].value_counts().rename_axis("Seção").reset_index(name="Quantidade"), use_container_width=True, hide_index=True)
+
     st.divider()
 
     buffer = BytesIO()
@@ -2674,6 +2811,8 @@ def tela_relatorios_exportacao():
         df["Servidor(a)"].value_counts().rename_axis("Servidor(a)").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por servidor")
         df["Assunto"].value_counts().rename_axis("Assunto").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por assunto")
         df["Fonte"].value_counts().rename_axis("Fonte").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por fonte")
+        if "Seção" in df.columns:
+            df["Seção"].value_counts().rename_axis("Seção").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por seção")
 
     st.download_button(
         "Baixar relatório em Excel",
@@ -2699,66 +2838,82 @@ def tela_assuntos():
         st.warning("Apenas administradores podem gerenciar assuntos.")
         return
 
-    lista = assuntos()
+    registros = assunto_rows()
 
     st.markdown("### Incluir novo assunto")
     with st.form("form_assunto"):
         novo = st.text_input("Novo assunto")
+        secao_novo = st.selectbox("Seção do assunto", SECOES_ATENDIMENTO)
         if st.form_submit_button("Adicionar assunto", type="primary"):
             novo = novo.strip()
             if not novo:
                 st.warning("Informe um assunto.")
-            elif novo.casefold() in [a.casefold() for a in lista]:
-                st.warning("Este assunto já está cadastrado.")
+            elif any(r["nome"].casefold() == novo.casefold() and normalizar_secao(r["secao"]) == secao_novo for r in registros):
+                st.warning("Este assunto já está cadastrado para esta seção.")
             else:
-                lista.append(novo)
-                salvar_assuntos(lista)
+                registros.append({"nome": novo, "secao": secao_novo, "ativo": True})
+                salvar_assuntos_registros(registros)
                 st.success("Assunto adicionado.")
                 st.rerun()
 
     st.divider()
     st.markdown("#### Assuntos cadastrados")
-    st.caption("Os assuntos são disponibilizados em ordem alfabética. A opção 'Não informado' permanece disponível para novos atendimentos.")
+    st.caption("Os assuntos são disponibilizados em ordem alfabética e vinculados à seção SEPRO ou SEORZE.")
 
-    for idx, assunto in enumerate(lista):
+    for idx, registro in enumerate(registros):
+        assunto = registro.get("nome", "")
+        secao_atual = normalizar_secao(registro.get("secao"))
+
         with st.container(border=True):
-            col1, col2, col3 = st.columns([3, 1, 1])
+            col1, col2, col3, col4 = st.columns([3, 1.2, 1, 1])
 
             with col1:
-                editado = st.text_input("Assunto", value=assunto, key=f"assunto_edit_{idx}_{assunto}")
+                editado = st.text_input("Assunto", value=assunto, key=f"assunto_edit_{idx}_{assunto}_{secao_atual}")
 
             with col2:
+                nova_secao = st.selectbox(
+                    "Seção",
+                    SECOES_ATENDIMENTO,
+                    index=SECOES_ATENDIMENTO.index(secao_atual) if secao_atual in SECOES_ATENDIMENTO else 0,
+                    key=f"assunto_secao_{idx}_{assunto}_{secao_atual}"
+                )
+
+            with col3:
                 st.write("")
                 st.write("")
-                if st.button("Salvar", key=f"assunto_salvar_{idx}_{assunto}"):
+                if st.button("Salvar", key=f"assunto_salvar_{idx}_{assunto}_{secao_atual}"):
                     editado = editado.strip()
                     if not editado:
                         st.warning("O assunto não pode ficar vazio.")
                     elif assunto == "Não informado" and editado != "Não informado":
                         st.warning("A opção 'Não informado' não pode ser renomeada.")
-                    elif editado.casefold() != assunto.casefold() and editado.casefold() in [a.casefold() for a in lista]:
-                        st.warning("Já existe outro assunto com este nome.")
+                    elif any(
+                        i != idx and r["nome"].casefold() == editado.casefold() and normalizar_secao(r["secao"]) == nova_secao
+                        for i, r in enumerate(registros)
+                    ):
+                        st.warning("Já existe outro assunto com este nome para esta seção.")
                     else:
-                        nova_lista = [editado if a == assunto else a for a in lista]
-                        salvar_assuntos(nova_lista)
+                        registros[idx] = {"nome": editado, "secao": nova_secao, "ativo": True}
+                        salvar_assuntos_registros(registros)
                         st.success("Assunto atualizado.")
                         st.rerun()
 
-            with col3:
+            with col4:
                 st.write("")
                 st.write("")
                 if assunto == "Não informado":
-                    st.button("Excluir", key=f"assunto_excluir_{idx}_{assunto}", disabled=True)
+                    st.button("Excluir", key=f"assunto_excluir_{idx}_{assunto}_{secao_atual}", disabled=True)
                 else:
-                    confirmar = st.checkbox("Confirmar", key=f"assunto_conf_{idx}_{assunto}")
-                    if st.button("Excluir", key=f"assunto_excluir_{idx}_{assunto}"):
+                    confirmar = st.checkbox("Confirmar", key=f"assunto_conf_{idx}_{assunto}_{secao_atual}")
+                    if st.button("Excluir", key=f"assunto_excluir_{idx}_{assunto}_{secao_atual}"):
                         if not confirmar:
                             st.warning("Marque a confirmação antes de excluir.")
                         else:
-                            nova_lista = [a for a in lista if a != assunto]
-                            salvar_assuntos(nova_lista)
+                            novos = [r for i, r in enumerate(registros) if i != idx]
+                            salvar_assuntos_registros(novos)
                             st.success("Assunto removido da lista de opções. Registros antigos foram preservados.")
                             st.rerun()
+
 
 
 
@@ -2793,7 +2948,7 @@ def tela_usuarios():
     if not usuario:
         return
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         novo_perfil = st.selectbox(
@@ -2803,13 +2958,22 @@ def tela_usuarios():
         )
 
     with col2:
-        ativo = st.checkbox("Ativo", value=usuario.get("ativo", True))
+        secao_usuario_atual = normalizar_secao(usuario.get("secao_operador"))
+        nova_secao_operador = st.selectbox(
+            "Operador da seção",
+            SECOES_ATENDIMENTO,
+            index=SECOES_ATENDIMENTO.index(secao_usuario_atual) if secao_usuario_atual in SECOES_ATENDIMENTO else 0
+        )
 
     with col3:
+        ativo = st.checkbox("Ativo", value=usuario.get("ativo", True))
+
+    with col4:
         validado = st.checkbox("Validado", value=usuario.get("validado", False))
 
     if st.button("Salvar alterações do usuário"):
         usuario["perfil"] = novo_perfil
+        usuario["secao_operador"] = nova_secao_operador
         usuario["ativo"] = ativo
         usuario["validado"] = validado
         salvar_usuarios(lista)
