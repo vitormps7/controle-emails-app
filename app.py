@@ -42,6 +42,7 @@ ARQ_SESSOES = Path("sessoes_usuarios_logados_v1.json")
 PASTA_BACKUPS = Path("backups_sistema_sepro")
 FUSO_HORARIO_BRASILIA = timezone(timedelta(hours=-3), name="BRT")
 USAR_SUPABASE = True
+SESSAO_ATIVA_MINUTOS = 15
 
 DOMINIO_INSTITUCIONAL = "@tre-ba.jus.br"
 
@@ -910,6 +911,10 @@ def salvar_assuntos(lista):
 
 
 def registrar_usuario_logado(usuario):
+    """
+    Registra ou atualiza a sessão ativa do usuário.
+    Este registro funciona como 'presença' no sistema.
+    """
     if not usuario:
         return
 
@@ -929,6 +934,37 @@ def registrar_usuario_logado(usuario):
     supabase_upsert("sessoes", row, "email")
 
 
+def atualizar_presenca_usuario_logado():
+    """
+    Atualiza o horário da sessão do usuário atualmente logado.
+    Assim, o Dashboard conta apenas quem acessou/interagiu recentemente.
+    """
+    usuario = usuario_logado()
+    if not usuario:
+        return
+
+    email = normalizar_email(usuario.get("email"))
+    if not email:
+        return
+
+    try:
+        supabase_upsert(
+            "sessoes",
+            {
+                "email": email,
+                "nome": usuario.get("nome", email),
+                "perfil": usuario.get("perfil", "Usuário"),
+                "ativo": True,
+                "ultimo_login": agora_iso(),
+                "ultimo_logout": None,
+            },
+            "email"
+        )
+    except Exception:
+        # Não interrompe o sistema se a atualização de presença falhar.
+        pass
+
+
 def remover_usuario_logado():
     usuario = usuario_logado()
     if not usuario:
@@ -941,8 +977,37 @@ def remover_usuario_logado():
     supabase_update("sessoes", {"ativo": False, "ultimo_logout": agora_iso()}, "email", email)
 
 
+def sessao_esta_ativa(row):
+    """
+    Considera ativo apenas quem teve atualização de presença dentro da janela definida.
+    Isso evita contar como logado quem fechou o navegador sem sair do sistema.
+    """
+    if not row or not row.get("ativo", False):
+        return False
+
+    ultimo = obter_data_hora_atendimento(row.get("ultimo_login"))
+    if not ultimo:
+        return False
+
+    limite = agora_brasilia() - timedelta(minutes=SESSAO_ATIVA_MINUTOS)
+    return ultimo >= limite
+
+
 def usuarios_logados():
-    return supabase_get("sessoes", {"select": "*", "ativo": "eq.true", "order": "ultimo_login.desc"}) or []
+    rows = supabase_get("sessoes", {"select": "*", "ativo": "eq.true", "order": "ultimo_login.desc"}) or []
+    ativos = [row for row in rows if sessao_esta_ativa(row)]
+
+    # Limpa visualmente sessões antigas para que não permaneçam como ativas no banco.
+    for row in rows:
+        if row not in ativos and row.get("ativo", False):
+            email = normalizar_email(row.get("email"))
+            if email:
+                try:
+                    supabase_update("sessoes", {"ativo": False, "ultimo_logout": agora_iso()}, "email", email)
+                except Exception:
+                    pass
+
+    return ativos
 
 
 def email_institucional(email):
@@ -1365,6 +1430,217 @@ def sidebar_menu():
         st.rerun()
 
     return escolha
+
+
+
+
+# ============================================================
+# PAINEL GERENCIAL - CÁLCULOS SEM NOVAS COLUNAS NO BANCO
+# ============================================================
+
+def dias_desde_data_hora(valor):
+    dt = obter_data_hora_atendimento(valor)
+    if not dt:
+        return None
+    return max(0, int((agora_brasilia() - dt).total_seconds() // 86400))
+
+
+def horas_entre_datas(inicio_valor, fim_valor):
+    inicio = obter_data_hora_atendimento(inicio_valor)
+    fim = obter_data_hora_atendimento(fim_valor)
+    if not inicio or not fim:
+        return None
+    horas = (fim - inicio).total_seconds() / 3600
+    return horas if horas >= 0 else None
+
+
+def atendimento_sem_responsavel(a):
+    servidor = str(a.get("servidor") or "").strip()
+    return servidor in ("", "Não informado", "Aguardando triagem")
+
+
+def atendimento_sem_zona(a):
+    zona = str(a.get("zona_eleitoral") or "").strip()
+    return zona in ("", "Não informado")
+
+
+def atendimento_sem_assunto(a):
+    assunto = str(a.get("assunto") or "").strip()
+    return assunto in ("", "Não informado")
+
+
+def atendimento_sem_fonte(a):
+    fonte = str(a.get("fonte") or "").strip()
+    return fonte in ("", "Não informado")
+
+
+def atendimento_aberto(a):
+    return a.get("status") != STATUS_REALIZADO
+
+
+def idade_atendimento_dias(a):
+    return dias_desde_data_hora(a.get("criado_em"))
+
+
+def dias_em_triagem(a):
+    if a.get("status") == STATUS_CADASTRADO:
+        return dias_desde_data_hora(a.get("criado_em"))
+    horas = horas_entre_datas(a.get("criado_em"), a.get("triado_em") or a.get("atualizado_em"))
+    return int(horas // 24) if horas is not None else None
+
+
+def dias_em_atendimento(a):
+    if a.get("status") == STATUS_EM_ATENDIMENTO:
+        return dias_desde_data_hora(a.get("triado_em") or a.get("atualizado_em") or a.get("criado_em"))
+    if a.get("status") == STATUS_REALIZADO:
+        horas = horas_entre_datas(
+            a.get("triado_em") or a.get("criado_em"),
+            a.get("realizado_em") or a.get("data_realizacao") or a.get("atualizado_em")
+        )
+        return int(horas // 24) if horas is not None else None
+    return None
+
+
+def classificar_alerta_gerencial(a):
+    if not atendimento_aberto(a):
+        return ""
+
+    status = a.get("status")
+    prioridade = str(a.get("prioridade") or "").strip().casefold()
+
+    if prioridade == "urgente":
+        return "Urgente em aberto"
+
+    if status == STATUS_CADASTRADO:
+        dias = dias_em_triagem(a)
+        if dias is not None and dias > 2:
+            return "Triagem acima de 2 dias"
+
+    if status == STATUS_EM_ATENDIMENTO:
+        dias = dias_em_atendimento(a)
+        if dias is not None and dias > 5:
+            return "Em atendimento acima de 5 dias"
+
+    if atendimento_sem_responsavel(a):
+        return "Sem responsável"
+
+    return ""
+
+
+def dataframe_alertas_gerenciais(lista):
+    linhas = []
+    for a in lista:
+        alerta = classificar_alerta_gerencial(a)
+        if not alerta:
+            continue
+        linhas.append({
+            "ID": a.get("id"),
+            "Seção": normalizar_secao(a.get("secao")) if "SECOES_ATENDIMENTO" in globals() else "SEPRO",
+            "Status": a.get("status"),
+            "Alerta": alerta,
+            "Prioridade": a.get("prioridade") or "Não informado",
+            "Servidor(a)": a.get("servidor") or "Não informado",
+            "Zona eleitoral": a.get("zona_eleitoral") or "Não informado",
+            "Assunto": a.get("assunto") or "Não informado",
+            "Dias em aberto": idade_atendimento_dias(a),
+        })
+    if not linhas:
+        return pd.DataFrame(columns=["ID", "Seção", "Status", "Alerta", "Prioridade", "Servidor(a)", "Zona eleitoral", "Assunto", "Dias em aberto"])
+    return pd.DataFrame(linhas).sort_values(["Alerta", "Dias em aberto"], ascending=[True, False])
+
+
+def dataframe_qualidade_base(lista):
+    total = len(lista)
+    dados = [
+        ("Sem responsável", sum(1 for a in lista if atendimento_sem_responsavel(a))),
+        ("Sem zona eleitoral", sum(1 for a in lista if atendimento_sem_zona(a))),
+        ("Sem assunto", sum(1 for a in lista if atendimento_sem_assunto(a))),
+        ("Sem fonte", sum(1 for a in lista if atendimento_sem_fonte(a))),
+        ("Urgentes em aberto", sum(1 for a in lista if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente")),
+        ("Triagem acima de 2 dias", sum(1 for a in lista if a.get("status") == STATUS_CADASTRADO and (dias_em_triagem(a) or 0) > 2)),
+        ("Em atendimento acima de 5 dias", sum(1 for a in lista if a.get("status") == STATUS_EM_ATENDIMENTO and (dias_em_atendimento(a) or 0) > 5)),
+    ]
+
+    linhas = []
+    for item, qtd in dados:
+        percentual = (qtd / total * 100) if total else 0
+        linhas.append({
+            "Indicador": item,
+            "Qtd.": numero_br(qtd),
+            "% da base": percentual_br(percentual),
+        })
+
+    return pd.DataFrame(linhas)
+
+
+def dataframe_resumo_por_secao(lista):
+    linhas = []
+    secoes = SECOES_ATENDIMENTO if "SECOES_ATENDIMENTO" in globals() else ["SEPRO"]
+
+    for secao in secoes:
+        base = [a for a in lista if normalizar_secao(a.get("secao")) == secao]
+        total = len(base)
+        realizados = sum(1 for a in base if a.get("status") == STATUS_REALIZADO)
+        pendentes = total - realizados
+        alertas = len(dataframe_alertas_gerenciais(base))
+        tempo_df = dataframe_tempo_medio_por_fonte(base)
+        linhas.append({
+            "Seção": secao,
+            "Total": numero_br(total),
+            "Pendentes": numero_br(pendentes),
+            "Realizados": numero_br(realizados),
+            "% realizado": percentual_br((realizados / total * 100) if total else 0),
+            "Alertas": numero_br(alertas),
+        })
+
+    return pd.DataFrame(linhas)
+
+
+def aplicar_filtro_gerencial(lista, filtro):
+    if not filtro or filtro == "Todos":
+        return lista
+
+    resultado = []
+    for a in lista:
+        if filtro == "Somente alertas gerenciais" and classificar_alerta_gerencial(a):
+            resultado.append(a)
+        elif filtro == "Sem responsável" and atendimento_sem_responsavel(a):
+            resultado.append(a)
+        elif filtro == "Sem zona eleitoral" and atendimento_sem_zona(a):
+            resultado.append(a)
+        elif filtro == "Sem assunto" and atendimento_sem_assunto(a):
+            resultado.append(a)
+        elif filtro == "Sem fonte" and atendimento_sem_fonte(a):
+            resultado.append(a)
+        elif filtro == "Urgentes em aberto" and atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente":
+            resultado.append(a)
+        elif filtro == "Triagem acima de 2 dias" and a.get("status") == STATUS_CADASTRADO and (dias_em_triagem(a) or 0) > 2:
+            resultado.append(a)
+        elif filtro == "Em atendimento acima de 5 dias" and a.get("status") == STATUS_EM_ATENDIMENTO and (dias_em_atendimento(a) or 0) > 5:
+            resultado.append(a)
+
+    return resultado
+
+
+def dataframe_evolucao_mensal_por_secao(lista):
+    df = atendimentos_df(lista)
+    if df.empty or "Data" not in df.columns:
+        return pd.DataFrame(columns=["Mês", "Seção", "Total"])
+
+    temp = df.copy()
+    temp["Data_dt"] = pd.to_datetime(temp["Data"], dayfirst=True, errors="coerce")
+    temp = temp.dropna(subset=["Data_dt"])
+    if temp.empty:
+        return pd.DataFrame(columns=["Mês", "Seção", "Total"])
+
+    if "Seção" not in temp.columns:
+        temp["Seção"] = "SEPRO"
+
+    temp["Mês"] = temp["Data_dt"].dt.strftime("%m/%Y")
+    resumo = temp.groupby(["Mês", "Seção"]).size().reset_index(name="Total")
+    resumo["Total"] = resumo["Total"].map(numero_br)
+    return resumo.sort_values(["Mês", "Seção"], ascending=[False, True])
+
 
 
 def filtros_base(lista):
@@ -1864,7 +2140,7 @@ def tela_dashboard():
         ('Respondidos', numero_br(realizados), '#74B24A'),
         ('Pendentes', numero_br(pendentes), '#F2A365'),
         ('% respondido', percentual_br(percentual), '#7A60A8'),
-        ('Usuários logados', numero_br(len(usuarios_online)), '#0F766E'),
+        ('Usuários ativos agora', numero_br(len(usuarios_online)), '#0F766E'),
         ('SEPRO', numero_br(qtd_sepro), '#174A7C'),
         ('SEORZE', numero_br(qtd_seorze), '#7A60A8'),
     ]
@@ -2001,6 +2277,49 @@ def tela_dashboard():
     tempo_medio_fonte = dataframe_tempo_medio_por_fonte(lista)
     bloco_tabela_dashboard('Tempo médio de atendimento por tipo/fonte', tempo_medio_fonte)
 
+    st.markdown("<div class='dash-section-title'>Painel gerencial</div>", unsafe_allow_html=True)
+    alertas_gerenciais = dataframe_alertas_gerenciais(lista)
+    qualidade_base = dataframe_qualidade_base(lista)
+    resumo_secao = dataframe_resumo_por_secao(lista)
+    evolucao_secao = dataframe_evolucao_mensal_por_secao(lista)
+
+    g1, g2, g3, g4 = st.columns(4)
+    with g1:
+        st.markdown(
+            f"<div class='dash-metric-card' style='border-top-color:#B91C1C;'><div class='label'>Alertas gerenciais</div><div class='value' style='color:#B91C1C;'>{numero_br(len(alertas_gerenciais))}</div></div>",
+            unsafe_allow_html=True,
+        )
+    with g2:
+        sem_resp = sum(1 for a in lista if atendimento_sem_responsavel(a))
+        st.markdown(
+            f"<div class='dash-metric-card' style='border-top-color:#C2410C;'><div class='label'>Sem responsável</div><div class='value' style='color:#C2410C;'>{numero_br(sem_resp)}</div></div>",
+            unsafe_allow_html=True,
+        )
+    with g3:
+        urgentes_abertos = sum(1 for a in lista if atendimento_aberto(a) and str(a.get('prioridade') or '').casefold() == 'urgente')
+        st.markdown(
+            f"<div class='dash-metric-card' style='border-top-color:#7F1D1D;'><div class='label'>Urgentes em aberto</div><div class='value' style='color:#7F1D1D;'>{numero_br(urgentes_abertos)}</div></div>",
+            unsafe_allow_html=True,
+        )
+    with g4:
+        pendencias_antigas = sum(
+            1 for a in lista
+            if (a.get('status') == STATUS_CADASTRADO and (dias_em_triagem(a) or 0) > 2)
+            or (a.get('status') == STATUS_EM_ATENDIMENTO and (dias_em_atendimento(a) or 0) > 5)
+        )
+        st.markdown(
+            f"<div class='dash-metric-card' style='border-top-color:#92400E;'><div class='label'>Pendências antigas</div><div class='value' style='color:#92400E;'>{numero_br(pendencias_antigas)}</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    ger1, ger2 = st.columns([1.2, 1.4])
+    with ger1:
+        bloco_tabela_dashboard('Resumo por seção', resumo_secao)
+        bloco_tabela_dashboard('Qualidade cadastral da base', qualidade_base)
+    with ger2:
+        bloco_tabela_dashboard('Demandas que exigem atenção gerencial', alertas_gerenciais.head(10))
+        bloco_tabela_dashboard('Evolução mensal por seção', evolucao_secao.head(12))
+
 
     area1, area2, area3 = st.columns([2.2, 2.2, 0.9])
     with area1:
@@ -2019,7 +2338,7 @@ def tela_dashboard():
         bloco_tabela_dashboard('Últimos meses', ultimos_meses)
 
     st.markdown(
-        "<div class='mini-note'><b>Nota:</b> o dashboard resume os atendimentos cadastrados no sistema. O campo <i>Datas inválidas</i> mostra registros com data ausente ou em formato não reconhecido. Os quadros de meses consideram apenas registros com datas válidas.</div>",
+        "<div class='mini-note'><b>Nota:</b> o dashboard resume os atendimentos cadastrados no sistema e destaca alertas gerenciais calculados automaticamente com base nos campos já existentes.</div>",
         unsafe_allow_html=True,
     )
 
@@ -2716,6 +3035,23 @@ def tela_relatorios_exportacao():
 
     lista = filtros_base(atendimentos())
 
+    filtro_gerencial_relatorio = st.selectbox(
+        "Filtro gerencial",
+        [
+            "Todos",
+            "Somente alertas gerenciais",
+            "Sem responsável",
+            "Sem zona eleitoral",
+            "Sem assunto",
+            "Sem fonte",
+            "Urgentes em aberto",
+            "Triagem acima de 2 dias",
+            "Em atendimento acima de 5 dias",
+        ],
+        key="filtro_gerencial_relatorio"
+    )
+    lista = aplicar_filtro_gerencial(lista, filtro_gerencial_relatorio)
+
     filtro_secao_relatorio = st.multiselect("Seção", SECOES_ATENDIMENTO, key="filtro_secao_relatorio")
     if filtro_secao_relatorio:
         lista = [a for a in lista if normalizar_secao(a.get("secao")) in filtro_secao_relatorio]
@@ -2759,6 +3095,7 @@ def tela_relatorios_exportacao():
 
     filtros_para_pdf = {
         "Quantidade de registros": numero_br(len(df)),
+        "Filtro gerencial": filtro_gerencial_relatorio if "filtro_gerencial_relatorio" in locals() else "Todos",
         "Seção": filtro_secao_relatorio if "filtro_secao_relatorio" in locals() else [],
         "Zona Eleitoral": filtro_zona_relatorio if "filtro_zona_relatorio" in locals() else [],
         "Data de emissão": agora_texto_brasilia(),
@@ -2779,6 +3116,12 @@ def tela_relatorios_exportacao():
         mime="application/pdf",
         type="primary"
     )
+
+    st.divider()
+
+    st.markdown("#### Relatórios gerenciais")
+    st.dataframe(dataframe_qualidade_base(lista), use_container_width=True, hide_index=True)
+    st.dataframe(dataframe_alertas_gerenciais(lista), use_container_width=True, hide_index=True)
 
     st.divider()
 
@@ -2811,6 +3154,8 @@ def tela_relatorios_exportacao():
         df["Servidor(a)"].value_counts().rename_axis("Servidor(a)").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por servidor")
         df["Assunto"].value_counts().rename_axis("Assunto").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por assunto")
         df["Fonte"].value_counts().rename_axis("Fonte").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por fonte")
+        dataframe_qualidade_base(lista).to_excel(writer, index=False, sheet_name="Qualidade base")
+        dataframe_alertas_gerenciais(lista).to_excel(writer, index=False, sheet_name="Alertas gerenciais")
         if "Seção" in df.columns:
             df["Seção"].value_counts().rename_axis("Seção").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por seção")
 
@@ -3116,6 +3461,8 @@ def main():
     if not usuario_logado():
         tela_login()
         return
+
+    atualizar_presenca_usuario_logado()
 
     cabecalho()
     escolha = sidebar_menu()
