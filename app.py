@@ -2099,248 +2099,356 @@ def obter_serie_mensal(df):
     return resumo.sort_values('MesRef')
 
 
+
+
+# ============================================================
+# DASHBOARD SEGREGADO POR SEÇÃO
+# ============================================================
+
+def lista_por_secao(lista, secao):
+    return [a for a in lista if normalizar_secao(a.get("secao")) == secao]
+
+
+def dataframe_status_por_secao(lista, secao):
+    base = lista_por_secao(lista, secao)
+    df_secao = atendimentos_df(base)
+    if df_secao.empty:
+        return pd.DataFrame(columns=["Situação", "Qtd."])
+
+    tabela = df_secao["Status"].fillna("Não informado").replace("", "Não informado").value_counts().reset_index()
+    tabela.columns = ["Situação", "Qtd."]
+    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
+    return tabela
+
+
+def dataframe_fontes_por_secao(lista, secao):
+    base = lista_por_secao(lista, secao)
+    df_secao = atendimentos_df(base)
+    if df_secao.empty:
+        return pd.DataFrame(columns=["Fonte", "Qtd."])
+
+    fontes = df_secao["Fonte"].apply(normalizar_fonte)
+    tabela = fontes.fillna("Não informado").replace("", "Não informado").value_counts().reset_index()
+    tabela.columns = ["Fonte", "Qtd."]
+    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
+    return tabela
+
+
+def dataframe_top_assuntos_por_secao(lista, secao, limite=5):
+    base = lista_por_secao(lista, secao)
+    df_secao = atendimentos_df(base)
+    if df_secao.empty:
+        return pd.DataFrame(columns=["Assunto", "Qtd."])
+
+    tabela = (
+        df_secao["Assunto"]
+        .fillna("Não informado")
+        .replace("", "Não informado")
+        .value_counts()
+        .head(limite)
+        .reset_index()
+    )
+    tabela.columns = ["Assunto", "Qtd."]
+    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
+    return tabela
+
+
+def dataframe_top_zonas_por_secao(lista, secao, limite=5):
+    base = lista_por_secao(lista, secao)
+    df_secao = atendimentos_df(base)
+    if df_secao.empty or "Zona eleitoral" not in df_secao.columns:
+        return pd.DataFrame(columns=["Zona eleitoral", "Qtd."])
+
+    tabela = (
+        df_secao["Zona eleitoral"]
+        .fillna("Não informado")
+        .replace("", "Não informado")
+        .value_counts()
+        .head(limite)
+        .reset_index()
+    )
+    tabela.columns = ["Zona eleitoral", "Qtd."]
+    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
+    return tabela
+
+
+def dataframe_top_servidores_por_secao(lista, secao, limite=5):
+    base = lista_por_secao(lista, secao)
+    df_secao = atendimentos_df(base)
+    if df_secao.empty:
+        return pd.DataFrame(columns=["Servidor(a)", "Qtd."])
+
+    tabela = (
+        df_secao["Servidor(a)"]
+        .fillna("Não informado")
+        .replace("", "Não informado")
+        .value_counts()
+        .head(limite)
+        .reset_index()
+    )
+    tabela.columns = ["Servidor(a)", "Qtd."]
+    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
+    return tabela
+
+
+def metricas_secao(lista, secao):
+    base = lista_por_secao(lista, secao)
+    total = len(base)
+    realizados = sum(1 for a in base if a.get("status") == STATUS_REALIZADO)
+    triagem = sum(1 for a in base if a.get("status") == STATUS_CADASTRADO)
+    em_atendimento = sum(1 for a in base if a.get("status") == STATUS_EM_ATENDIMENTO)
+    pendentes = total - realizados
+    alertas = len(dataframe_alertas_gerenciais(base))
+    sem_resp = sum(1 for a in base if atendimento_sem_responsavel(a))
+    urgentes = sum(1 for a in base if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente")
+    percentual = (realizados / total * 100) if total else 0
+
+    return {
+        "total": total,
+        "realizados": realizados,
+        "triagem": triagem,
+        "em_atendimento": em_atendimento,
+        "pendentes": pendentes,
+        "alertas": alertas,
+        "sem_responsavel": sem_resp,
+        "urgentes": urgentes,
+        "percentual": percentual,
+    }
+
+
+def render_metric_card(label, value, color):
+    st.markdown(
+        f"<div class='dash-metric-card' style='border-top-color:{color};'><div class='label'>{label}</div><div class='value' style='color:{color};'>{value}</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_dashboard_secao(lista, secao):
+    base = lista_por_secao(lista, secao)
+    m = metricas_secao(lista, secao)
+
+    st.markdown(
+        f"<div class='dash-section-title'>Painel {secao}</div>",
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(7)
+    cards = [
+        ("Total", numero_br(m["total"]), "#174A7C"),
+        ("Triagem", numero_br(m["triagem"]), "#5B9BD5"),
+        ("Em atendimento", numero_br(m["em_atendimento"]), "#F2A365"),
+        ("Realizados", numero_br(m["realizados"]), "#74B24A"),
+        ("% realizado", percentual_br(m["percentual"]), "#7A60A8"),
+        ("Alertas", numero_br(m["alertas"]), "#B91C1C"),
+        ("Sem responsável", numero_br(m["sem_responsavel"]), "#C2410C"),
+    ]
+
+    for col, (label, value, color) in zip(cols, cards):
+        with col:
+            render_metric_card(label, value, color)
+
+    tempo_medio = dataframe_tempo_medio_por_fonte(base)
+    alertas = dataframe_alertas_gerenciais(base).head(8)
+    qualidade = dataframe_qualidade_base(base)
+    status_tbl = dataframe_status_por_secao(lista, secao)
+    fonte_tbl = dataframe_fontes_por_secao(lista, secao)
+    top_zonas = dataframe_top_zonas_por_secao(lista, secao)
+    top_assuntos = dataframe_top_assuntos_por_secao(lista, secao)
+    top_servidores = dataframe_top_servidores_por_secao(lista, secao)
+
+    col_a, col_b = st.columns([1.15, 1.35])
+    with col_a:
+        bloco_tabela_dashboard(f"{secao} - Situação", status_tbl)
+        bloco_tabela_dashboard(f"{secao} - Fonte do atendimento", fonte_tbl)
+        bloco_tabela_dashboard(f"{secao} - Tempo médio por fonte", tempo_medio)
+    with col_b:
+        bloco_tabela_dashboard(f"{secao} - Alertas gerenciais", alertas)
+        bloco_tabela_dashboard(f"{secao} - Qualidade cadastral", qualidade)
+
+    col_c, col_d, col_e = st.columns(3)
+    with col_c:
+        bloco_tabela_dashboard(f"{secao} - Zonas que mais demandam", top_zonas)
+    with col_d:
+        bloco_tabela_dashboard(f"{secao} - Assuntos mais frequentes", top_assuntos)
+    with col_e:
+        bloco_tabela_dashboard(f"{secao} - Servidores responsáveis", top_servidores)
+
+
 def tela_dashboard():
-    st.subheader('Dashboard')
+    st.subheader("Dashboard")
 
     lista = filtros_base(atendimentos())
     df = atendimentos_df(lista)
 
     total = len(df)
-    realizados = int((df['Status'] == STATUS_REALIZADO).sum()) if not df.empty else 0
-    pendentes = int(((df['Status'] == STATUS_CADASTRADO) | (df['Status'] == STATUS_EM_ATENDIMENTO)).sum()) if not df.empty else 0
+    realizados = int((df["Status"] == STATUS_REALIZADO).sum()) if not df.empty else 0
+    pendentes = int(((df["Status"] == STATUS_CADASTRADO) | (df["Status"] == STATUS_EM_ATENDIMENTO)).sum()) if not df.empty else 0
     percentual = (realizados / total * 100) if total else 0
 
-    datas_parse = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce') if not df.empty else pd.Series(dtype='datetime64[ns]')
-    datas_invalidas = int(datas_parse.isna().sum()) if not df.empty else 0
+    datas_parse = pd.to_datetime(df["Data"], dayfirst=True, errors="coerce") if not df.empty else pd.Series(dtype="datetime64[ns]")
 
-    fontes_norm = df['Fonte'].apply(normalizar_fonte) if not df.empty else pd.Series(dtype='object')
-    qtd_email = int((fontes_norm == 'E-mail').sum()) if not df.empty else 0
-    qtd_telefone = int((fontes_norm == 'Telefone').sum()) if not df.empty else 0
-    qtd_outros = int(total - qtd_email - qtd_telefone) if total else 0
-    secoes_norm = df["Seção"].apply(normalizar_secao) if not df.empty and "Seção" in df.columns else pd.Series(dtype="object")
-    qtd_sepro = int((secoes_norm == "SEPRO").sum()) if total else 0
-    qtd_seorze = int((secoes_norm == "SEORZE").sum()) if total else 0
-
-    periodo_ini = ''
-    periodo_fim = ''
+    periodo_ini = ""
+    periodo_fim = ""
     if not df.empty and datas_parse.notna().any():
-        periodo_ini = datas_parse.min().strftime('%d/%m/%Y')
-        periodo_fim = datas_parse.max().strftime('%d/%m/%Y')
+        periodo_ini = datas_parse.min().strftime("%d/%m/%Y")
+        periodo_fim = datas_parse.max().strftime("%d/%m/%Y")
+
+    usuarios_online = usuarios_logados()
+
+    secoes_disponiveis = SECOES_ATENDIMENTO if "SECOES_ATENDIMENTO" in globals() else ["SEPRO"]
+    contagem_secoes = {
+        secao: len(lista_por_secao(lista, secao))
+        for secao in secoes_disponiveis
+    }
 
     st.markdown(
         f"<div class='dashboard-subinfo'>Base: registros do sistema | Registros: {numero_br(total)} | Período válido: {periodo_ini or '-'} a {periodo_fim or '-'} | Atualizado em: {agora_texto_brasilia()}</div>",
         unsafe_allow_html=True,
     )
 
-    st.markdown("<div class='dash-section-title'>Indicadores gerais</div><div class='dash-row-grid'>", unsafe_allow_html=True)
-    usuarios_online = usuarios_logados()
-    cols = st.columns(10)
-    metricas = [
-        ('Total de registros', numero_br(total), '#174A7C'),
-        ('Respondidos', numero_br(realizados), '#74B24A'),
-        ('Pendentes', numero_br(pendentes), '#F2A365'),
-        ('% respondido', percentual_br(percentual), '#7A60A8'),
-        ('Usuários ativos agora', numero_br(len(usuarios_online)), '#0F766E'),
-        ('SEPRO', numero_br(qtd_sepro), '#174A7C'),
-        ('SEORZE', numero_br(qtd_seorze), '#7A60A8'),
+    st.markdown("<div class='dash-section-title'>Visão consolidada da Corregedoria</div>", unsafe_allow_html=True)
+
+    metricas_gerais = [
+        ("Total geral", numero_br(total), "#174A7C"),
+        ("Realizados", numero_br(realizados), "#74B24A"),
+        ("Pendentes", numero_br(pendentes), "#F2A365"),
+        ("% realizado", percentual_br(percentual), "#7A60A8"),
+        ("Usuários ativos agora", numero_br(len(usuarios_online)), "#0F766E"),
     ]
-    for col, (label, value, color) in zip(cols, metricas):
+
+    for secao in secoes_disponiveis:
+        cor = "#174A7C" if secao == "SEPRO" else "#7A60A8"
+        metricas_gerais.append((f"{secao} - registros", numero_br(contagem_secoes.get(secao, 0)), cor))
+
+    cols = st.columns(len(metricas_gerais))
+    for col, (label, value, color) in zip(cols, metricas_gerais):
         with col:
-            st.markdown(
-                f"<div class='dash-metric-card' style='border-top-color:{color};'><div class='label'>{label}</div><div class='value' style='color:{color};'>{value}</div></div>",
-                unsafe_allow_html=True,
-            )
-    st.markdown("</div>", unsafe_allow_html=True)
+            render_metric_card(label, value, color)
 
-    fonte_pred = 'Sem dados'
-    if not df.empty:
-        vc_fontes = fontes_norm.value_counts()
-        if not vc_fontes.empty:
-            fonte_pred = vc_fontes.index[0]
+    resumo_secao = dataframe_resumo_por_secao(lista)
+    alertas_gerais = dataframe_alertas_gerenciais(lista)
+    qualidade_geral = dataframe_qualidade_base(lista)
+    evolucao_secao = dataframe_evolucao_mensal_por_secao(lista)
 
-    if pendentes == 0:
-        texto_pendentes = 'Nenhum atendimento pendente.'
-    elif pendentes <= 5:
-        texto_pendentes = 'Baixíssimo volume pendente.'
-    elif pendentes <= 20:
-        texto_pendentes = 'Volume pendente controlado.'
-    else:
-        texto_pendentes = 'Atenção ao volume pendente.'
+    c1, c2 = st.columns([1, 1.4])
+    with c1:
+        bloco_tabela_dashboard("Resumo comparativo por seção", resumo_secao)
+        bloco_tabela_dashboard("Qualidade cadastral geral", qualidade_geral)
+    with c2:
+        bloco_tabela_dashboard("Alertas gerenciais gerais", alertas_gerais.head(10))
+        bloco_tabela_dashboard("Evolução mensal por seção", evolucao_secao.head(12))
 
+    st.markdown(
+        "<div class='mini-note'><b>Leitura gerencial:</b> a visão consolidada apresenta apenas o panorama geral. A análise operacional deve ser feita nos painéis segregados de SEPRO e SEORZE abaixo.</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
+    st.markdown("<div class='dash-section-title'>Visão segregada por unidade</div>", unsafe_allow_html=True)
+
+    tabs = st.tabs(secoes_disponiveis)
+    for aba, secao in zip(tabs, secoes_disponiveis):
+        with aba:
+            render_dashboard_secao(lista, secao)
+
+    st.divider()
+
+    st.markdown("<div class='dash-section-title'>Quadros gerais complementares</div>", unsafe_allow_html=True)
+
+    situacao = pd.DataFrame(columns=["Situação", "Qtd."])
+    fonte_tbl = pd.DataFrame(columns=["Fonte", "Qtd."])
+    top_servidores = pd.DataFrame(columns=["Servidor(a)", "Qtd."])
+    top_assuntos = pd.DataFrame(columns=["Assunto", "Qtd."])
+    top_zonas = pd.DataFrame(columns=["Zona eleitoral", "Qtd."])
+    meses_maior = pd.DataFrame(columns=["Mês", "Total"])
+    ultimos_meses = pd.DataFrame(columns=["Mês", "Total"])
+
+    fontes_norm = df["Fonte"].apply(normalizar_fonte) if not df.empty else pd.Series(dtype="object")
     mensal = obter_serie_mensal(df)
-    ultimo_mes_txt = mensal.iloc[-1]['Mes'] if not mensal.empty else 'Sem base mensal'
-
-    st.markdown("<div class='dash-section-title'>Canais e qualidade da base</div><div class='dash-row-grid'>", unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
-    for col, label, value, color in [
-        (c1, 'Atendimentos por e-mail', numero_br(qtd_email), '#5B9BD5'),
-        (c2, 'Atendimentos por telefone', numero_br(qtd_telefone), '#74B24A'),
-        (c3, 'Outros / sem fonte', numero_br(qtd_outros), '#6E6E6E'),
-    ]:
-        with col:
-            st.markdown(
-                f"<div class='dash-metric-card' style='border-top-color:{color};min-height:82px;'><div class='label'>{label}</div><div class='value' style='color:{color};'>{value}</div></div>",
-                unsafe_allow_html=True,
-            )
-    with c4:
-        leitura = [
-            f'Dados com predominância de <b>{fonte_pred.lower() if fonte_pred != "Sem dados" else "informação indisponível"}</b>.',
-            texto_pendentes,
-            f'Último mês com registros: <b>{ultimo_mes_txt}</b>.',
-        ]
-        itens = ''.join(f'<li>{item}</li>' for item in leitura)
-        st.markdown(
-            f"<div class='dash-reading-box'><div class='label' style='font-weight:800;color:#174A7C;margin-bottom:6px;'>Leitura rápida</div><ul>{itens}</ul></div>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    situacao = pd.DataFrame(columns=['Situação', 'Qtd.'])
-    fonte_tbl = pd.DataFrame(columns=['Fonte', 'Qtd.'])
-    secao_tbl = pd.DataFrame(columns=['Seção', 'Qtd.'])
-    top_servidores = pd.DataFrame(columns=['Servidor(a)', 'Qtd.'])
-    top_assuntos = pd.DataFrame(columns=['Assunto', 'Qtd.'])
-    top_zonas = pd.DataFrame(columns=['Zona eleitoral', 'Qtd.'])
-    meses_maior = pd.DataFrame(columns=['Mês', 'Total'])
-    ultimos_meses = pd.DataFrame(columns=['Mês', 'Total'])
 
     if not df.empty:
-        situacao = df['Status'].fillna('Não informado').replace('', 'Não informado').value_counts().reset_index()
-        situacao.columns = ['Situação', 'Qtd.']
-        situacao['Qtd.'] = situacao['Qtd.'].map(numero_br)
+        situacao = df["Status"].fillna("Não informado").replace("", "Não informado").value_counts().reset_index()
+        situacao.columns = ["Situação", "Qtd."]
+        situacao["Qtd."] = situacao["Qtd."].map(numero_br)
 
         fonte_tbl = fontes_norm.value_counts().reset_index()
-        fonte_tbl.columns = ['Fonte', 'Qtd.']
-        fonte_tbl['Qtd.'] = fonte_tbl['Qtd.'].map(numero_br)
+        fonte_tbl.columns = ["Fonte", "Qtd."]
+        fonte_tbl["Qtd."] = fonte_tbl["Qtd."].map(numero_br)
 
-        if "Seção" in df.columns:
-            secao_tbl = df["Seção"].fillna("SEPRO").apply(normalizar_secao).value_counts().reset_index()
-            secao_tbl.columns = ["Seção", "Qtd."]
-            secao_tbl["Qtd."] = secao_tbl["Qtd."].map(numero_br)
+        top_servidores = df["Servidor(a)"].fillna("Não informado").replace("", "Não informado").value_counts().head(8).reset_index()
+        top_servidores.columns = ["Servidor(a)", "Qtd."]
+        top_servidores["Qtd."] = top_servidores["Qtd."].map(numero_br)
 
-        top_servidores = df['Servidor(a)'].fillna('Não informado').replace('', 'Não informado').value_counts().head(8).reset_index()
-        top_servidores.columns = ['Servidor(a)', 'Qtd.']
-        top_servidores['Qtd.'] = top_servidores['Qtd.'].map(numero_br)
+        top_assuntos = df["Assunto"].fillna("Não informado").replace("", "Não informado").value_counts().head(8).reset_index()
+        top_assuntos.columns = ["Assunto", "Qtd."]
+        top_assuntos["Qtd."] = top_assuntos["Qtd."].map(numero_br)
 
-        top_assuntos = df['Assunto'].fillna('Não informado').replace('', 'Não informado').value_counts().head(8).reset_index()
-        top_assuntos.columns = ['Assunto', 'Qtd.']
-        top_assuntos['Qtd.'] = top_assuntos['Qtd.'].map(numero_br)
-
-        if 'Zona eleitoral' in df.columns:
+        if "Zona eleitoral" in df.columns:
             top_zonas = (
-                df['Zona eleitoral']
-                .fillna('Não informado')
-                .replace('', 'Não informado')
+                df["Zona eleitoral"]
+                .fillna("Não informado")
+                .replace("", "Não informado")
                 .value_counts()
                 .head(5)
                 .reset_index()
             )
-            top_zonas.columns = ['Zona eleitoral', 'Qtd.']
-            top_zonas['Qtd.'] = top_zonas['Qtd.'].map(numero_br)
+            top_zonas.columns = ["Zona eleitoral", "Qtd."]
+            top_zonas["Qtd."] = top_zonas["Qtd."].map(numero_br)
 
         if not mensal.empty:
-            meses_maior = mensal.sort_values(['Total', 'MesRef'], ascending=[False, False]).head(5)[['Mes', 'Total']].copy()
-            meses_maior['Total'] = meses_maior['Total'].map(numero_br)
-            ultimos_meses = mensal.sort_values('MesRef', ascending=False).head(8)[['Mes', 'Total']].copy()
-            ultimos_meses['Total'] = ultimos_meses['Total'].map(numero_br)
+            meses_maior = mensal.sort_values(["Total", "MesRef"], ascending=[False, False]).head(5)[["Mes", "Total"]].copy()
+            meses_maior["Total"] = meses_maior["Total"].map(numero_br)
+            ultimos_meses = mensal.sort_values("MesRef", ascending=False).head(8)[["Mes", "Total"]].copy()
+            ultimos_meses["Total"] = ultimos_meses["Total"].map(numero_br)
 
-    situacao_usuario = pd.DataFrame(columns=['Servidor(a)', 'Triagem', 'Em atendimento', 'Atendimento realizado', 'Total'])
+    situacao_usuario = pd.DataFrame(columns=["Servidor(a)", "Triagem", "Em atendimento", "Atendimento realizado", "Total"])
     if not df.empty:
         base_usuario = df.copy()
-        base_usuario['Servidor(a)'] = base_usuario['Servidor(a)'].fillna('Não informado').replace('', 'Não informado')
-        situacao_usuario = (
-            pd.crosstab(base_usuario['Servidor(a)'], base_usuario['Status'])
-            .reset_index()
-        )
+        base_usuario["Servidor(a)"] = base_usuario["Servidor(a)"].fillna("Não informado").replace("", "Não informado")
+        situacao_usuario = pd.crosstab(base_usuario["Servidor(a)"], base_usuario["Status"]).reset_index()
 
         for coluna in STATUS_OPCOES:
             if coluna not in situacao_usuario.columns:
                 situacao_usuario[coluna] = 0
 
-        situacao_usuario['Total'] = situacao_usuario[STATUS_OPCOES].sum(axis=1)
-        situacao_usuario = situacao_usuario.sort_values('Total', ascending=False)
+        situacao_usuario["Total"] = situacao_usuario[STATUS_OPCOES].sum(axis=1)
+        situacao_usuario = situacao_usuario.sort_values("Total", ascending=False)
 
         situacao_usuario = situacao_usuario[
-            ['Servidor(a)', STATUS_CADASTRADO, STATUS_EM_ATENDIMENTO, STATUS_REALIZADO, 'Total']
+            ["Servidor(a)", STATUS_CADASTRADO, STATUS_EM_ATENDIMENTO, STATUS_REALIZADO, "Total"]
         ].rename(columns={
-            STATUS_CADASTRADO: 'Triagem',
-            STATUS_EM_ATENDIMENTO: 'Em atendimento',
-            STATUS_REALIZADO: 'Atendimento realizado',
+            STATUS_CADASTRADO: "Triagem",
+            STATUS_EM_ATENDIMENTO: "Em atendimento",
+            STATUS_REALIZADO: "Atendimento realizado",
         })
 
-        for coluna in ['Triagem', 'Em atendimento', 'Atendimento realizado', 'Total']:
+        for coluna in ["Triagem", "Em atendimento", "Atendimento realizado", "Total"]:
             situacao_usuario[coluna] = situacao_usuario[coluna].map(numero_br)
 
-    bloco_tabela_dashboard('Situação dos atendimentos por usuário', situacao_usuario)
-    bloco_tabela_dashboard('Atendimentos por seção', secao_tbl)
-    bloco_tabela_dashboard('5 zonas eleitorais que mais demandam', top_zonas)
-    tempo_medio_fonte = dataframe_tempo_medio_por_fonte(lista)
-    bloco_tabela_dashboard('Tempo médio de atendimento por tipo/fonte', tempo_medio_fonte)
-
-    st.markdown("<div class='dash-section-title'>Painel gerencial</div>", unsafe_allow_html=True)
-    alertas_gerenciais = dataframe_alertas_gerenciais(lista)
-    qualidade_base = dataframe_qualidade_base(lista)
-    resumo_secao = dataframe_resumo_por_secao(lista)
-    evolucao_secao = dataframe_evolucao_mensal_por_secao(lista)
-
-    g1, g2, g3, g4 = st.columns(4)
-    with g1:
-        st.markdown(
-            f"<div class='dash-metric-card' style='border-top-color:#B91C1C;'><div class='label'>Alertas gerenciais</div><div class='value' style='color:#B91C1C;'>{numero_br(len(alertas_gerenciais))}</div></div>",
-            unsafe_allow_html=True,
-        )
-    with g2:
-        sem_resp = sum(1 for a in lista if atendimento_sem_responsavel(a))
-        st.markdown(
-            f"<div class='dash-metric-card' style='border-top-color:#C2410C;'><div class='label'>Sem responsável</div><div class='value' style='color:#C2410C;'>{numero_br(sem_resp)}</div></div>",
-            unsafe_allow_html=True,
-        )
-    with g3:
-        urgentes_abertos = sum(1 for a in lista if atendimento_aberto(a) and str(a.get('prioridade') or '').casefold() == 'urgente')
-        st.markdown(
-            f"<div class='dash-metric-card' style='border-top-color:#7F1D1D;'><div class='label'>Urgentes em aberto</div><div class='value' style='color:#7F1D1D;'>{numero_br(urgentes_abertos)}</div></div>",
-            unsafe_allow_html=True,
-        )
-    with g4:
-        pendencias_antigas = sum(
-            1 for a in lista
-            if (a.get('status') == STATUS_CADASTRADO and (dias_em_triagem(a) or 0) > 2)
-            or (a.get('status') == STATUS_EM_ATENDIMENTO and (dias_em_atendimento(a) or 0) > 5)
-        )
-        st.markdown(
-            f"<div class='dash-metric-card' style='border-top-color:#92400E;'><div class='label'>Pendências antigas</div><div class='value' style='color:#92400E;'>{numero_br(pendencias_antigas)}</div></div>",
-            unsafe_allow_html=True,
-        )
-
-    ger1, ger2 = st.columns([1.2, 1.4])
-    with ger1:
-        bloco_tabela_dashboard('Resumo por seção', resumo_secao)
-        bloco_tabela_dashboard('Qualidade cadastral da base', qualidade_base)
-    with ger2:
-        bloco_tabela_dashboard('Demandas que exigem atenção gerencial', alertas_gerenciais.head(10))
-        bloco_tabela_dashboard('Evolução mensal por seção', evolucao_secao.head(12))
-
+    bloco_tabela_dashboard("Situação dos atendimentos por usuário - geral", situacao_usuario)
 
     area1, area2, area3 = st.columns([2.2, 2.2, 0.9])
     with area1:
-        bloco_tabela_dashboard('Situação', situacao)
+        bloco_tabela_dashboard("Situação geral", situacao)
     with area2:
-        bloco_tabela_dashboard('Fonte do atendimento', fonte_tbl)
+        bloco_tabela_dashboard("Fonte do atendimento - geral", fonte_tbl)
     with area3:
-        bloco_tabela_dashboard('Meses com maior volume', meses_maior)
+        bloco_tabela_dashboard("Meses com maior volume - geral", meses_maior)
 
     area4, area5, area6 = st.columns([2.2, 2.2, 0.9])
     with area4:
-        bloco_tabela_dashboard('Top servidores', top_servidores)
+        bloco_tabela_dashboard("Top servidores - geral", top_servidores)
     with area5:
-        bloco_tabela_dashboard('Top assuntos', top_assuntos)
+        bloco_tabela_dashboard("Top assuntos - geral", top_assuntos)
     with area6:
-        bloco_tabela_dashboard('Últimos meses', ultimos_meses)
+        bloco_tabela_dashboard("Últimos meses - geral", ultimos_meses)
 
     st.markdown(
-        "<div class='mini-note'><b>Nota:</b> o dashboard resume os atendimentos cadastrados no sistema e destaca alertas gerenciais calculados automaticamente com base nos campos já existentes.</div>",
+        "<div class='mini-note'><b>Nota:</b> o dashboard agora separa a análise por unidade, preservando uma visão consolidada apenas para comparação geral da Corregedoria.</div>",
         unsafe_allow_html=True,
     )
+
 
 def tela_novo_atendimento():
     st.subheader("Novo atendimento")
