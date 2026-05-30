@@ -71,6 +71,25 @@ SECOES_ATENDIMENTO = [
     "SEORZE",
 ]
 
+COMPLEXIDADES_ATENDIMENTO = [
+    "Não informada",
+    "Baixa",
+    "Média",
+    "Alta",
+    "Muito alta",
+]
+
+PERFIS_USUARIO = [
+    "Administrador geral",
+    "Chefia SEPRO",
+    "Chefia SEORZE",
+    "Operador SEPRO",
+    "Operador SEORZE",
+    "Consulta",
+    "Administrador",
+    "Usuário",
+]
+
 ASSUNTOS_PADRAO = [
     "Não informado",
     "Cumprimento de Sentença",
@@ -354,6 +373,68 @@ def iso_para_exibir(valor):
 
 
 
+
+
+def normalizar_complexidade(valor):
+    texto = str(valor or "").strip()
+    for item in COMPLEXIDADES_ATENDIMENTO:
+        if texto.casefold() == item.casefold():
+            return item
+    return "Não informada"
+
+
+def perfil_normalizado(valor):
+    texto = str(valor or "").strip()
+    if texto in PERFIS_USUARIO:
+        return texto
+    if texto == "Administrador":
+        return "Administrador geral"
+    if texto == "Usuário":
+        return "Operador SEPRO"
+    return "Operador SEPRO"
+
+
+def usuario_pode_ver_secao(secao):
+    usuario = usuario_logado()
+    if not usuario:
+        return False
+    perfil = perfil_normalizado(usuario.get("perfil"))
+    secao_usuario = normalizar_secao(usuario.get("secao_operador") or usuario.get("secao") or "SEPRO")
+    secao = normalizar_secao(secao)
+
+    if perfil in ("Administrador geral", "Administrador", "Consulta"):
+        return True
+    if perfil == "Chefia SEPRO" and secao == "SEPRO":
+        return True
+    if perfil == "Chefia SEORZE" and secao == "SEORZE":
+        return True
+    if perfil == "Operador SEPRO" and secao == "SEPRO":
+        return True
+    if perfil == "Operador SEORZE" and secao == "SEORZE":
+        return True
+
+    return secao_usuario == secao
+
+
+def filtrar_lista_por_perfil(lista):
+    usuario = usuario_logado()
+    if not usuario:
+        return []
+    if eh_admin():
+        return lista
+    perfil = perfil_normalizado(usuario.get("perfil"))
+    if perfil == "Consulta":
+        return lista
+    return [a for a in lista if usuario_pode_ver_secao(a.get("secao"))]
+
+
+def parse_data_opcional(valor):
+    if valor in (None, "", "Não informado"):
+        return None
+    return parse_data(valor)
+
+
+
 def normalizar_secao(valor):
     texto = str(valor or "").strip().upper()
     if texto in SECOES_ATENDIMENTO:
@@ -616,7 +697,7 @@ def usuario_db_para_app(row):
         "nome": row.get("nome", ""),
         "email": row.get("email", ""),
         "senha_hash": row.get("senha_hash", ""),
-        "perfil": row.get("perfil", "Usuário"),
+        "perfil": perfil_normalizado(row.get("perfil", "Usuário")),
         "secao_operador": normalizar_secao(row.get("secao_operador") or row.get("secao") or "SEPRO"),
         "ativo": row.get("ativo", True),
         "validado": row.get("validado", False),
@@ -633,7 +714,7 @@ def usuario_app_para_db(u):
         "nome": u.get("nome", ""),
         "email": normalizar_email(u.get("email", "")),
         "senha_hash": u.get("senha_hash", ""),
-        "perfil": u.get("perfil", "Usuário"),
+        "perfil": perfil_normalizado(u.get("perfil", "Usuário")),
         "secao_operador": normalizar_secao(u.get("secao_operador") or u.get("secao") or "SEPRO"),
         "ativo": bool(u.get("ativo", True)),
         "validado": bool(u.get("validado", False)),
@@ -649,6 +730,190 @@ def usuario_app_para_db(u):
     return dados
 
 
+
+
+# ============================================================
+# FUNÇÕES DE GOVERNANÇA, AUDITORIA E HISTÓRICO
+# ============================================================
+
+def supabase_insert_silencioso(tabela, rows):
+    if not rows:
+        return []
+    try:
+        resp = requests.post(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            data=json.dumps(rows, ensure_ascii=False),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json() if resp.text else []
+    except Exception:
+        return []
+
+
+def supabase_get_silencioso(tabela, params=None):
+    try:
+        resp = requests.get(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            params=params or {},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return []
+
+
+def registrar_auditoria_atendimento(atendimento_id, acao, campo="", valor_anterior="", valor_novo=""):
+    usuario = usuario_logado() or {}
+    row = {
+        "atendimento_id": atendimento_id,
+        "acao": str(acao or ""),
+        "campo": str(campo or ""),
+        "valor_anterior": "" if valor_anterior is None else str(valor_anterior),
+        "valor_novo": "" if valor_novo is None else str(valor_novo),
+        "usuario_email": usuario.get("email", ""),
+        "usuario_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("auditoria_atendimentos", [row])
+
+
+def registrar_diferencas_atendimento(antes, depois, acao="edição"):
+    if not antes or not depois:
+        return
+    atendimento_id = depois.get("id") or antes.get("id")
+    campos_monitorados = [
+        "status", "secao", "servidor", "fonte", "assunto", "zona_eleitoral",
+        "origem", "protocolo", "prioridade", "complexidade", "prazo_limite",
+        "descricao", "observacoes", "providencia_adotada", "conclusao",
+        "data_inicio_atendimento", "data_conclusao", "data_realizacao"
+    ]
+    for campo in campos_monitorados:
+        anterior = antes.get(campo)
+        novo = depois.get(campo)
+        if str(anterior or "") != str(novo or ""):
+            registrar_auditoria_atendimento(atendimento_id, acao, campo, anterior, novo)
+
+
+def registrar_comunicacao(atendimento_id, tipo, resumo):
+    usuario = usuario_logado() or {}
+    row = {
+        "atendimento_id": atendimento_id,
+        "tipo": tipo,
+        "resumo": resumo,
+        "responsavel_email": usuario.get("email", ""),
+        "responsavel_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("comunicacoes_atendimento", [row])
+    registrar_auditoria_atendimento(atendimento_id, "comunicação", "comunicacao", "", f"{tipo}: {resumo}")
+
+
+def comunicacoes_atendimento(atendimento_id):
+    return supabase_get_silencioso(
+        "comunicacoes_atendimento",
+        {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
+    )
+
+
+def registrar_anexo(atendimento_id, nome_arquivo, url_arquivo, tipo_arquivo="link"):
+    usuario = usuario_logado() or {}
+    row = {
+        "atendimento_id": atendimento_id,
+        "nome_arquivo": nome_arquivo,
+        "tipo_arquivo": tipo_arquivo,
+        "url_arquivo": url_arquivo,
+        "enviado_por_email": usuario.get("email", ""),
+        "enviado_por_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("anexos_atendimento", [row])
+    registrar_auditoria_atendimento(atendimento_id, "anexo", "anexo", "", f"{nome_arquivo}: {url_arquivo}")
+
+
+def anexos_atendimento(atendimento_id):
+    return supabase_get_silencioso(
+        "anexos_atendimento",
+        {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
+    )
+
+
+def registrar_reabertura(atendimento, motivo):
+    usuario = usuario_logado() or {}
+    row = {
+        "atendimento_id": atendimento.get("id"),
+        "motivo": motivo,
+        "status_anterior": atendimento.get("status"),
+        "reaberto_por_email": usuario.get("email", ""),
+        "reaberto_por_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("reaberturas_atendimento", [row])
+    registrar_auditoria_atendimento(atendimento.get("id"), "reabertura", "motivo", "", motivo)
+
+
+def criar_item_base_conhecimento(atendimento):
+    usuario = usuario_logado() or {}
+    row = {
+        "atendimento_origem_id": atendimento.get("id"),
+        "secao": normalizar_secao(atendimento.get("secao")),
+        "assunto": atendimento.get("assunto") or "Não informado",
+        "categoria": atendimento.get("assunto") or "Não informado",
+        "resumo_duvida": atendimento.get("descricao") or "",
+        "orientacao_adotada": atendimento.get("providencia_adotada") or atendimento.get("conclusao") or "",
+        "fundamento_normativo": "",
+        "criado_por_email": usuario.get("email", ""),
+        "criado_por_nome": usuario.get("nome", ""),
+        "ativo": True,
+        "criado_em": agora_iso(),
+        "atualizado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("base_conhecimento", [row])
+    registrar_auditoria_atendimento(atendimento.get("id"), "base_conhecimento", "gerar_precedente", "", "Item gerado")
+
+
+def base_conhecimento_rows():
+    return supabase_get_silencioso("base_conhecimento", {"select": "*", "ativo": "eq.true", "order": "criado_em.desc"})
+
+
+def auditoria_atendimento(atendimento_id):
+    return supabase_get_silencioso(
+        "auditoria_atendimentos",
+        {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
+    )
+
+
+def calcular_tempos_formais(a):
+    inicio = obter_data_hora_atendimento(a.get("criado_em"))
+    triagem = obter_data_hora_atendimento(a.get("triado_em"))
+    inicio_atendimento = obter_data_hora_atendimento(a.get("data_inicio_atendimento") or a.get("triado_em"))
+    conclusao = obter_data_hora_atendimento(a.get("data_conclusao") or a.get("realizado_em") or a.get("atualizado_em"))
+
+    tempo_triagem = None
+    tempo_atendimento = None
+    tempo_total = None
+
+    if inicio and triagem:
+        tempo_triagem = max(0, (triagem - inicio).total_seconds() / 3600)
+    if inicio_atendimento and conclusao and a.get("status") == STATUS_REALIZADO:
+        tempo_atendimento = max(0, (conclusao - inicio_atendimento).total_seconds() / 3600)
+    if inicio and conclusao and a.get("status") == STATUS_REALIZADO:
+        tempo_total = max(0, (conclusao - inicio).total_seconds() / 3600)
+
+    return tempo_triagem, tempo_atendimento, tempo_total
+
+
+def prazo_vencido(a):
+    prazo = parse_data_opcional(a.get("prazo_limite"))
+    if not prazo or a.get("status") == STATUS_REALIZADO:
+        return False
+    return prazo < agora_brasilia().date()
+
+
+
 def atendimento_db_para_app(row):
     return {
         "id": row.get("id"),
@@ -662,8 +927,12 @@ def atendimento_db_para_app(row):
         "origem": row.get("origem") or "",
         "protocolo": row.get("protocolo") or "",
         "prioridade": row.get("prioridade") or "Normal",
+        "complexidade": normalizar_complexidade(row.get("complexidade") or "Não informada"),
+        "prazo_limite": data_app(row.get("prazo_limite")) if row.get("prazo_limite") else "",
         "descricao": row.get("descricao") or "",
         "observacoes": row.get("observacoes") or "",
+        "providencia_adotada": row.get("providencia_adotada") or "",
+        "conclusao": row.get("conclusao") or "",
         "criado_por": row.get("criado_por") or "",
         "criado_em": formatar_data_hora_brasilia(row.get("criado_em")) if row.get("criado_em") else "",
         "atualizado_em": formatar_data_hora_brasilia(row.get("atualizado_em")) if row.get("atualizado_em") else "",
@@ -686,8 +955,12 @@ def atendimento_app_para_db(a):
         "origem": a.get("origem") or None,
         "protocolo": a.get("protocolo") or None,
         "prioridade": a.get("prioridade") or "Normal",
+        "complexidade": normalizar_complexidade(a.get("complexidade") or "Não informada"),
+        "prazo_limite": data_db(a.get("prazo_limite")) if a.get("prazo_limite") else None,
         "descricao": a.get("descricao") or None,
         "observacoes": a.get("observacoes") or None,
+        "providencia_adotada": a.get("providencia_adotada") or None,
+        "conclusao": a.get("conclusao") or None,
         "criado_por": a.get("criado_por") or None,
         "criado_em": data_hora_db(a.get("criado_em")) or agora_iso(),
         "atualizado_em": data_hora_db(a.get("atualizado_em")) or agora_iso(),
@@ -1067,7 +1340,9 @@ def atendimentos_df(lista=None):
         return pd.DataFrame(columns=[
             "id", "data", "status", "secao", "servidor", "fonte", "assunto",
             "zona_eleitoral", "origem", "descricao", "observacoes",
-            "criado_por", "criado_em", "atualizado_em", "data_realizacao"
+            "providencia_adotada", "conclusao", "complexidade", "prazo_limite",
+            "criado_por", "criado_em", "atualizado_em", "data_realizacao",
+            "data_inicio_atendimento", "data_conclusao"
         ])
 
     df = pd.DataFrame(dados)
@@ -1075,7 +1350,9 @@ def atendimentos_df(lista=None):
     for col in [
         "id", "data", "status", "secao", "servidor", "fonte", "assunto",
         "zona_eleitoral", "origem", "descricao", "observacoes",
-        "criado_por", "criado_em", "atualizado_em", "data_realizacao"
+        "providencia_adotada", "conclusao", "complexidade", "prazo_limite",
+        "criado_por", "criado_em", "atualizado_em", "data_realizacao",
+        "data_inicio_atendimento", "data_conclusao"
     ]:
         if col not in df.columns:
             df[col] = ""
@@ -1084,6 +1361,9 @@ def atendimentos_df(lista=None):
     df["Atualizado em"] = df["atualizado_em"].apply(iso_para_exibir)
     df["Criado em"] = df["criado_em"].apply(iso_para_exibir)
     df["Data de realização"] = df["data_realizacao"].apply(data_para_exibir)
+    df["Prazo limite"] = df["prazo_limite"].apply(data_para_exibir)
+    df["Início do atendimento"] = df["data_inicio_atendimento"].apply(iso_para_exibir)
+    df["Conclusão em"] = df["data_conclusao"].apply(iso_para_exibir)
 
     df = df.rename(columns={
         "id": "ID",
@@ -1096,13 +1376,18 @@ def atendimentos_df(lista=None):
         "origem": "Origem da demanda",
         "descricao": "Descrição",
         "observacoes": "Observações",
+        "providencia_adotada": "Providência adotada",
+        "conclusao": "Conclusão",
+        "complexidade": "Complexidade",
         "criado_por": "Criado por",
     })
 
     colunas = [
         "ID", "Data", "Status", "Seção", "Servidor(a)", "Fonte", "Assunto",
         "Zona eleitoral", "Origem da demanda", "Descrição", "Observações",
-        "Criado por", "Criado em", "Atualizado em", "Data de realização"
+        "Providência adotada", "Conclusão", "Complexidade", "Prazo limite",
+        "Criado por", "Criado em", "Atualizado em", "Data de realização",
+        "Início do atendimento", "Conclusão em"
     ]
 
     return df[colunas]
@@ -1415,6 +1700,7 @@ def sidebar_menu():
         "Atendimento realizado",
         "Base geral",
         "Relatórios e exportação",
+        "Base de conhecimento",
         "Backup e restauração",
     ]
 
@@ -1508,6 +1794,9 @@ def classificar_alerta_gerencial(a):
     status = a.get("status")
     prioridade = str(a.get("prioridade") or "").strip().casefold()
 
+    if prazo_vencido(a):
+        return "Prazo vencido"
+
     if prioridade == "urgente":
         return "Urgente em aberto"
 
@@ -1557,6 +1846,7 @@ def dataframe_qualidade_base(lista):
         ("Sem assunto", sum(1 for a in lista if atendimento_sem_assunto(a))),
         ("Sem fonte", sum(1 for a in lista if atendimento_sem_fonte(a))),
         ("Urgentes em aberto", sum(1 for a in lista if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente")),
+        ("Prazo vencido", sum(1 for a in lista if prazo_vencido(a))),
         ("Triagem acima de 2 dias", sum(1 for a in lista if a.get("status") == STATUS_CADASTRADO and (dias_em_triagem(a) or 0) > 2)),
         ("Em atendimento acima de 5 dias", sum(1 for a in lista if a.get("status") == STATUS_EM_ATENDIMENTO and (dias_em_atendimento(a) or 0) > 5)),
     ]
@@ -1644,6 +1934,7 @@ def dataframe_evolucao_mensal_por_secao(lista):
 
 
 def filtros_base(lista):
+    lista = filtrar_lista_por_perfil(lista)
     df = atendimentos_df(lista)
 
     st.sidebar.subheader("Filtros")
@@ -1743,10 +2034,17 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         with col3:
             st.markdown(f"**Servidor(a):** {atendimento.get('servidor', '')}")
             st.markdown(f"**Fonte:** {atendimento.get('fonte', '')}")
+            st.markdown(f"**Complexidade:** {atendimento.get('complexidade', 'Não informada')}")
+            if atendimento.get("prazo_limite"):
+                st.markdown(f"**Prazo:** {data_para_exibir(atendimento.get('prazo_limite'))}")
             st.markdown(f"**Atualizado:** {atualizado_formatado}")
 
         if atendimento.get("observacoes"):
             st.markdown(f"**Observações:** {atendimento.get('observacoes')}")
+        if atendimento.get("providencia_adotada"):
+            st.markdown(f"**Providência adotada:** {atendimento.get('providencia_adotada')}")
+        if atendimento.get("conclusao"):
+            st.markdown(f"**Conclusão:** {atendimento.get('conclusao')}")
 
         if not permitir_edicao:
             return
@@ -1760,13 +2058,23 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         def salvar_status(novo_status):
             for item in lista:
                 if int(item.get("id")) == int(atendimento.get("id")):
+                    antes = item.copy()
                     item["status"] = novo_status
                     item["atualizado_em"] = agora_iso()
                     if novo_status == STATUS_CADASTRADO:
                         item["servidor"] = "Não informado"
+                    if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
+                        item["data_inicio_atendimento"] = agora_iso()
                     if novo_status == STATUS_REALIZADO:
                         item["data_realizacao"] = hoje_ddmmaaaa()
+                        if not item.get("data_conclusao"):
+                            item["data_conclusao"] = agora_iso()
+                    t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
+                    item["tempo_triagem_horas"] = t_triagem
+                    item["tempo_atendimento_horas"] = t_atendimento
+                    item["tempo_total_horas"] = t_total
                     salvar_atendimentos(lista)
+                    registrar_diferencas_atendimento(antes, item, "mudança de status")
                     st.success(f"Atendimento movido para: {novo_status}")
                     st.rerun()
 
@@ -1834,22 +2142,139 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
                 )
 
+                nova_complexidade = st.selectbox(
+                    "Complexidade",
+                    COMPLEXIDADES_ATENDIMENTO,
+                    index=COMPLEXIDADES_ATENDIMENTO.index(normalizar_complexidade(atendimento.get("complexidade"))) if normalizar_complexidade(atendimento.get("complexidade")) in COMPLEXIDADES_ATENDIMENTO else 0,
+                    key=f"{chave_prefixo}_complexidade_{atendimento.get('id')}"
+                )
+
+                prazo_atual = parse_data_opcional(atendimento.get("prazo_limite")) or agora_brasilia().date()
+                manter_prazo = st.checkbox(
+                    "Definir/manter prazo limite",
+                    value=bool(atendimento.get("prazo_limite")),
+                    key=f"{chave_prefixo}_tem_prazo_{atendimento.get('id')}"
+                )
+                novo_prazo = st.date_input(
+                    "Prazo limite",
+                    value=prazo_atual,
+                    format="DD/MM/YYYY",
+                    disabled=not manter_prazo,
+                    key=f"{chave_prefixo}_prazo_{atendimento.get('id')}"
+                )
+
+                nova_providencia = st.text_area(
+                    "Providência adotada",
+                    value=atendimento.get("providencia_adotada", ""),
+                    key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
+                )
+
+                nova_conclusao = st.text_area(
+                    "Conclusão / resultado",
+                    value=atendimento.get("conclusao", ""),
+                    key=f"{chave_prefixo}_conclusao_{atendimento.get('id')}"
+                )
+
+                gerar_conhecimento = st.checkbox(
+                    "Gerar item na base de conhecimento ao salvar",
+                    value=False,
+                    key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
+                )
+
                 if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
                     for item in lista:
                         if int(item.get("id")) == int(atendimento.get("id")):
                             item["observacoes"] = nova_obs
+                            antes = item.copy()
                             item["status"] = novo_status
                             item["secao"] = nova_secao
                             item["servidor"] = novo_servidor
                             item["assunto"] = novo_assunto
+                            item["complexidade"] = nova_complexidade
+                            item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
+                            item["providencia_adotada"] = nova_providencia
+                            item["conclusao"] = nova_conclusao
+                            if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
+                                item["data_inicio_atendimento"] = agora_iso()
                             if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
                                 item["realizado_em"] = agora_iso()
+                            if novo_status == STATUS_REALIZADO and not item.get("data_conclusao"):
+                                item["data_conclusao"] = agora_iso()
                             item["atualizado_em"] = agora_iso()
                             if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
                                 item["data_realizacao"] = hoje_ddmmaaaa()
+                            t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
+                            item["tempo_triagem_horas"] = t_triagem
+                            item["tempo_atendimento_horas"] = t_atendimento
+                            item["tempo_total_horas"] = t_total
                             salvar_atendimentos(lista)
+                            registrar_diferencas_atendimento(antes, item, "edição")
+                            if gerar_conhecimento:
+                                criar_item_base_conhecimento(item)
                             st.success("Alterações salvas.")
                             st.rerun()
+
+        with st.expander("Histórico, comunicações, anexos e reabertura"):
+            st.markdown("##### Registrar comunicação")
+            tipo_com = st.selectbox(
+                "Tipo de comunicação",
+                ["E-mail", "Telefone", "WhatsApp", "Reunião", "Outro"],
+                key=f"{chave_prefixo}_tipo_com_{atendimento.get('id')}"
+            )
+            resumo_com = st.text_area(
+                "Resumo da comunicação",
+                key=f"{chave_prefixo}_resumo_com_{atendimento.get('id')}"
+            )
+            if st.button("Registrar comunicação", key=f"{chave_prefixo}_btn_com_{atendimento.get('id')}"):
+                if not resumo_com.strip():
+                    st.warning("Informe o resumo da comunicação.")
+                else:
+                    registrar_comunicacao(atendimento.get("id"), tipo_com, resumo_com.strip())
+                    st.success("Comunicação registrada.")
+                    st.rerun()
+
+            st.markdown("##### Anexos por link")
+            nome_anexo = st.text_input("Nome do documento/anexo", key=f"{chave_prefixo}_nome_anexo_{atendimento.get('id')}")
+            url_anexo = st.text_input("URL do documento/anexo", key=f"{chave_prefixo}_url_anexo_{atendimento.get('id')}")
+            if st.button("Registrar anexo", key=f"{chave_prefixo}_btn_anexo_{atendimento.get('id')}"):
+                if not nome_anexo.strip() or not url_anexo.strip():
+                    st.warning("Informe nome e URL do anexo.")
+                else:
+                    registrar_anexo(atendimento.get("id"), nome_anexo.strip(), url_anexo.strip())
+                    st.success("Anexo registrado.")
+                    st.rerun()
+
+            if atendimento.get("status") == STATUS_REALIZADO:
+                st.markdown("##### Reabrir atendimento")
+                motivo_reabertura = st.text_area("Motivo da reabertura", key=f"{chave_prefixo}_motivo_reabrir_{atendimento.get('id')}")
+                if st.button("Reabrir atendimento", key=f"{chave_prefixo}_btn_reabrir_{atendimento.get('id')}"):
+                    if not motivo_reabertura.strip():
+                        st.warning("Informe o motivo da reabertura.")
+                    else:
+                        lista_reabrir = atendimentos()
+                        for item in lista_reabrir:
+                            if int(item.get("id")) == int(atendimento.get("id")):
+                                antes = item.copy()
+                                registrar_reabertura(item, motivo_reabertura.strip())
+                                item["status"] = STATUS_EM_ATENDIMENTO
+                                item["data_conclusao"] = ""
+                                item["data_realizacao"] = ""
+                                item["realizado_em"] = ""
+                                item["atualizado_em"] = agora_iso()
+                                salvar_atendimentos(lista_reabrir)
+                                registrar_diferencas_atendimento(antes, item, "reabertura")
+                                st.success("Atendimento reaberto.")
+                                st.rerun()
+
+            st.markdown("##### Comunicações registradas")
+            st.dataframe(pd.DataFrame(comunicacoes_atendimento(atendimento.get("id"))), use_container_width=True, hide_index=True)
+
+            st.markdown("##### Anexos registrados")
+            st.dataframe(pd.DataFrame(anexos_atendimento(atendimento.get("id"))), use_container_width=True, hide_index=True)
+
+            st.markdown("##### Auditoria do atendimento")
+            st.dataframe(pd.DataFrame(auditoria_atendimento(atendimento.get("id"))), use_container_width=True, hide_index=True)
+
 
         if eh_admin():
             with st.expander("Excluir atendimento"):
@@ -2470,7 +2895,7 @@ def tela_novo_atendimento():
         with col4:
             secao_atendimento = st.selectbox("Seção responsável", SECOES_ATENDIMENTO, index=0)
 
-        col4, col5, col6 = st.columns(3)
+        col4, col5, col6, col7, col8 = st.columns(5)
 
         with col4:
             idx_fonte = FONTES.index("Não informado") if "Não informado" in FONTES else 0
@@ -2484,6 +2909,13 @@ def tela_novo_atendimento():
         with col6:
             prioridades = ["Não informado", "Normal", "Alta", "Urgente", "Baixa"]
             prioridade = st.selectbox("Prioridade", prioridades, index=0)
+
+        with col7:
+            complexidade = st.selectbox("Complexidade", COMPLEXIDADES_ATENDIMENTO, index=0)
+
+        with col8:
+            informar_prazo = st.checkbox("Definir prazo", value=False)
+            prazo_limite = st.date_input("Prazo limite", value=agora_brasilia().date(), format="DD/MM/YYYY", disabled=not informar_prazo)
 
         protocolo = st.text_input("Protocolo ou referência, se houver")
 
@@ -2506,17 +2938,27 @@ def tela_novo_atendimento():
                 "origem": origem.strip(),
                 "protocolo": protocolo.strip(),
                 "prioridade": prioridade,
+                "complexidade": complexidade,
+                "prazo_limite": prazo_limite.strftime("%d/%m/%Y") if informar_prazo else "",
                 "descricao": descricao.strip(),
                 "observacoes": observacoes.strip(),
+                "providencia_adotada": "",
+                "conclusao": "",
                 "criado_por": usuario_logado().get("email", ""),
                 "criado_em": agora_iso(),
                 "atualizado_em": agora_iso(),
                 "data_realizacao": "",
+                "data_inicio_atendimento": "",
+                "data_conclusao": "",
+                "tempo_triagem_horas": None,
+                "tempo_atendimento_horas": None,
+                "tempo_total_horas": None,
                 "triado_por": "",
                 "triado_em": "",
             }
             lista.append(novo)
             salvar_atendimentos(lista)
+            registrar_auditoria_atendimento(novo["id"], "criação", "atendimento", "", "Atendimento cadastrado")
             st.success(f"Atendimento nº {novo['id']} cadastrado com sucesso na base: {STATUS_CADASTRADO}.")
             st.rerun()
 
@@ -2579,11 +3021,18 @@ def card_triagem(atendimento, chave_prefixo):
                     for item in lista:
                         if int(item.get("id")) == int(atendimento.get("id")):
                             item["servidor"] = servidor_escolhido
+                            antes = item.copy()
                             item["status"] = STATUS_EM_ATENDIMENTO
+                            item["data_inicio_atendimento"] = agora_iso()
                             item["atualizado_em"] = agora_iso()
                             item["triado_por"] = usuario_logado().get("email", "")
                             item["triado_em"] = agora_iso()
+                            t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
+                            item["tempo_triagem_horas"] = t_triagem
+                            item["tempo_atendimento_horas"] = t_atendimento
+                            item["tempo_total_horas"] = t_total
                             salvar_atendimentos(lista)
+                            registrar_diferencas_atendimento(antes, item, "triagem")
                             st.success(f"Demanda encaminhada para {servidor_escolhido}.")
                             st.rerun()
 
@@ -3249,6 +3698,10 @@ def tela_relatorios_exportacao():
         st.markdown("#### Relatório por fonte")
         st.dataframe(df["Fonte"].value_counts().rename_axis("Fonte").reset_index(name="Quantidade"), use_container_width=True, hide_index=True)
 
+        if "Complexidade" in df.columns:
+            st.markdown("#### Relatório por complexidade")
+            st.dataframe(df["Complexidade"].value_counts().rename_axis("Complexidade").reset_index(name="Quantidade"), use_container_width=True, hide_index=True)
+
         if "Seção" in df.columns:
             st.markdown("#### Relatório por seção")
             st.dataframe(df["Seção"].value_counts().rename_axis("Seção").reset_index(name="Quantidade"), use_container_width=True, hide_index=True)
@@ -3264,6 +3717,8 @@ def tela_relatorios_exportacao():
         df["Fonte"].value_counts().rename_axis("Fonte").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por fonte")
         dataframe_qualidade_base(lista).to_excel(writer, index=False, sheet_name="Qualidade base")
         dataframe_alertas_gerenciais(lista).to_excel(writer, index=False, sheet_name="Alertas gerenciais")
+        if "Complexidade" in df.columns:
+            df["Complexidade"].value_counts().rename_axis("Complexidade").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por complexidade")
         if "Seção" in df.columns:
             df["Seção"].value_counts().rename_axis("Seção").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por seção")
 
@@ -3406,8 +3861,8 @@ def tela_usuarios():
     with col1:
         novo_perfil = st.selectbox(
             "Perfil",
-            ["Administrador", "Usuário"],
-            index=0 if usuario.get("perfil") == "Administrador" else 1
+            PERFIS_USUARIO,
+            index=PERFIS_USUARIO.index(perfil_normalizado(usuario.get("perfil"))) if perfil_normalizado(usuario.get("perfil")) in PERFIS_USUARIO else 0
         )
 
     with col2:
@@ -3459,6 +3914,63 @@ def tela_usuarios():
                     st.success("Usuário excluído.")
                     st.rerun()
 
+
+
+
+
+def tela_base_conhecimento():
+    st.subheader("Base de conhecimento")
+    st.caption("Repositório de orientações extraídas dos atendimentos concluídos.")
+
+    rows = base_conhecimento_rows()
+    df = pd.DataFrame(rows)
+
+    busca = st.text_input("Pesquisar na base de conhecimento")
+    secao_filtro = st.multiselect("Seção", SECOES_ATENDIMENTO)
+
+    if not df.empty:
+        if busca:
+            termo = busca.casefold()
+            df = df[df.astype(str).apply(lambda linha: linha.str.casefold().str.contains(termo, na=False).any(), axis=1)]
+        if secao_filtro and "secao" in df.columns:
+            df = df[df["secao"].isin(secao_filtro)]
+
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("### Cadastrar orientação manualmente")
+
+    with st.form("form_base_conhecimento"):
+        col1, col2 = st.columns(2)
+        with col1:
+            secao = st.selectbox("Seção", SECOES_ATENDIMENTO)
+            assunto = st.text_input("Assunto")
+            categoria = st.text_input("Categoria")
+        with col2:
+            atendimento_origem_id = st.number_input("ID do atendimento de origem, se houver", min_value=0, step=1)
+            fundamento = st.text_area("Fundamento normativo")
+        resumo = st.text_area("Resumo da dúvida")
+        orientacao = st.text_area("Orientação adotada")
+
+        if st.form_submit_button("Salvar orientação", type="primary"):
+            usuario = usuario_logado() or {}
+            row = {
+                "atendimento_origem_id": int(atendimento_origem_id) if atendimento_origem_id else None,
+                "secao": secao,
+                "assunto": assunto.strip() or "Não informado",
+                "categoria": categoria.strip() or assunto.strip() or "Não informado",
+                "resumo_duvida": resumo.strip(),
+                "orientacao_adotada": orientacao.strip(),
+                "fundamento_normativo": fundamento.strip(),
+                "criado_por_email": usuario.get("email", ""),
+                "criado_por_nome": usuario.get("nome", ""),
+                "ativo": True,
+                "criado_em": agora_iso(),
+                "atualizado_em": agora_iso(),
+            }
+            supabase_insert_silencioso("base_conhecimento", [row])
+            st.success("Orientação cadastrada.")
+            st.rerun()
 
 
 def tela_backup_restauracao():
@@ -3607,6 +4119,9 @@ def main():
 
     elif escolha == "Relatórios e exportação":
         tela_relatorios_exportacao()
+
+    elif escolha == "Base de conhecimento":
+        tela_base_conhecimento()
 
     elif escolha == "Backup e restauração":
         tela_backup_restauracao()
