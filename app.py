@@ -1293,7 +1293,15 @@ def usuario_logado():
 
 def eh_admin():
     u = usuario_logado()
-    return bool(u and u.get("perfil") == "Administrador")
+    if not u:
+        return False
+
+    perfil = perfil_normalizado(u.get("perfil"))
+
+    return perfil in (
+        "Administrador geral",
+        "Administrador",
+    )
 
 
 def usuarios_ativos_validados():
@@ -3829,6 +3837,10 @@ def tela_usuarios():
     st.subheader("Usuários")
     st.caption("Área exclusiva do administrador.")
 
+    if not eh_admin():
+        st.warning("Apenas administradores podem gerenciar usuários.")
+        return
+
     lista = usuarios()
     df = pd.DataFrame(lista)
 
@@ -3839,11 +3851,11 @@ def tela_usuarios():
                 exibir = exibir.drop(columns=[col])
         st.dataframe(exibir, use_container_width=True, hide_index=True)
     else:
-        st.info("Nenhum usuário triagem.")
+        st.info("Nenhum usuário cadastrado.")
 
     st.divider()
 
-    st.markdown("#### Gerenciar usuário")
+    st.markdown("#### Editar cadastro de usuário")
 
     opcoes = [f"{u.get('nome')} - {u.get('email')}" for u in lista]
     if not opcoes:
@@ -3856,52 +3868,172 @@ def tela_usuarios():
     if not usuario:
         return
 
-    col1, col2, col3, col4 = st.columns(4)
+    email_original = normalizar_email(usuario.get("email"))
+    email_logado = normalizar_email(usuario_logado().get("email"))
 
-    with col1:
-        novo_perfil = st.selectbox(
-            "Perfil",
-            PERFIS_USUARIO,
-            index=PERFIS_USUARIO.index(perfil_normalizado(usuario.get("perfil"))) if perfil_normalizado(usuario.get("perfil")) in PERFIS_USUARIO else 0
+    with st.form(f"form_editar_usuario_{email_original}"):
+        st.markdown("##### Dados cadastrais")
+
+        col_dados1, col_dados2 = st.columns(2)
+
+        with col_dados1:
+            novo_nome = st.text_input(
+                "Nome completo",
+                value=usuario.get("nome", ""),
+                key=f"usuario_nome_{email_original}"
+            )
+
+        with col_dados2:
+            novo_email = normalizar_email(st.text_input(
+                "E-mail institucional",
+                value=usuario.get("email", ""),
+                key=f"usuario_email_{email_original}"
+            ))
+
+        st.markdown("##### Perfil e acesso")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            novo_perfil = st.selectbox(
+                "Perfil",
+                PERFIS_USUARIO,
+                index=PERFIS_USUARIO.index(perfil_normalizado(usuario.get("perfil"))) if perfil_normalizado(usuario.get("perfil")) in PERFIS_USUARIO else 0,
+                key=f"usuario_perfil_{email_original}"
+            )
+
+        with col2:
+            secao_usuario_atual = normalizar_secao(usuario.get("secao_operador"))
+            nova_secao_operador = st.selectbox(
+                "Operador da seção",
+                SECOES_ATENDIMENTO,
+                index=SECOES_ATENDIMENTO.index(secao_usuario_atual) if secao_usuario_atual in SECOES_ATENDIMENTO else 0,
+                key=f"usuario_secao_{email_original}"
+            )
+
+        with col3:
+            ativo = st.checkbox(
+                "Ativo",
+                value=usuario.get("ativo", True),
+                key=f"usuario_ativo_{email_original}"
+            )
+
+        with col4:
+            validado = st.checkbox(
+                "Validado",
+                value=usuario.get("validado", False),
+                key=f"usuario_validado_{email_original}"
+            )
+
+        st.markdown("##### Senha")
+
+        alterar_senha = st.checkbox(
+            "Redefinir senha deste usuário",
+            value=False,
+            key=f"usuario_alt_senha_{email_original}"
         )
 
-    with col2:
-        secao_usuario_atual = normalizar_secao(usuario.get("secao_operador"))
-        nova_secao_operador = st.selectbox(
-            "Operador da seção",
-            SECOES_ATENDIMENTO,
-            index=SECOES_ATENDIMENTO.index(secao_usuario_atual) if secao_usuario_atual in SECOES_ATENDIMENTO else 0
-        )
+        nova_senha = ""
+        confirmar_senha = ""
 
-    with col3:
-        ativo = st.checkbox("Ativo", value=usuario.get("ativo", True))
+        if alterar_senha:
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                nova_senha = st.text_input(
+                    "Nova senha",
+                    type="password",
+                    key=f"usuario_nova_senha_{email_original}"
+                )
+            with col_s2:
+                confirmar_senha = st.text_input(
+                    "Confirmar nova senha",
+                    type="password",
+                    key=f"usuario_conf_senha_{email_original}"
+                )
 
-    with col4:
-        validado = st.checkbox("Validado", value=usuario.get("validado", False))
+        salvar = st.form_submit_button("Salvar alterações do usuário", type="primary")
 
-    if st.button("Salvar alterações do usuário"):
+    if salvar:
+        novo_nome = novo_nome.strip()
+        novo_email = normalizar_email(novo_email)
+
+        if not novo_nome:
+            st.warning("Informe o nome do usuário.")
+            return
+
+        if not email_institucional(novo_email):
+            st.warning(f"O e-mail deve terminar com {DOMINIO_INSTITUCIONAL}.")
+            return
+
+        if novo_email != email_original and any(normalizar_email(u.get("email")) == novo_email for u in lista):
+            st.warning("Já existe outro usuário cadastrado com este e-mail.")
+            return
+
+        if usuario.get("email") == email_logado and not ativo:
+            st.warning("Você não pode desativar o próprio usuário enquanto estiver logado.")
+            return
+
+        if usuario.get("email") == email_logado and perfil_normalizado(novo_perfil) not in ("Administrador geral", "Administrador"):
+            admins_ativos = [
+                u for u in lista
+                if normalizar_email(u.get("email")) != email_logado
+                and perfil_normalizado(u.get("perfil")) in ("Administrador geral", "Administrador")
+                and u.get("ativo", True)
+                and u.get("validado", False)
+            ]
+
+            if not admins_ativos:
+                st.warning("Você não pode remover o próprio perfil de administrador se não houver outro administrador ativo e validado.")
+                return
+
+        if alterar_senha:
+            if not nova_senha or len(nova_senha) < 6:
+                st.warning("A nova senha deve ter pelo menos 6 caracteres.")
+                return
+            if nova_senha != confirmar_senha:
+                st.warning("As senhas não conferem.")
+                return
+
+        usuario["nome"] = novo_nome
+        usuario["email"] = novo_email
         usuario["perfil"] = novo_perfil
         usuario["secao_operador"] = nova_secao_operador
         usuario["ativo"] = ativo
         usuario["validado"] = validado
+        usuario["atualizado_em"] = agora_iso()
+
+        if alterar_senha:
+            usuario["senha_hash"] = senha_hash(nova_senha)
+            usuario["token_recuperacao"] = ""
+
         salvar_usuarios(lista)
-        st.success("Usuário atualizado.")
+
+        if email_original != novo_email:
+            try:
+                supabase_update("sessoes", {"email": novo_email, "nome": novo_nome}, "email", email_original)
+            except Exception:
+                pass
+
+        if email_original == email_logado:
+            st.session_state["usuario"] = usuario
+
+        st.success("Cadastro do usuário atualizado.")
         st.rerun()
 
     st.divider()
     st.markdown("#### Excluir usuário")
-
-    email_logado = usuario_logado().get("email")
 
     if usuario.get("email") == email_logado:
         st.warning("Você não pode excluir o próprio usuário enquanto estiver logado.")
     else:
         admins_ativos = [
             u for u in lista
-            if u.get("perfil") == "Administrador" and u.get("ativo", True) and u.get("email") != usuario.get("email")
+            if perfil_normalizado(u.get("perfil")) in ("Administrador geral", "Administrador")
+            and u.get("ativo", True)
+            and u.get("email") != usuario.get("email")
         ]
 
-        if usuario.get("perfil") == "Administrador" and not admins_ativos:
+        if perfil_normalizado(usuario.get("perfil")) in ("Administrador geral", "Administrador") and not admins_ativos:
             st.warning("Não é permitido excluir o último administrador ativo.")
         else:
             confirmar = st.checkbox(f"Confirmo a exclusão de {usuario.get('email')}")
@@ -3913,7 +4045,6 @@ def tela_usuarios():
                     salvar_usuarios(nova_lista)
                     st.success("Usuário excluído.")
                     st.rerun()
-
 
 
 
