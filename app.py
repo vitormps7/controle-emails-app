@@ -30,7 +30,7 @@ from reportlab.lib.utils import ImageReader
 # ============================================================
 
 st.set_page_config(
-    page_title="Sistema SEPRO - Controle de Atendimentos",
+    page_title="SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria",
     page_icon="📧",
     layout="wide"
 )
@@ -42,6 +42,10 @@ ARQ_SESSOES = Path("sessoes_usuarios_logados_v1.json")
 PASTA_BACKUPS = Path("backups_sistema_sepro")
 FUSO_HORARIO_BRASILIA = timezone(timedelta(hours=-3), name="BRT")
 USAR_SUPABASE = True
+
+NOME_SISTEMA = "SIGA-COR"
+NOME_COMPLETO_SISTEMA = "Sistema Integrado de Gestão de Atendimentos da Corregedoria"
+CREDITO_DESENVOLVEDOR = "Protótipo funcional desenvolvido por Vítor Marcelo Pinto Soares no âmbito da SEPRO/CRE-BA"
 SESSAO_ATIVA_MINUTOS = 15
 
 DOMINIO_INSTITUCIONAL = "@tre-ba.jus.br"
@@ -977,7 +981,7 @@ def atendimento_app_para_db(a):
 
 def montar_backup_completo():
     return {
-        "sistema": "Sistema SEPRO - Controle de Atendimentos",
+        "sistema": "SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria",
         "versao_backup": "2.1-supabase-rest",
         "gerado_em": agora_iso(),
         "observacao": "Backup completo gerado a partir do banco Supabase.",
@@ -1527,7 +1531,7 @@ def tela_login():
             <div class="logo-box">
                 <img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}">
             </div>
-            <h1>Sistema SEPRO - Controle de Atendimentos</h1>
+            <h1>SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria</h1>
         </div>
         """,
         unsafe_allow_html=True
@@ -1619,10 +1623,10 @@ def tela_login():
                     link = gerar_link_validacao(token)
                     ok, msg = enviar_email(
                         email,
-                        "Validação de cadastro - Sistema SEPRO",
+                        "Validação de cadastro - SIGA-COR",
                         (
                             f"Olá, {nome}.\n\n"
-                            "Recebemos seu cadastro no Sistema SEPRO - Controle de Atendimentos.\n\n"
+                            "Recebemos seu cadastro no SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria.\n\n"
                             "Para validar seu acesso ao sistema, acesse o link abaixo:\n\n"
                             f"{link}\n\n"
                             "Este link é destinado exclusivamente à validação de cadastro.\n"
@@ -1658,10 +1662,10 @@ def tela_login():
                 link = gerar_link_recuperacao(token)
                 ok, msg = enviar_email(
                     email_rec,
-                    "Recuperação de senha - Sistema SEPRO",
+                    "Recuperação de senha - SIGA-COR",
                     (
                         "Olá.\n\n"
-                        "Recebemos uma solicitação de recuperação de senha para o Sistema SEPRO - Controle de Atendimentos.\n\n"
+                        "Recebemos uma solicitação de recuperação de senha para o SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria.\n\n"
                         "Para criar uma nova senha, acesse o link abaixo:\n\n"
                         f"{link}\n\n"
                         "Este link é destinado exclusivamente à recuperação de senha.\n"
@@ -1687,7 +1691,7 @@ def cabecalho():
         <div class="main-header" style="display:flex;align-items:center;gap:18px;">
             <div class="logo-box"><img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}"></div>
             <div>
-                <h1>📧 Sistema SEPRO - Controle de Atendimentos</h1>
+                <h1>📧 SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria</h1>
                 <p>Corregedoria Regional Eleitoral da Bahia</p>
                 <p>Usuário: {u.get("nome", "")} | Perfil: {u.get("perfil", "")}</p>
             </div>
@@ -3388,11 +3392,11 @@ def cabecalho_relatorio(canvas_obj, doc):
 
     canvas_obj.setFont("Helvetica-Bold", 12)
     canvas_obj.setFillColor(colors.HexColor("#174A7C"))
-    canvas_obj.drawRightString(largura - margem, altura - 1.35 * cm, "Sistema SEPRO - Controle de Atendimentos")
+    canvas_obj.drawRightString(largura - margem, altura - 1.35 * cm, "SIGA-COR")
 
     canvas_obj.setFont("Helvetica", 8)
     canvas_obj.setFillColor(colors.HexColor("#475569"))
-    canvas_obj.drawRightString(largura - margem, altura - 1.75 * cm, "Relatório gerencial gerado automaticamente")
+    canvas_obj.drawRightString(largura - margem, altura - 1.75 * cm, "Sistema Integrado de Gestão de Atendimentos da Corregedoria")
 
     canvas_obj.setStrokeColor(colors.HexColor("#D9E2EF"))
     canvas_obj.line(margem, altura - 2.55 * cm, largura - margem, altura - 2.55 * cm)
@@ -3491,7 +3495,7 @@ def gerar_relatorio_pdf_sepro(df, filtros_aplicados):
         leftMargin=1.1 * cm,
         topMargin=3.0 * cm,
         bottomMargin=1.4 * cm,
-        title="Relatório de Atendimentos - SEPRO",
+        title="Relatório de Atendimentos - SIGA-COR",
     )
 
     estilos = getSampleStyleSheet()
@@ -3536,8 +3540,8 @@ def gerar_relatorio_pdf_sepro(df, filtros_aplicados):
 
     elementos = []
 
-    elementos.append(Paragraph("RELATÓRIO GERENCIAL DE ATENDIMENTOS", titulo))
-    elementos.append(Paragraph("SEPRO / COAJUC - Sistema SEPRO - Controle de Atendimentos", subtitulo))
+    elementos.append(Paragraph("RELATÓRIO GERENCIAL DE ATENDIMENTOS - SIGA-COR", titulo))
+    elementos.append(Paragraph("SEPRO / COAJUC - SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria", subtitulo))
 
     elementos.append(Paragraph("1. Identificação e filtros aplicados", h2))
     elementos.append(Paragraph(f"<b>Usuário emissor:</b> {usuario_logado().get('nome', '')} ({usuario_logado().get('email', '')})", normal))
