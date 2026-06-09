@@ -46,6 +46,29 @@ USAR_SUPABASE = True
 NOME_SISTEMA = "SIGA-COR"
 NOME_COMPLETO_SISTEMA = "Sistema Integrado de Gestão de Atendimentos da Corregedoria"
 CREDITO_DESENVOLVEDOR = "Protótipo funcional desenvolvido por Vítor Marcelo Pinto Soares no âmbito da SEPRO/CRE-BA"
+
+TRIBUNAL_PADRAO = "TRE-BA"
+UF_PADRAO = "BA"
+UNIDADE_CORREGEDORIA_PADRAO = "CRE-BA"
+SITUACOES_VALIDACAO = [
+    "Não requerida",
+    "Pendente de validação",
+    "Validado pela chefia",
+    "Devolvido para ajuste",
+]
+TIPOS_HISTORICO = [
+    "Cadastro",
+    "Triagem",
+    "Assunção",
+    "Edição",
+    "Comentário",
+    "Comunicação",
+    "Anexo",
+    "Validação",
+    "Conclusão",
+    "Reabertura",
+]
+
 SESSAO_ATIVA_MINUTOS = 15
 
 DOMINIO_INSTITUCIONAL = "@tre-ba.jus.br"
@@ -814,6 +837,7 @@ def registrar_comunicacao(atendimento_id, tipo, resumo):
     }
     supabase_insert_silencioso("comunicacoes_atendimento", [row])
     registrar_auditoria_atendimento(atendimento_id, "comunicação", "comunicacao", "", f"{tipo}: {resumo}")
+    registrar_historico_atendimento(atendimento_id, "Comunicação", f"Comunicação registrada: {tipo}", resumo)
 
 
 def comunicacoes_atendimento(atendimento_id):
@@ -836,6 +860,7 @@ def registrar_anexo(atendimento_id, nome_arquivo, url_arquivo, tipo_arquivo="lin
     }
     supabase_insert_silencioso("anexos_atendimento", [row])
     registrar_auditoria_atendimento(atendimento_id, "anexo", "anexo", "", f"{nome_arquivo}: {url_arquivo}")
+    registrar_historico_atendimento(atendimento_id, "Anexo", f"Anexo registrado: {nome_arquivo}", url_arquivo)
 
 
 def anexos_atendimento(atendimento_id):
@@ -857,6 +882,7 @@ def registrar_reabertura(atendimento, motivo):
     }
     supabase_insert_silencioso("reaberturas_atendimento", [row])
     registrar_auditoria_atendimento(atendimento.get("id"), "reabertura", "motivo", "", motivo)
+    registrar_historico_atendimento(atendimento.get("id"), "Reabertura", "Atendimento reaberto", motivo)
 
 
 def criar_item_base_conhecimento(atendimento):
@@ -924,6 +950,13 @@ def atendimento_db_para_app(row):
         "data": data_app(row.get("data_atendimento")),
         "status": row.get("status", STATUS_CADASTRADO),
         "secao": normalizar_secao(row.get("secao") or "SEPRO"),
+        "tribunal": row.get("tribunal") or TRIBUNAL_PADRAO,
+        "uf": row.get("uf") or UF_PADRAO,
+        "unidade_responsavel": row.get("unidade_responsavel") or UNIDADE_CORREGEDORIA_PADRAO,
+        "requer_validacao": row.get("requer_validacao", False),
+        "situacao_validacao": row.get("situacao_validacao") or "Não requerida",
+        "validado_por": row.get("validado_por") or "",
+        "validado_em": formatar_data_hora_brasilia(row.get("validado_em")) if row.get("validado_em") else "",
         "servidor": row.get("servidor") or "Não informado",
         "fonte": row.get("fonte") or "",
         "assunto": row.get("assunto") or "",
@@ -952,6 +985,13 @@ def atendimento_app_para_db(a):
         "data_atendimento": data_db(a.get("data")),
         "status": a.get("status", STATUS_CADASTRADO),
         "secao": normalizar_secao(a.get("secao") or "SEPRO"),
+        "tribunal": a.get("tribunal") or TRIBUNAL_PADRAO,
+        "uf": a.get("uf") or UF_PADRAO,
+        "unidade_responsavel": a.get("unidade_responsavel") or UNIDADE_CORREGEDORIA_PADRAO,
+        "requer_validacao": bool(a.get("requer_validacao", False)),
+        "situacao_validacao": a.get("situacao_validacao") or "Não requerida",
+        "validado_por": a.get("validado_por") or None,
+        "validado_em": data_hora_db(a.get("validado_em")) if a.get("validado_em") else None,
         "servidor": a.get("servidor") or "Não informado",
         "fonte": a.get("fonte") or None,
         "assunto": a.get("assunto") or None,
@@ -1361,7 +1401,7 @@ def atendimentos_df(lista=None):
     dados = lista if lista is not None else atendimentos()
     if not dados:
         return pd.DataFrame(columns=[
-            "id", "data", "status", "secao", "servidor", "fonte", "assunto",
+            "id", "data", "status", "secao", "tribunal", "uf", "unidade_responsavel", "situacao_validacao", "servidor", "fonte", "assunto",
             "zona_eleitoral", "origem", "descricao", "observacoes",
             "providencia_adotada", "conclusao", "complexidade", "prazo_limite",
             "criado_por", "criado_em", "atualizado_em", "data_realizacao",
@@ -1371,7 +1411,7 @@ def atendimentos_df(lista=None):
     df = pd.DataFrame(dados)
 
     for col in [
-        "id", "data", "status", "secao", "servidor", "fonte", "assunto",
+        "id", "data", "status", "secao", "tribunal", "uf", "unidade_responsavel", "situacao_validacao", "servidor", "fonte", "assunto",
         "zona_eleitoral", "origem", "descricao", "observacoes",
         "providencia_adotada", "conclusao", "complexidade", "prazo_limite",
         "criado_por", "criado_em", "atualizado_em", "data_realizacao",
@@ -1392,6 +1432,10 @@ def atendimentos_df(lista=None):
         "id": "ID",
         "status": "Status",
         "secao": "Seção",
+        "tribunal": "Tribunal",
+        "uf": "UF",
+        "unidade_responsavel": "Unidade da Corregedoria",
+        "situacao_validacao": "Validação",
         "servidor": "Servidor(a)",
         "fonte": "Fonte",
         "assunto": "Assunto",
@@ -1406,7 +1450,7 @@ def atendimentos_df(lista=None):
     })
 
     colunas = [
-        "ID", "Data", "Status", "Seção", "Servidor(a)", "Fonte", "Assunto",
+        "ID", "Data", "Status", "Seção", "Tribunal", "UF", "Unidade da Corregedoria", "Validação", "Servidor(a)", "Fonte", "Assunto",
         "Zona eleitoral", "Origem da demanda", "Descrição", "Observações",
         "Providência adotada", "Conclusão", "Complexidade", "Prazo limite",
         "Criado por", "Criado em", "Atualizado em", "Data de realização",
@@ -1726,11 +1770,12 @@ def sidebar_menu():
         "Base geral",
         "Relatórios e exportação",
         "Base de conhecimento",
+        "Modelos de resposta",
         "Backup e restauração",
     ]
 
     if eh_admin():
-        opcoes += ["Assuntos", "Usuários"]
+        opcoes += ["Assuntos", "Usuários", "Parâmetros nacionais"]
 
     escolha = st.sidebar.radio("Navegação", opcoes)
 
@@ -1744,6 +1789,165 @@ def sidebar_menu():
 
 
 
+
+
+
+
+
+# ============================================================
+# FASE 2 - TABELAS NACIONAIS, HISTÓRICO, COMENTÁRIOS E VALIDAÇÃO
+# ============================================================
+
+def registrar_historico_atendimento(atendimento_id, tipo_evento, titulo, descricao=""):
+    usuario = usuario_logado() or {}
+    row = {
+        "atendimento_id": atendimento_id,
+        "tipo_evento": tipo_evento,
+        "titulo": titulo,
+        "descricao": descricao,
+        "usuario_email": usuario.get("email", ""),
+        "usuario_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("historico_atendimento", [row])
+
+
+def historico_atendimento_rows(atendimento_id):
+    return supabase_get_silencioso(
+        "historico_atendimento",
+        {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
+    )
+
+
+def registrar_comentario_atendimento(atendimento_id, comentario):
+    usuario = usuario_logado() or {}
+    row = {
+        "atendimento_id": atendimento_id,
+        "comentario": comentario,
+        "autor_email": usuario.get("email", ""),
+        "autor_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("comentarios_atendimento", [row])
+    registrar_historico_atendimento(atendimento_id, "Comentário", "Comentário interno registrado", comentario)
+
+
+def comentarios_atendimento_rows(atendimento_id):
+    return supabase_get_silencioso(
+        "comentarios_atendimento",
+        {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
+    )
+
+
+def tribunais_rows():
+    rows = supabase_get_silencioso("tribunais", {"select": "*", "ativo": "eq.true", "order": "ordem.asc,sigla.asc"})
+    if rows:
+        return rows
+    return [{"sigla": TRIBUNAL_PADRAO, "uf": UF_PADRAO, "nome": "Tribunal Regional Eleitoral da Bahia", "ativo": True, "ordem": 1}]
+
+
+def unidades_corregedoria_rows(tribunal=None):
+    params = {"select": "*", "ativo": "eq.true", "order": "ordem.asc,sigla.asc"}
+    if tribunal:
+        params["tribunal_sigla"] = f"eq.{tribunal}"
+    rows = supabase_get_silencioso("unidades_corregedoria", params)
+    if rows:
+        return rows
+    return [{"tribunal_sigla": TRIBUNAL_PADRAO, "sigla": "CRE-BA", "nome": "Corregedoria Regional Eleitoral da Bahia", "ativo": True, "ordem": 1}]
+
+
+def zonas_eleitorais_rows(tribunal=None):
+    params = {"select": "*", "ativo": "eq.true", "order": "numero.asc"}
+    if tribunal:
+        params["tribunal_sigla"] = f"eq.{tribunal}"
+    return supabase_get_silencioso("zonas_eleitorais", params)
+
+
+def opcoes_zonas_nacionais(tribunal=None):
+    zonas = zonas_eleitorais_rows(tribunal)
+    if not zonas:
+        return ZONAS_BAHIA
+    opcoes = ["Não informado"]
+    for z in zonas:
+        numero = str(z.get("numero") or "").strip()
+        sede = str(z.get("municipio_sede") or "").strip()
+        uf = str(z.get("uf") or "").strip()
+        if numero and sede:
+            opcoes.append(f"{numero}ª ZE - {sede}/{uf}")
+        elif numero:
+            opcoes.append(f"{numero}ª ZE")
+    return opcoes
+
+
+def modelos_resposta_rows(secao=None, assunto=None):
+    params = {"select": "*", "ativo": "eq.true", "order": "secao.asc,assunto.asc,titulo.asc"}
+    if secao:
+        params["secao"] = f"eq.{normalizar_secao(secao)}"
+    rows = supabase_get_silencioso("modelos_resposta", params)
+    if assunto and rows:
+        termo = str(assunto or "").casefold()
+        rows = [r for r in rows if termo in str(r.get("assunto") or "").casefold() or str(r.get("assunto") or "").casefold() in termo]
+    return rows
+
+
+def registrar_fluxo_validacao(atendimento, situacao, observacao=""):
+    usuario = usuario_logado() or {}
+    row = {
+        "atendimento_id": atendimento.get("id"),
+        "situacao": situacao,
+        "observacao": observacao,
+        "usuario_email": usuario.get("email", ""),
+        "usuario_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("fluxos_validacao", [row])
+    registrar_historico_atendimento(
+        atendimento.get("id"),
+        "Validação",
+        situacao,
+        observacao
+    )
+
+
+def fluxos_validacao_rows(atendimento_id):
+    return supabase_get_silencioso(
+        "fluxos_validacao",
+        {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
+    )
+
+
+def usuario_pode_validar(atendimento):
+    usuario = usuario_logado() or {}
+    perfil = perfil_normalizado(usuario.get("perfil"))
+    secao = normalizar_secao(atendimento.get("secao"))
+    if perfil in ("Administrador geral", "Administrador"):
+        return True
+    if perfil == "Chefia SEPRO" and secao == "SEPRO":
+        return True
+    if perfil == "Chefia SEORZE" and secao == "SEORZE":
+        return True
+    return False
+
+
+def salvar_alteracao_atendimento_unitaria(atendimento_alterado, acao="edição"):
+    lista = atendimentos()
+    for idx, item in enumerate(lista):
+        if int(item.get("id")) == int(atendimento_alterado.get("id")):
+            antes = item.copy()
+            lista[idx] = atendimento_alterado
+            salvar_atendimentos(lista)
+            registrar_diferencas_atendimento(antes, atendimento_alterado, acao)
+            return True
+    return False
+
+
+def aplicar_modelo_no_texto(texto_atual, modelo):
+    texto_modelo = str(modelo.get("texto_modelo") or "").strip()
+    if not texto_modelo:
+        return texto_atual
+    if texto_atual:
+        return texto_atual.rstrip() + "\n\n--- Modelo sugerido ---\n" + texto_modelo
+    return texto_modelo
 
 
 
@@ -2339,6 +2543,8 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         with col2:
             st.markdown(f"**Assunto:** {atendimento.get('assunto', '')}")
             st.markdown(f"**Seção:** {normalizar_secao(atendimento.get('secao'))}")
+            st.markdown(f"**Tribunal/UF:** {atendimento.get('tribunal', TRIBUNAL_PADRAO)} / {atendimento.get('uf', UF_PADRAO)}")
+            st.markdown(f"**Unidade:** {atendimento.get('unidade_responsavel', UNIDADE_CORREGEDORIA_PADRAO)}")
             st.markdown(f"**Origem:** {atendimento.get('origem', '')}")
             st.markdown(f"**Zona:** {atendimento.get('zona_eleitoral', '')}")
             st.markdown(f"**Descrição:** {atendimento.get('descricao', '')}")
@@ -2349,6 +2555,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
             st.markdown(f"**Complexidade:** {atendimento.get('complexidade', 'Não informada')}")
             if atendimento.get("prazo_limite"):
                 st.markdown(f"**Prazo:** {data_para_exibir(atendimento.get('prazo_limite'))}")
+            st.markdown(f"**Validação:** {atendimento.get('situacao_validacao', 'Não requerida')}")
             st.markdown(f"**Atualizado:** {atualizado_formatado}")
 
         if atendimento.get("observacoes"):
@@ -2377,6 +2584,9 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         item["servidor"] = "Não informado"
                     if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
                         item["data_inicio_atendimento"] = agora_iso()
+                    if novo_status == STATUS_REALIZADO and item.get("requer_validacao") and item.get("situacao_validacao") != "Validado pela chefia":
+                        st.warning("Este atendimento exige validação da chefia antes de ser marcado como realizado.")
+                        st.stop()
                     if novo_status == STATUS_REALIZADO:
                         item["data_realizacao"] = hoje_ddmmaaaa()
                         if not item.get("data_conclusao"):
@@ -2527,6 +2737,79 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             st.rerun()
 
         with st.expander("Histórico, comunicações, anexos e reabertura"):
+            st.markdown("##### Comentários internos")
+            comentario = st.text_area(
+                "Novo comentário interno",
+                key=f"{chave_prefixo}_comentario_interno_{atendimento.get('id')}"
+            )
+            if st.button("Registrar comentário", key=f"{chave_prefixo}_btn_comentario_{atendimento.get('id')}"):
+                if not comentario.strip():
+                    st.warning("Informe o comentário.")
+                else:
+                    registrar_comentario_atendimento(atendimento.get("id"), comentario.strip())
+                    st.success("Comentário registrado.")
+                    st.rerun()
+
+            comentarios_df = pd.DataFrame(comentarios_atendimento_rows(atendimento.get("id")))
+            if not comentarios_df.empty:
+                st.dataframe(comentarios_df, use_container_width=True, hide_index=True)
+
+            st.markdown("##### Validação pela chefia")
+            st.caption("Use este fluxo quando a conclusão do atendimento depender de conferência pela chefia.")
+            situacao_atual = atendimento.get("situacao_validacao", "Não requerida")
+            st.markdown(f"Situação atual: **{situacao_atual}**")
+
+            col_val1, col_val2, col_val3 = st.columns(3)
+            with col_val1:
+                if st.button("Solicitar validação", key=f"{chave_prefixo}_solicitar_validacao_{atendimento.get('id')}"):
+                    atendimento_atualizado = atendimento.copy()
+                    atendimento_atualizado["requer_validacao"] = True
+                    atendimento_atualizado["situacao_validacao"] = "Pendente de validação"
+                    atendimento_atualizado["atualizado_em"] = agora_iso()
+                    salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "solicitação de validação")
+                    registrar_fluxo_validacao(atendimento_atualizado, "Pendente de validação", "Validação solicitada.")
+                    st.success("Validação solicitada.")
+                    st.rerun()
+
+            with col_val2:
+                if usuario_pode_validar(atendimento):
+                    if st.button("Validar", key=f"{chave_prefixo}_validar_{atendimento.get('id')}"):
+                        atendimento_atualizado = atendimento.copy()
+                        atendimento_atualizado["requer_validacao"] = True
+                        atendimento_atualizado["situacao_validacao"] = "Validado pela chefia"
+                        atendimento_atualizado["validado_por"] = email_usuario_logado()
+                        atendimento_atualizado["validado_em"] = agora_iso()
+                        atendimento_atualizado["atualizado_em"] = agora_iso()
+                        salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "validação pela chefia")
+                        registrar_fluxo_validacao(atendimento_atualizado, "Validado pela chefia", "Atendimento validado pela chefia.")
+                        st.success("Atendimento validado.")
+                        st.rerun()
+
+            with col_val3:
+                if usuario_pode_validar(atendimento):
+                    if st.button("Devolver para ajuste", key=f"{chave_prefixo}_devolver_validacao_{atendimento.get('id')}"):
+                        atendimento_atualizado = atendimento.copy()
+                        atendimento_atualizado["requer_validacao"] = True
+                        atendimento_atualizado["situacao_validacao"] = "Devolvido para ajuste"
+                        atendimento_atualizado["atualizado_em"] = agora_iso()
+                        salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "devolução para ajuste")
+                        registrar_fluxo_validacao(atendimento_atualizado, "Devolvido para ajuste", "Atendimento devolvido para ajuste.")
+                        st.success("Atendimento devolvido para ajuste.")
+                        st.rerun()
+
+            fluxos_df = pd.DataFrame(fluxos_validacao_rows(atendimento.get("id")))
+            if not fluxos_df.empty:
+                st.markdown("Histórico de validação")
+                st.dataframe(fluxos_df, use_container_width=True, hide_index=True)
+
+            st.markdown("##### Linha do tempo do atendimento")
+            historico_df = pd.DataFrame(historico_atendimento_rows(atendimento.get("id")))
+            if historico_df.empty:
+                st.info("Nenhum evento de histórico registrado ainda.")
+            else:
+                st.dataframe(historico_df, use_container_width=True, hide_index=True)
+
+            st.divider()
             st.markdown("##### Registrar comunicação")
             tipo_com = st.selectbox(
                 "Tipo de comunicação",
@@ -3195,12 +3478,37 @@ def tela_novo_atendimento():
 
     st.info("Todo novo atendimento entra primeiro na base **Triagem**. Na Triagem, será escolhido o usuário responsável; ao designar o usuário, a demanda seguirá para **Em atendimento**.")
 
-    secao_atendimento = st.selectbox(
-        "Seção responsável",
-        SECOES_ATENDIMENTO,
-        index=0,
-        key="novo_atendimento_secao_responsavel"
-    )
+    col_param1, col_param2, col_param3 = st.columns(3)
+
+    with col_param1:
+        tribunais_disponiveis = tribunais_rows()
+        opcoes_tribunais = [t.get("sigla", TRIBUNAL_PADRAO) for t in tribunais_disponiveis] or [TRIBUNAL_PADRAO]
+        tribunal_atendimento = st.selectbox(
+            "Tribunal",
+            opcoes_tribunais,
+            index=0,
+            key="novo_atendimento_tribunal"
+        )
+        tribunal_row = next((t for t in tribunais_disponiveis if t.get("sigla") == tribunal_atendimento), {})
+        uf_atendimento = tribunal_row.get("uf") or UF_PADRAO
+
+    with col_param2:
+        unidades_disponiveis = unidades_corregedoria_rows(tribunal_atendimento)
+        opcoes_unidades = [u.get("sigla", UNIDADE_CORREGEDORIA_PADRAO) for u in unidades_disponiveis] or [UNIDADE_CORREGEDORIA_PADRAO]
+        unidade_atendimento = st.selectbox(
+            "Unidade da Corregedoria",
+            opcoes_unidades,
+            index=0,
+            key="novo_atendimento_unidade"
+        )
+
+    with col_param3:
+        secao_atendimento = st.selectbox(
+            "Seção responsável",
+            SECOES_ATENDIMENTO,
+            index=0,
+            key="novo_atendimento_secao_responsavel"
+        )
 
     st.caption(
         f"Os assuntos exibidos abaixo pertencem à seção **{secao_atendimento}**. "
@@ -3217,7 +3525,7 @@ def tela_novo_atendimento():
             origem = st.text_input("Quem originou a demanda/chamada")
 
         with col3:
-            zona = st.selectbox("Zona eleitoral", ZONAS_BAHIA)
+            zona = st.selectbox("Zona eleitoral", opcoes_zonas_nacionais(tribunal_atendimento))
 
         col4, col5, col6, col7, col8 = st.columns(5)
 
@@ -3250,6 +3558,7 @@ def tela_novo_atendimento():
 
         descricao = st.text_area("Descrição da demanda")
         observacoes = st.text_area("Observações internas")
+        requer_validacao = st.checkbox("Exigir validação da chefia antes do encerramento", value=False)
 
         enviar = st.form_submit_button("Cadastrar atendimento", type="primary")
 
@@ -3260,6 +3569,13 @@ def tela_novo_atendimento():
                 "data": data_atendimento.strftime("%d/%m/%Y"),
                 "status": STATUS_CADASTRADO,
                 "secao": secao_atendimento,
+                "tribunal": tribunal_atendimento,
+                "uf": uf_atendimento,
+                "unidade_responsavel": unidade_atendimento,
+                "requer_validacao": requer_validacao,
+                "situacao_validacao": "Pendente de validação" if requer_validacao else "Não requerida",
+                "validado_por": "",
+                "validado_em": "",
                 "servidor": "Não informado",
                 "fonte": fonte,
                 "assunto": assunto or "Não informado",
@@ -3288,6 +3604,7 @@ def tela_novo_atendimento():
             lista.append(novo)
             salvar_atendimentos(lista)
             registrar_auditoria_atendimento(novo["id"], "criação", "atendimento", "", "Atendimento cadastrado")
+            registrar_historico_atendimento(novo["id"], "Cadastro", "Atendimento cadastrado", f"Demanda registrada para {secao_atendimento}.")
             st.success(f"Atendimento nº {novo['id']} cadastrado com sucesso na base: {STATUS_CADASTRADO}.")
             st.rerun()
 
@@ -4442,6 +4759,152 @@ def tela_usuarios():
 
 
 
+
+
+def tela_modelos_resposta():
+    st.subheader("Modelos de resposta")
+    st.caption("Modelos institucionais de orientação vinculados por seção e assunto.")
+
+    secao_filtro = st.selectbox("Seção", ["Todas"] + SECOES_ATENDIMENTO)
+    assunto_filtro = st.text_input("Filtrar por assunto ou palavra-chave")
+
+    rows = modelos_resposta_rows(None if secao_filtro == "Todas" else secao_filtro)
+    df = pd.DataFrame(rows)
+
+    if not df.empty and assunto_filtro:
+        termo = assunto_filtro.casefold()
+        df = df[df.astype(str).apply(lambda linha: linha.str.casefold().str.contains(termo, na=False).any(), axis=1)]
+
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    if eh_admin():
+        st.divider()
+        st.markdown("### Cadastrar novo modelo")
+
+        with st.form("form_modelo_resposta"):
+            col1, col2 = st.columns(2)
+            with col1:
+                secao = st.selectbox("Seção do modelo", SECOES_ATENDIMENTO)
+                assunto = st.text_input("Assunto vinculado")
+                titulo = st.text_input("Título do modelo")
+            with col2:
+                fundamento = st.text_area("Fundamento normativo")
+            texto_modelo = st.text_area("Texto do modelo", height=220)
+
+            if st.form_submit_button("Salvar modelo", type="primary"):
+                if not titulo.strip() or not texto_modelo.strip():
+                    st.warning("Informe o título e o texto do modelo.")
+                else:
+                    usuario = usuario_logado() or {}
+                    row = {
+                        "secao": secao,
+                        "assunto": assunto.strip() or "Não informado",
+                        "titulo": titulo.strip(),
+                        "texto_modelo": texto_modelo.strip(),
+                        "fundamento_normativo": fundamento.strip(),
+                        "criado_por_email": usuario.get("email", ""),
+                        "criado_por_nome": usuario.get("nome", ""),
+                        "ativo": True,
+                        "criado_em": agora_iso(),
+                        "atualizado_em": agora_iso(),
+                    }
+                    supabase_insert_silencioso("modelos_resposta", [row])
+                    st.success("Modelo cadastrado.")
+                    st.rerun()
+
+
+def tela_parametros_nacionais():
+    st.subheader("Parâmetros nacionais")
+    st.caption("Cadastros estruturantes para permitir a replicação do SIGA-COR em outras Corregedorias Eleitorais.")
+
+    if not eh_admin():
+        st.warning("Apenas administradores podem gerenciar parâmetros nacionais.")
+        return
+
+    aba1, aba2, aba3 = st.tabs(["Tribunais", "Unidades da Corregedoria", "Zonas eleitorais"])
+
+    with aba1:
+        st.markdown("### Tribunais cadastrados")
+        st.dataframe(pd.DataFrame(tribunais_rows()), use_container_width=True, hide_index=True)
+
+        with st.form("form_tribunal"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                sigla = st.text_input("Sigla do tribunal", value="TRE-BA")
+            with col2:
+                uf = st.text_input("UF", value="BA")
+            with col3:
+                ordem = st.number_input("Ordem", min_value=0, step=1, value=1)
+            nome = st.text_input("Nome do tribunal", value="Tribunal Regional Eleitoral da Bahia")
+            if st.form_submit_button("Adicionar tribunal"):
+                supabase_insert_silencioso("tribunais", [{
+                    "sigla": sigla.strip().upper(),
+                    "uf": uf.strip().upper(),
+                    "nome": nome.strip(),
+                    "ativo": True,
+                    "ordem": int(ordem),
+                    "criado_em": agora_iso(),
+                }])
+                st.success("Tribunal cadastrado.")
+                st.rerun()
+
+    with aba2:
+        st.markdown("### Unidades cadastradas")
+        st.dataframe(pd.DataFrame(unidades_corregedoria_rows()), use_container_width=True, hide_index=True)
+
+        with st.form("form_unidade_corregedoria"):
+            tribunais_opcoes = [t.get("sigla") for t in tribunais_rows()]
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                tribunal = st.selectbox("Tribunal", tribunais_opcoes)
+            with col2:
+                sigla = st.text_input("Sigla da unidade", value="CRE-BA")
+            with col3:
+                ordem = st.number_input("Ordem", min_value=0, step=1, value=1, key="ordem_unidade")
+            nome = st.text_input("Nome da unidade", value="Corregedoria Regional Eleitoral da Bahia")
+            if st.form_submit_button("Adicionar unidade"):
+                supabase_insert_silencioso("unidades_corregedoria", [{
+                    "tribunal_sigla": tribunal,
+                    "sigla": sigla.strip().upper(),
+                    "nome": nome.strip(),
+                    "ativo": True,
+                    "ordem": int(ordem),
+                    "criado_em": agora_iso(),
+                }])
+                st.success("Unidade cadastrada.")
+                st.rerun()
+
+    with aba3:
+        st.markdown("### Zonas eleitorais cadastradas")
+        tribunal_filtro = st.selectbox("Tribunal para consulta", [t.get("sigla") for t in tribunais_rows()], key="zona_tribunal_consulta")
+        st.dataframe(pd.DataFrame(zonas_eleitorais_rows(tribunal_filtro)), use_container_width=True, hide_index=True)
+
+        with st.form("form_zona_eleitoral"):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                tribunal = st.selectbox("Tribunal", [t.get("sigla") for t in tribunais_rows()], key="zona_tribunal_form")
+            with col2:
+                uf = st.text_input("UF da zona", value="BA")
+            with col3:
+                numero = st.number_input("Número da zona", min_value=1, step=1)
+            with col4:
+                polo = st.text_input("Polo/Região")
+            municipio = st.text_input("Município sede")
+            if st.form_submit_button("Adicionar zona eleitoral"):
+                supabase_insert_silencioso("zonas_eleitorais", [{
+                    "tribunal_sigla": tribunal,
+                    "uf": uf.strip().upper(),
+                    "numero": int(numero),
+                    "municipio_sede": municipio.strip(),
+                    "polo": polo.strip(),
+                    "ativo": True,
+                    "criado_em": agora_iso(),
+                }])
+                st.success("Zona eleitoral cadastrada.")
+                st.rerun()
+
+
+
 def tela_base_conhecimento():
     st.subheader("Base de conhecimento")
     st.caption("Repositório de orientações extraídas dos atendimentos concluídos.")
@@ -4653,6 +5116,9 @@ def main():
     elif escolha == "Base de conhecimento":
         tela_base_conhecimento()
 
+    elif escolha == "Modelos de resposta":
+        tela_modelos_resposta()
+
     elif escolha == "Backup e restauração":
         tela_backup_restauracao()
 
@@ -4661,6 +5127,9 @@ def main():
 
     elif escolha == "Usuários" and eh_admin():
         tela_usuarios()
+
+    elif escolha == "Parâmetros nacionais" and eh_admin():
+        tela_parametros_nacionais()
 
 
 if __name__ == "__main__":
