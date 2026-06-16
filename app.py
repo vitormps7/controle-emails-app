@@ -1758,6 +1758,32 @@ def cabecalho():
 
 
 
+
+def filtrar_lista_por_intervalo_datas(lista, data_inicio=None, data_fim=None, campo="data"):
+    if not data_inicio and not data_fim:
+        return lista
+
+    filtrada = []
+    for item in lista:
+        data_item = parse_data(item.get(campo))
+
+        if data_item is None and campo != "data":
+            data_item = parse_data(item.get("data"))
+
+        if data_item is None:
+            continue
+
+        if data_inicio and data_item < data_inicio:
+            continue
+
+        if data_fim and data_item > data_fim:
+            continue
+
+        filtrada.append(item)
+
+    return filtrada
+
+
 # ============================================================
 # MENU INSTITUCIONAL POR CARTÕES - SIGA-COR
 # ============================================================
@@ -1883,19 +1909,10 @@ def tela_menu_principal():
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="siga-section-label">Menu operacional</div>', unsafe_allow_html=True)
+    st.markdown('<div class="siga-section-label">Início</div>', unsafe_allow_html=True)
 
     linha1 = st.columns(3)
     with linha1[0]:
-        render_card_navegacao(
-            "📌",
-            "Fila gerencial",
-            "Acompanhar pendências críticas, prazos vencidos, urgências e demandas sem responsável.",
-            "Abrir fila",
-            "Fila gerencial",
-            "card_fila_gerencial",
-        )
-    with linha1[1]:
         render_card_navegacao(
             "➕",
             "Novo atendimento",
@@ -1904,7 +1921,7 @@ def tela_menu_principal():
             "Novo atendimento",
             "card_novo_atendimento",
         )
-    with linha1[2]:
+    with linha1[1]:
         render_card_navegacao(
             "🔎",
             "Validação da chefia",
@@ -1913,9 +1930,7 @@ def tela_menu_principal():
             "Validação da chefia",
             "card_validacao_chefia",
         )
-
-    linha2 = st.columns(3)
-    with linha2[0]:
+    with linha1[2]:
         render_card_navegacao(
             "📊",
             "Painel gerencial",
@@ -1924,7 +1939,9 @@ def tela_menu_principal():
             "Dashboard",
             "card_painel_gerencial",
         )
-    with linha2[1]:
+
+    linha2 = st.columns(2)
+    with linha2[0]:
         render_card_navegacao(
             "🧭",
             "Orientações às Zonas",
@@ -1933,7 +1950,7 @@ def tela_menu_principal():
             "Orientações às Zonas",
             "card_orientacoes_zonas",
         )
-    with linha2[2]:
+    with linha2[1]:
         render_card_navegacao(
             "📄",
             "Relatórios",
@@ -1945,35 +1962,6 @@ def tela_menu_principal():
 
     st.divider()
     render_visao_executiva(filtrar_lista_por_perfil(atendimentos()), "Resumo executivo")
-
-
-def tela_fila_gerencial():
-    st.subheader("📌 Fila gerencial")
-    st.caption("Pendências críticas e providências prioritárias para acompanhamento da chefia e das equipes.")
-
-    lista = filtros_base(atendimentos())
-    lista, filtro = render_filtros_rapidos(lista, "fila_gerencial")
-
-    criticos = [
-        a for a in lista
-        if prazo_vencido(a)
-        or atendimento_sem_responsavel(a)
-        or str(a.get("prioridade") or "").strip().casefold() in ("urgente", "alta")
-        or a.get("status") == STATUS_CADASTRADO
-        or a.get("situacao_validacao") == "Devolvido para ajuste"
-    ]
-
-    st.write(f"Filtro rápido: **{filtro}** | Itens na fila: **{len(criticos)}**")
-
-    if not criticos:
-        st.success("Nenhum item crítico encontrado.")
-        return
-
-    for item in sorted(criticos, key=lambda x: int(x.get("id", 0)), reverse=True):
-        if item.get("status") == STATUS_CADASTRADO:
-            card_triagem(item, "fila_gerencial")
-        else:
-            card_atendimento(item, "fila_gerencial")
 
 
 def tela_validacao_chefia():
@@ -2032,7 +2020,7 @@ def sidebar_menu():
     css_menu_institucional()
 
     if "pagina_atual" not in st.session_state:
-        st.session_state["pagina_atual"] = "Menu"
+        st.session_state["pagina_atual"] = "Início"
 
     st.sidebar.markdown('<div class="siga-sidebar-title">SIGA-COR</div>', unsafe_allow_html=True)
     st.sidebar.markdown(
@@ -2043,8 +2031,7 @@ def sidebar_menu():
     st.sidebar.markdown("### Navegação")
 
     itens_principais = [
-        ("🏠 Menu", "Menu"),
-        ("📌 Fila gerencial", "Fila gerencial"),
+        ("🏠 Início", "Início"),
         ("➕ Novo atendimento", "Novo atendimento"),
         ("🔎 Validação da chefia", "Validação da chefia"),
         ("📊 Painel gerencial", "Dashboard"),
@@ -2092,7 +2079,7 @@ def sidebar_menu():
         st.session_state.pop("pagina_atual", None)
         st.rerun()
 
-    return st.session_state.get("pagina_atual", "Menu")
+    return st.session_state.get("pagina_atual", "Início")
 
 
 
@@ -4530,6 +4517,65 @@ def tela_relatorios_exportacao():
 
     lista = filtros_base(atendimentos())
 
+    st.markdown("#### Filtros do relatório")
+
+    col_data1, col_data2, col_data3 = st.columns(3)
+
+    with col_data1:
+        data_inicio_relatorio = st.date_input(
+            "Data inicial",
+            value=None,
+            format="DD/MM/YYYY",
+            key="relatorio_data_inicio"
+        )
+
+    with col_data2:
+        data_fim_relatorio = st.date_input(
+            "Data final",
+            value=None,
+            format="DD/MM/YYYY",
+            key="relatorio_data_fim"
+        )
+
+    with col_data3:
+        campo_data_relatorio = st.selectbox(
+            "Campo de data",
+            [
+                "Data do atendimento",
+                "Data de realização",
+            ],
+            key="relatorio_campo_data"
+        )
+
+    campo_data_lista = "data_realizacao" if campo_data_relatorio == "Data de realização" else "data"
+    lista = filtrar_lista_por_intervalo_datas(
+        lista,
+        data_inicio_relatorio,
+        data_fim_relatorio,
+        campo=campo_data_lista
+    )
+
+    servidores_disponiveis = sorted(
+        set(
+            str(a.get("servidor") or "Não informado").strip()
+            for a in lista
+            if str(a.get("servidor") or "").strip()
+        ),
+        key=lambda x: x.casefold()
+    )
+
+    filtro_atendente_relatorio = st.multiselect(
+        "Atendente / servidor responsável",
+        servidores_disponiveis,
+        key="filtro_atendente_relatorio"
+    )
+
+    if filtro_atendente_relatorio:
+        lista = [
+            a for a in lista
+            if str(a.get("servidor") or "Não informado").strip() in filtro_atendente_relatorio
+        ]
+
     filtro_gerencial_relatorio = st.selectbox(
         "Filtro gerencial",
         [
@@ -4573,6 +4619,7 @@ def tela_relatorios_exportacao():
 
     if filtro_zona_relatorio:
         df = df[df["Zona eleitoral"].isin(filtro_zona_relatorio)]
+        lista = [a for a in lista if a.get("zona_eleitoral") in filtro_zona_relatorio]
 
     if not df.empty:
         mapa_horas = {}
@@ -4588,8 +4635,16 @@ def tela_relatorios_exportacao():
     st.markdown("#### Base filtrada")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
+    periodo_texto = ""
+    if data_inicio_relatorio or data_fim_relatorio:
+        inicio_txt = data_inicio_relatorio.strftime("%d/%m/%Y") if data_inicio_relatorio else "início"
+        fim_txt = data_fim_relatorio.strftime("%d/%m/%Y") if data_fim_relatorio else "fim"
+        periodo_texto = f"{inicio_txt} a {fim_txt} ({campo_data_relatorio})"
+
     filtros_para_pdf = {
         "Quantidade de registros": numero_br(len(df)),
+        "Período": periodo_texto,
+        "Atendente/servidor": filtro_atendente_relatorio if filtro_atendente_relatorio else [],
         "Filtro gerencial": filtro_gerencial_relatorio if "filtro_gerencial_relatorio" in locals() else "Todos",
         "Seção": filtro_secao_relatorio if "filtro_secao_relatorio" in locals() else [],
         "Zona Eleitoral": filtro_zona_relatorio if "filtro_zona_relatorio" in locals() else [],
@@ -4607,7 +4662,7 @@ def tela_relatorios_exportacao():
     st.download_button(
         "Gerar relatório PDF apresentável",
         data=pdf_relatorio,
-        file_name=f"relatorio_sepro_atendimentos_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
+        file_name=f"relatorio_siga_cor_atendimentos_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
         mime="application/pdf",
         type="primary"
     )
@@ -4626,7 +4681,7 @@ def tela_relatorios_exportacao():
         st.markdown("#### Relatório por status")
         st.dataframe(df["Status"].value_counts().rename_axis("Status").reset_index(name="Quantidade"), use_container_width=True, hide_index=True)
 
-        st.markdown("#### Relatório por servidor")
+        st.markdown("#### Relatório por atendente/servidor")
         st.dataframe(df["Servidor(a)"].value_counts().rename_axis("Servidor(a)").reset_index(name="Quantidade"), use_container_width=True, hide_index=True)
 
     with col2:
@@ -4663,7 +4718,7 @@ def tela_relatorios_exportacao():
     st.download_button(
         "Baixar relatório em Excel",
         data=buffer.getvalue(),
-        file_name=f"relatorio_atendimentos_sepro_{agora_brasilia().strftime('%Y%m%d_%H%M')}.xlsx",
+        file_name=f"relatorio_atendimentos_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
@@ -4671,9 +4726,10 @@ def tela_relatorios_exportacao():
     st.download_button(
         "Baixar base em CSV",
         data=csv,
-        file_name=f"base_atendimentos_sepro_{agora_brasilia().strftime('%Y%m%d_%H%M')}.csv",
+        file_name=f"base_atendimentos_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv"
     )
+
 
 
 def tela_assuntos():
@@ -5350,11 +5406,14 @@ def main():
     cabecalho()
     escolha = sidebar_menu()
 
-    if escolha in ("Menu", "Início"):
+    if escolha == "Menu":
+        escolha = "Início"
+    if escolha == "Fila gerencial":
+        escolha = "Início"
+
+    if escolha == "Início":
         tela_menu_principal()
 
-    elif escolha == "Fila gerencial":
-        tela_fila_gerencial()
 
     elif escolha == "Dashboard":
         tela_dashboard()
