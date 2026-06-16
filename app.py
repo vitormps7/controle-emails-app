@@ -1756,6 +1756,278 @@ def cabecalho():
     )
 
 
+
+
+# ============================================================
+# MENU INSTITUCIONAL POR CARTÕES - SIGA-COR
+# ============================================================
+
+def ir_para_pagina(nome):
+    st.session_state["pagina_atual"] = nome
+
+
+def botao_navegacao(label, destino, key, tipo="secondary"):
+    if st.button(label, key=key, use_container_width=True, type=tipo):
+        ir_para_pagina(destino)
+        st.rerun()
+
+
+def css_menu_institucional():
+    st.markdown(
+        """
+        <style>
+        .siga-home-hero {
+            background: linear-gradient(135deg, #0B3A66 0%, #174A7C 55%, #7CB7E8 100%);
+            padding: 26px 30px;
+            border-radius: 20px;
+            color: white;
+            margin-bottom: 24px;
+            box-shadow: 0 12px 28px rgba(15, 47, 79, 0.18);
+        }
+        .siga-home-title {
+            font-size: 36px;
+            font-weight: 900;
+            letter-spacing: .6px;
+            margin-bottom: 4px;
+        }
+        .siga-home-subtitle {
+            font-size: 18px;
+            font-weight: 500;
+            opacity: .96;
+        }
+        .siga-home-credit {
+            font-size: 13px;
+            margin-top: 12px;
+            opacity: .90;
+        }
+        .siga-section-label {
+            color: #083763;
+            font-size: 20px;
+            font-weight: 800;
+            margin: 18px 0 10px 0;
+        }
+        .siga-card-nav {
+            min-height: 132px;
+            border: 1.3px solid #D6E3F1;
+            border-radius: 16px;
+            background: #FFFFFF;
+            padding: 24px 22px 18px 22px;
+            box-shadow: 0 8px 18px rgba(15, 47, 79, 0.04);
+            transition: all .18s ease-in-out;
+            margin-bottom: 12px;
+        }
+        .siga-card-nav:hover {
+            border-color: #174A7C;
+            box-shadow: 0 12px 26px rgba(23, 74, 124, 0.12);
+            transform: translateY(-1px);
+        }
+        .siga-card-title {
+            color: #073B70;
+            font-size: 18px;
+            font-weight: 850;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 22px;
+        }
+        .siga-card-icon {
+            font-size: 22px;
+            line-height: 1;
+        }
+        .siga-card-desc {
+            color: #24435F;
+            font-size: 13.2px;
+            line-height: 1.45;
+        }
+        .siga-sidebar-title {
+            font-size: 22px;
+            font-weight: 850;
+            color: #073B70;
+            margin-bottom: 10px;
+        }
+        .siga-sidebar-sub {
+            font-size: 12.5px;
+            color: #4B6278;
+            margin-bottom: 16px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key):
+    st.markdown(
+        f"""
+        <div class="siga-card-nav">
+            <div class="siga-card-title"><span class="siga-card-icon">{icone}</span>{titulo}</div>
+            <div class="siga-card-desc">{descricao}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    botao_navegacao(texto_botao, destino, key)
+
+
+def tela_menu_principal():
+    css_menu_institucional()
+
+    st.markdown(
+        """
+        <div class="siga-home-hero">
+            <div class="siga-home-title">SIGA-COR</div>
+            <div class="siga-home-subtitle">Sistema Integrado de Gestão de Atendimentos da Corregedoria</div>
+            <div class="siga-home-credit">Protótipo funcional desenvolvido por Vítor Marcelo Pinto Soares no âmbito da SEPRO/CRE-BA.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="siga-section-label">Menu operacional</div>', unsafe_allow_html=True)
+
+    linha1 = st.columns(3)
+    with linha1[0]:
+        render_card_navegacao(
+            "📌",
+            "Fila gerencial",
+            "Acompanhar pendências críticas, prazos vencidos, urgências e demandas sem responsável.",
+            "Abrir fila",
+            "Fila gerencial",
+            "card_fila_gerencial",
+        )
+    with linha1[1]:
+        render_card_navegacao(
+            "➕",
+            "Novo atendimento",
+            "Registrar nova demanda, definir seção responsável, assunto, prioridade e prazo.",
+            "Cadastrar atendimento",
+            "Novo atendimento",
+            "card_novo_atendimento",
+        )
+    with linha1[2]:
+        render_card_navegacao(
+            "🔎",
+            "Validação da chefia",
+            "Revisar orientações preparadas pela equipe, validar ou devolver para ajuste.",
+            "Validar orientação",
+            "Validação da chefia",
+            "card_validacao_chefia",
+        )
+
+    linha2 = st.columns(3)
+    with linha2[0]:
+        render_card_navegacao(
+            "📊",
+            "Painel gerencial",
+            "Acompanhar indicadores, alertas, produtividade, seções, zonas e evolução dos atendimentos.",
+            "Ver painel",
+            "Dashboard",
+            "card_painel_gerencial",
+        )
+    with linha2[1]:
+        render_card_navegacao(
+            "🧭",
+            "Orientações às Zonas",
+            "Consultar modelos de resposta, base de conhecimento e fundamentos por assunto.",
+            "Abrir orientações",
+            "Orientações às Zonas",
+            "card_orientacoes_zonas",
+        )
+    with linha2[2]:
+        render_card_navegacao(
+            "📄",
+            "Relatórios",
+            "Emitir relatórios para gestão, auditoria e acompanhamento pela Corregedoria.",
+            "Emitir relatório",
+            "Relatórios e exportação",
+            "card_relatorios",
+        )
+
+    st.divider()
+    render_visao_executiva(filtrar_lista_por_perfil(atendimentos()), "Resumo executivo")
+
+
+def tela_fila_gerencial():
+    st.subheader("📌 Fila gerencial")
+    st.caption("Pendências críticas e providências prioritárias para acompanhamento da chefia e das equipes.")
+
+    lista = filtros_base(atendimentos())
+    lista, filtro = render_filtros_rapidos(lista, "fila_gerencial")
+
+    criticos = [
+        a for a in lista
+        if prazo_vencido(a)
+        or atendimento_sem_responsavel(a)
+        or str(a.get("prioridade") or "").strip().casefold() in ("urgente", "alta")
+        or a.get("status") == STATUS_CADASTRADO
+        or a.get("situacao_validacao") == "Devolvido para ajuste"
+    ]
+
+    st.write(f"Filtro rápido: **{filtro}** | Itens na fila: **{len(criticos)}**")
+
+    if not criticos:
+        st.success("Nenhum item crítico encontrado.")
+        return
+
+    for item in sorted(criticos, key=lambda x: int(x.get("id", 0)), reverse=True):
+        if item.get("status") == STATUS_CADASTRADO:
+            card_triagem(item, "fila_gerencial")
+        else:
+            card_atendimento(item, "fila_gerencial")
+
+
+def tela_validacao_chefia():
+    st.subheader("🔎 Validação da chefia")
+    st.caption("Orientações e respostas que dependem de conferência, validação ou devolução para ajuste pela chefia.")
+
+    lista = filtros_base(atendimentos())
+    pendentes = [
+        a for a in lista
+        if a.get("requer_validacao")
+        or a.get("situacao_validacao") in ("Pendente de validação", "Devolvido para ajuste")
+    ]
+
+    aba1, aba2, aba3 = st.tabs(["Pendentes", "Devolvidos", "Validados"])
+
+    with aba1:
+        base = [a for a in pendentes if a.get("situacao_validacao") == "Pendente de validação"]
+        st.write(f"Total pendente: **{len(base)}**")
+        if not base:
+            st.info("Nenhum atendimento pendente de validação.")
+        for item in sorted(base, key=lambda x: int(x.get("id", 0)), reverse=True):
+            card_atendimento(item, "validacao_pendentes")
+
+    with aba2:
+        base = [a for a in pendentes if a.get("situacao_validacao") == "Devolvido para ajuste"]
+        st.write(f"Total devolvido: **{len(base)}**")
+        if not base:
+            st.info("Nenhum atendimento devolvido para ajuste.")
+        for item in sorted(base, key=lambda x: int(x.get("id", 0)), reverse=True):
+            card_atendimento(item, "validacao_devolvidos")
+
+    with aba3:
+        base = [a for a in lista if a.get("situacao_validacao") == "Validado pela chefia"]
+        st.write(f"Total validado: **{len(base)}**")
+        if not base:
+            st.info("Nenhum atendimento validado encontrado.")
+        for item in sorted(base, key=lambda x: int(x.get("id", 0)), reverse=True):
+            card_atendimento(item, "validacao_validados")
+
+
+def tela_orientacoes_zonas():
+    st.subheader("🧭 Orientações às Zonas")
+    st.caption("Modelos de resposta, base de conhecimento e fundamentos para padronizar as orientações às zonas eleitorais.")
+
+    aba1, aba2 = st.tabs(["Modelos de resposta", "Base de conhecimento"])
+
+    with aba1:
+        tela_modelos_resposta()
+
+    with aba2:
+        tela_base_conhecimento()
+
+
+
 def sidebar_menu():
     css_menu_institucional()
 
