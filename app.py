@@ -1757,39 +1757,70 @@ def cabecalho():
 
 
 def sidebar_menu():
-    st.sidebar.title("Menu")
+    css_menu_institucional()
 
-    opcoes = [
-        "Início",
-        "Dashboard",
-        "Meus atendimentos",
-        "Novo atendimento",
-        "Triagem",
-        "Em atendimento",
-        "Atendimento realizado",
-        "Base geral",
-        "Relatórios e exportação",
-        "Base de conhecimento",
-        "Modelos de resposta",
-        "Backup e restauração",
+    if "pagina_atual" not in st.session_state:
+        st.session_state["pagina_atual"] = "Menu"
+
+    st.sidebar.markdown('<div class="siga-sidebar-title">SIGA-COR</div>', unsafe_allow_html=True)
+    st.sidebar.markdown(
+        '<div class="siga-sidebar-sub">Sistema Integrado de Gestão de Atendimentos da Corregedoria</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.sidebar.markdown("### Navegação")
+
+    itens_principais = [
+        ("🏠 Menu", "Menu"),
+        ("📌 Fila gerencial", "Fila gerencial"),
+        ("➕ Novo atendimento", "Novo atendimento"),
+        ("🔎 Validação da chefia", "Validação da chefia"),
+        ("📊 Painel gerencial", "Dashboard"),
+        ("🧭 Orientações às Zonas", "Orientações às Zonas"),
+        ("📄 Relatórios", "Relatórios e exportação"),
     ]
 
-    if eh_admin():
-        opcoes += ["Assuntos", "Usuários", "Parâmetros nacionais"]
+    for label, destino in itens_principais:
+        if st.sidebar.button(label, key=f"side_nav_{destino}", use_container_width=True):
+            ir_para_pagina(destino)
+            st.rerun()
 
-    escolha = st.sidebar.radio("Navegação", opcoes)
+    with st.sidebar.expander("Mais opções"):
+        outros = [
+            ("👤 Meus atendimentos", "Meus atendimentos"),
+            ("📥 Triagem", "Triagem"),
+            ("⏳ Em atendimento", "Em atendimento"),
+            ("✅ Atendimento realizado", "Atendimento realizado"),
+            ("🗂️ Base geral", "Base geral"),
+            ("🧠 Base de conhecimento", "Base de conhecimento"),
+            ("💬 Modelos de resposta", "Modelos de resposta"),
+            ("💾 Backup e restauração", "Backup e restauração"),
+        ]
+
+        if eh_admin():
+            outros += [
+                ("🏷️ Assuntos", "Assuntos"),
+                ("👥 Usuários", "Usuários"),
+                ("🌐 Parâmetros nacionais", "Parâmetros nacionais"),
+            ]
+
+        for label, destino in outros:
+            if st.button(label, key=f"side_more_{destino}", use_container_width=True):
+                ir_para_pagina(destino)
+                st.rerun()
 
     st.sidebar.divider()
-    if st.sidebar.button("Sair"):
+
+    usuario = usuario_logado() or {}
+    st.sidebar.caption(f"Usuário: {usuario.get('nome') or usuario.get('email') or 'não identificado'}")
+
+    if st.sidebar.button("Sair", use_container_width=True):
         remover_usuario_logado()
         st.session_state.pop("usuario", None)
+        st.session_state.pop("pagina_atual", None)
         st.rerun()
 
-    return escolha
-
-
-
-
+    return st.session_state.get("pagina_atual", "Menu")
 
 
 
@@ -2175,34 +2206,7 @@ def render_visao_executiva(lista, titulo="Visão executiva"):
 
 
 def tela_inicio():
-    st.markdown(
-        """
-        <div style="background:linear-gradient(135deg,#174A7C,#0F2F4F);padding:28px 30px;border-radius:18px;color:white;margin-bottom:18px;">
-            <div style="font-size:34px;font-weight:800;letter-spacing:0.5px;">SIGA-COR</div>
-            <div style="font-size:18px;margin-top:4px;">Sistema Integrado de Gestão de Atendimentos da Corregedoria</div>
-            <div style="font-size:13px;margin-top:14px;opacity:0.92;">
-                Protótipo funcional desenvolvido por Vítor Marcelo Pinto Soares no âmbito da SEPRO/CRE-BA.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    lista = filtrar_lista_por_perfil(atendimentos())
-    render_visao_executiva(lista, "Resumo institucional")
-
-    st.divider()
-    st.markdown("### Acesso rápido")
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.info("Use **Novo atendimento** para registrar uma nova demanda.")
-    with col2:
-        st.warning("Use **Triagem** para designar ou assumir demandas.")
-    with col3:
-        st.success("Use **Meus atendimentos** para acompanhar sua fila.")
-    with col4:
-        st.error("Use **Dashboard** para acompanhar alertas gerenciais.")
+    tela_menu_principal()
 
 
 def tela_meus_atendimentos():
@@ -5074,8 +5078,11 @@ def main():
     cabecalho()
     escolha = sidebar_menu()
 
-    if escolha == "Início":
-        tela_inicio()
+    if escolha in ("Menu", "Início"):
+        tela_menu_principal()
+
+    elif escolha == "Fila gerencial":
+        tela_fila_gerencial()
 
     elif escolha == "Dashboard":
         tela_dashboard()
@@ -5085,6 +5092,12 @@ def main():
 
     elif escolha == "Novo atendimento":
         tela_novo_atendimento()
+
+    elif escolha == "Validação da chefia":
+        tela_validacao_chefia()
+
+    elif escolha == "Orientações às Zonas":
+        tela_orientacoes_zonas()
 
     elif escolha == "Triagem":
         tela_status(
@@ -5130,6 +5143,9 @@ def main():
 
     elif escolha == "Parâmetros nacionais" and eh_admin():
         tela_parametros_nacionais()
+
+    else:
+        tela_menu_principal()
 
 
 if __name__ == "__main__":
