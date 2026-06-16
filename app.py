@@ -905,6 +905,262 @@ def criar_item_base_conhecimento(atendimento):
     registrar_auditoria_atendimento(atendimento.get("id"), "base_conhecimento", "gerar_precedente", "", "Item gerado")
 
 
+
+def codigo_base_conhecimento(valor):
+    try:
+        return f"BC-{int(valor):06d}"
+    except Exception:
+        return "BC-000000"
+
+
+def usos_base_conhecimento_atendimento(atendimento_id):
+    return supabase_get_silencioso(
+        "usos_base_conhecimento",
+        {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
+    )
+
+
+def registrar_uso_base_conhecimento(atendimento, base_item, forma_uso="Resposta"):
+    usuario = usuario_logado() or {}
+    codigo = codigo_base_conhecimento(base_item.get("id"))
+
+    row = {
+        "atendimento_id": atendimento.get("id"),
+        "base_conhecimento_id": base_item.get("id"),
+        "codigo_base": codigo,
+        "assunto": base_item.get("assunto") or atendimento.get("assunto") or "Não informado",
+        "forma_uso": forma_uso,
+        "usado_por_email": usuario.get("email", ""),
+        "usado_por_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+
+    supabase_insert_silencioso("usos_base_conhecimento", [row])
+
+    descricao = f"Usada a base de conhecimento {codigo} para resposta do atendimento."
+    registrar_historico_atendimento(atendimento.get("id"), "Base de conhecimento", descricao, base_item.get("orientacao_adotada", ""))
+    registrar_auditoria_atendimento(atendimento.get("id"), "base_conhecimento", "uso_base", "", descricao)
+
+
+def bases_por_assunto_e_secao(assunto=None, secao=None):
+    rows = base_conhecimento_rows()
+    assunto_norm = str(assunto or "").strip().casefold()
+    secao_norm = normalizar_secao(secao) if secao else None
+
+    filtradas = []
+    for row in rows:
+        if secao_norm and normalizar_secao(row.get("secao")) != secao_norm:
+            continue
+
+        row_assunto = str(row.get("assunto") or "").strip().casefold()
+
+        if assunto_norm and row_assunto and row_assunto != "não informado":
+            if assunto_norm != row_assunto:
+                continue
+
+        filtradas.append(row)
+
+    return filtradas
+
+
+def dataframe_usos_base_conhecimento():
+    rows = supabase_get_silencioso("usos_base_conhecimento", {"select": "*", "order": "criado_em.desc"})
+    return pd.DataFrame(rows)
+
+
+def gerar_relatorio_pdf_base_conhecimento(df, filtros_aplicados):
+    buffer_pdf = BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer_pdf,
+        pagesize=landscape(A4),
+        rightMargin=1.1 * cm,
+        leftMargin=1.1 * cm,
+        topMargin=3.0 * cm,
+        bottomMargin=1.4 * cm,
+        title="Relatório Gerencial da Base de Conhecimento - SIGA-COR",
+    )
+
+    estilos = getSampleStyleSheet()
+    titulo = ParagraphStyle(
+        "TituloBaseConhecimento",
+        parent=estilos["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        leading=20,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#174A7C"),
+        spaceAfter=8,
+    )
+    subtitulo = ParagraphStyle(
+        "SubtituloBaseConhecimento",
+        parent=estilos["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#475569"),
+        spaceAfter=14,
+    )
+    h2 = ParagraphStyle(
+        "H2BaseConhecimento",
+        parent=estilos["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#174A7C"),
+        spaceBefore=10,
+        spaceAfter=6,
+    )
+    normal = ParagraphStyle(
+        "NormalBaseConhecimento",
+        parent=estilos["Normal"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor("#1F2937"),
+    )
+    pequeno = ParagraphStyle(
+        "PequenoBaseConhecimento",
+        parent=estilos["Normal"],
+        fontName="Helvetica",
+        fontSize=7,
+        leading=8,
+        textColor=colors.HexColor("#1F2937"),
+    )
+
+    elementos = []
+
+    elementos.append(Paragraph("RELATÓRIO GERENCIAL DA BASE DE CONHECIMENTO", titulo))
+    elementos.append(Paragraph("SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria", subtitulo))
+
+    elementos.append(Paragraph("1. Filtros aplicados", h2))
+    filtros_data = [["Filtro", "Valor"]]
+    for chave, valor in filtros_aplicados.items():
+        if isinstance(valor, (list, tuple)):
+            valor = ", ".join(map(str, valor)) if valor else "Todos"
+        if not valor:
+            valor = "Todos"
+        filtros_data.append([str(chave), str(valor)])
+
+    tabela_filtros = Table(filtros_data, colWidths=[6.0 * cm, 18.0 * cm])
+    tabela_filtros.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174A7C")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    elementos.append(tabela_filtros)
+
+    elementos.append(Spacer(1, 0.35 * cm))
+    elementos.append(Paragraph("2. Sumário executivo", h2))
+
+    total = len(df)
+    assuntos = df["assunto"].nunique() if not df.empty and "assunto" in df.columns else 0
+    secoes = df["secao"].nunique() if not df.empty and "secao" in df.columns else 0
+    cadastradores = df["criado_por_email"].nunique() if not df.empty and "criado_por_email" in df.columns else 0
+
+    resumo_data = [
+        ["Indicador", "Quantidade"],
+        ["Orientações cadastradas", numero_br(total)],
+        ["Assuntos distintos", numero_br(assuntos)],
+        ["Seções envolvidas", numero_br(secoes)],
+        ["Cadastradores distintos", numero_br(cadastradores)],
+    ]
+    tabela_resumo = Table(resumo_data, colWidths=[12 * cm, 4 * cm])
+    tabela_resumo.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174A7C")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+    ]))
+    elementos.append(tabela_resumo)
+
+    elementos.append(Spacer(1, 0.35 * cm))
+    elementos.append(Paragraph("3. Distribuição por assunto", h2))
+
+    if not df.empty and "assunto" in df.columns:
+        por_assunto = df["assunto"].fillna("Não informado").value_counts().reset_index()
+        por_assunto.columns = ["Assunto", "Quantidade"]
+        dados_assunto = [["Assunto", "Quantidade"]] + por_assunto.head(20).values.tolist()
+        tabela_assunto = Table(dados_assunto, colWidths=[18 * cm, 4 * cm])
+        tabela_assunto.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174A7C")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        elementos.append(tabela_assunto)
+    else:
+        elementos.append(Paragraph("Não há dados suficientes para consolidação por assunto.", normal))
+
+    elementos.append(PageBreak())
+    elementos.append(Paragraph("4. Registros da base de conhecimento", h2))
+    elementos.append(Paragraph("A tabela abaixo apresenta até 80 registros filtrados, com respectivo número de cadastro institucional.", normal))
+    elementos.append(Spacer(1, 0.2 * cm))
+
+    df_tab = df.copy()
+    if "id" in df_tab.columns:
+        df_tab["Código"] = df_tab["id"].apply(codigo_base_conhecimento)
+    else:
+        df_tab["Código"] = ""
+
+    colunas = [
+        ("Código", "Código"),
+        ("secao", "Seção"),
+        ("assunto", "Assunto"),
+        ("criado_por_nome", "Cadastrado por"),
+        ("criado_em", "Data"),
+        ("resumo_duvida", "Resumo"),
+        ("orientacao_adotada", "Orientação"),
+        ("fundamento_normativo", "Fundamento"),
+    ]
+
+    cab = [rotulo for _, rotulo in colunas]
+    dados = [cab]
+
+    for _, row in df_tab.head(80).iterrows():
+        linha = []
+        for col, _ in colunas:
+            valor = row.get(col, "")
+            if col == "criado_em" and valor:
+                valor = formatar_data_hora_brasilia(valor)
+            valor = str(valor or "")
+            if len(valor) > 240:
+                valor = valor[:237] + "..."
+            linha.append(Paragraph(valor.replace("\n", "<br/>"), pequeno))
+        dados.append(linha)
+
+    tabela = Table(
+        dados,
+        colWidths=[2.2 * cm, 2.0 * cm, 3.6 * cm, 3.3 * cm, 2.5 * cm, 5.0 * cm, 5.6 * cm, 4.0 * cm],
+        repeatRows=1,
+    )
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174A7C")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#FFFFFF")),
+    ]))
+    elementos.append(tabela)
+
+    doc.build(elementos, onFirstPage=cabecalho_relatorio, onLaterPages=cabecalho_relatorio)
+
+    buffer_pdf.seek(0)
+    return buffer_pdf.getvalue()
+
+
+
 def base_conhecimento_rows():
     return supabase_get_silencioso("base_conhecimento", {"select": "*", "ativo": "eq.true", "order": "criado_em.desc"})
 
@@ -2169,14 +2425,39 @@ def opcoes_zonas_nacionais(tribunal=None):
     return opcoes
 
 
-def modelos_resposta_rows(secao=None, assunto=None):
+
+def supabase_update_silencioso(tabela, dados, coluna, valor):
+    try:
+        params = {coluna: f"eq.{valor}"}
+        resp = requests.patch(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            params=params,
+            data=json.dumps(dados, ensure_ascii=False),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json() if resp.text else []
+    except Exception:
+        return []
+
+
+def modelos_resposta_rows(secao=None, assunto=None, incluir_superadas=True):
     params = {"select": "*", "ativo": "eq.true", "order": "secao.asc,assunto.asc,titulo.asc"}
     if secao:
         params["secao"] = f"eq.{normalizar_secao(secao)}"
     rows = supabase_get_silencioso("modelos_resposta", params)
+
+    if not incluir_superadas and rows:
+        rows = [r for r in rows if not r.get("superada", False)]
+
     if assunto and rows:
         termo = str(assunto or "").casefold()
-        rows = [r for r in rows if termo in str(r.get("assunto") or "").casefold() or str(r.get("assunto") or "").casefold() in termo]
+        rows = [
+            r for r in rows
+            if termo in str(r.get("assunto") or "").casefold()
+            or str(r.get("assunto") or "").casefold() in termo
+        ]
     return rows
 
 
@@ -3000,6 +3281,59 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             st.rerun()
 
         with st.expander("Histórico, comunicações, anexos e reabertura"):
+            st.markdown("##### Base de conhecimento para resposta")
+            bases_disponiveis = bases_por_assunto_e_secao(atendimento.get("assunto"), atendimento.get("secao"))
+
+            if not bases_disponiveis:
+                st.info("Nenhuma orientação da base de conhecimento encontrada para este assunto/seção.")
+            else:
+                opcoes_base = [
+                    f"{codigo_base_conhecimento(b.get('id'))} - {b.get('assunto', 'Não informado')} - {str(b.get('resumo_duvida') or b.get('orientacao_adotada') or '')[:90]}"
+                    for b in bases_disponiveis
+                ]
+                escolha_base = st.selectbox(
+                    "Selecionar orientação da base",
+                    opcoes_base,
+                    key=f"{chave_prefixo}_base_conhecimento_{atendimento.get('id')}"
+                )
+
+                base_id = int(escolha_base.split(" - ")[0].replace("BC-", ""))
+                base_item = next((b for b in bases_disponiveis if int(b.get("id")) == base_id), None)
+
+                if base_item:
+                    st.caption(f"Orientação selecionada: **{codigo_base_conhecimento(base_item.get('id'))}**")
+                    with st.expander("Visualizar orientação selecionada"):
+                        st.markdown(f"**Resumo da dúvida:** {base_item.get('resumo_duvida', '')}")
+                        st.markdown(f"**Orientação adotada:** {base_item.get('orientacao_adotada', '')}")
+                        if base_item.get("fundamento_normativo"):
+                            st.markdown(f"**Fundamento normativo:** {base_item.get('fundamento_normativo')}")
+
+                    if st.button("Usar esta base na resposta", key=f"{chave_prefixo}_usar_base_{atendimento.get('id')}"):
+                        atendimento_atualizado = atendimento.copy()
+                        codigo = codigo_base_conhecimento(base_item.get("id"))
+                        texto_base = base_item.get("orientacao_adotada") or base_item.get("resumo_duvida") or ""
+
+                        trecho = (
+                            f"\\n\\n[Base de conhecimento utilizada: {codigo}]\\n"
+                            f"{texto_base}"
+                        )
+
+                        atual = atendimento_atualizado.get("providencia_adotada") or ""
+                        if trecho.strip() not in atual:
+                            atendimento_atualizado["providencia_adotada"] = (atual.rstrip() + trecho).strip()
+
+                        atendimento_atualizado["atualizado_em"] = agora_iso()
+                        salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "uso de base de conhecimento")
+                        registrar_uso_base_conhecimento(atendimento_atualizado, base_item, "Resposta")
+                        st.success(f"Base {codigo} registrada e adicionada à providência adotada.")
+                        st.rerun()
+
+            usos_df = pd.DataFrame(usos_base_conhecimento_atendimento(atendimento.get("id")))
+            if not usos_df.empty:
+                st.markdown("##### Bases já utilizadas neste atendimento")
+                st.dataframe(usos_df, use_container_width=True, hide_index=True)
+
+            st.divider()
             st.markdown("##### Comentários internos")
             comentario = st.text_area(
                 "Novo comentário interno",
@@ -5097,17 +5431,31 @@ def tela_modelos_resposta():
     st.subheader("Modelos de resposta")
     st.caption("Modelos institucionais de orientação vinculados por seção e assunto.")
 
-    secao_filtro = st.selectbox("Seção", ["Todas"] + SECOES_ATENDIMENTO)
-    assunto_filtro = st.text_input("Filtrar por assunto ou palavra-chave")
+    secao_filtro = st.selectbox("Seção", ["Todas"] + SECOES_ATENDIMENTO, key="modelo_secao_filtro")
+    incluir_superadas = st.checkbox("Exibir orientações superadas", value=True, key="modelo_exibir_superadas")
+    assunto_filtro = st.text_input("Filtrar por assunto, título ou palavra-chave", key="modelo_busca")
 
-    rows = modelos_resposta_rows(None if secao_filtro == "Todas" else secao_filtro)
+    rows = modelos_resposta_rows(
+        None if secao_filtro == "Todas" else secao_filtro,
+        incluir_superadas=incluir_superadas,
+    )
     df = pd.DataFrame(rows)
 
     if not df.empty and assunto_filtro:
         termo = assunto_filtro.casefold()
         df = df[df.astype(str).apply(lambda linha: linha.str.casefold().str.contains(termo, na=False).any(), axis=1)]
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    if not df.empty:
+        df_exibir = df.copy()
+        colunas_exibir = [
+            "id", "secao", "assunto", "titulo", "fundamento_normativo",
+            "criado_por_nome", "criado_por_email", "criado_em",
+            "superada", "data_superacao", "superada_por_nome", "motivo_superacao"
+        ]
+        colunas_exibir = [c for c in colunas_exibir if c in df_exibir.columns]
+        st.dataframe(df_exibir[colunas_exibir], use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum modelo cadastrado.")
 
     if eh_admin():
         st.divider()
@@ -5116,12 +5464,19 @@ def tela_modelos_resposta():
         with st.form("form_modelo_resposta"):
             col1, col2 = st.columns(2)
             with col1:
-                secao = st.selectbox("Seção do modelo", SECOES_ATENDIMENTO)
-                assunto = st.text_input("Assunto vinculado")
-                titulo = st.text_input("Título do modelo")
+                secao = st.selectbox("Seção do modelo", SECOES_ATENDIMENTO, key="modelo_novo_secao")
+                lista_assuntos_secao = assuntos(secao)
+                assunto = st.selectbox(
+                    "Assunto vinculado",
+                    lista_assuntos_secao,
+                    index=0,
+                    key="modelo_novo_assunto"
+                )
+                titulo = st.text_input("Título do modelo", key="modelo_novo_titulo")
             with col2:
-                fundamento = st.text_area("Fundamento normativo")
-            texto_modelo = st.text_area("Texto do modelo", height=220)
+                fundamento = st.text_area("Fundamento normativo", key="modelo_novo_fundamento")
+                st.caption(f"Data do modelo: será registrada automaticamente em {agora_texto_brasilia()}.")
+            texto_modelo = st.text_area("Texto do modelo", height=220, key="modelo_novo_texto")
 
             if st.form_submit_button("Salvar modelo", type="primary"):
                 if not titulo.strip() or not texto_modelo.strip():
@@ -5130,19 +5485,128 @@ def tela_modelos_resposta():
                     usuario = usuario_logado() or {}
                     row = {
                         "secao": secao,
-                        "assunto": assunto.strip() or "Não informado",
+                        "assunto": assunto or "Não informado",
                         "titulo": titulo.strip(),
                         "texto_modelo": texto_modelo.strip(),
                         "fundamento_normativo": fundamento.strip(),
                         "criado_por_email": usuario.get("email", ""),
                         "criado_por_nome": usuario.get("nome", ""),
                         "ativo": True,
+                        "superada": False,
+                        "data_superacao": None,
+                        "motivo_superacao": "",
+                        "superada_por_email": "",
+                        "superada_por_nome": "",
                         "criado_em": agora_iso(),
                         "atualizado_em": agora_iso(),
                     }
                     supabase_insert_silencioso("modelos_resposta", [row])
                     st.success("Modelo cadastrado.")
                     st.rerun()
+
+        st.divider()
+        st.markdown("### Editar, excluir ou marcar orientação como superada")
+
+        modelos_edicao = modelos_resposta_rows(incluir_superadas=True)
+        if not modelos_edicao:
+            st.info("Nenhum modelo disponível para edição.")
+            return
+
+        opcoes = [
+            f"{m.get('id')} - {m.get('secao')} - {m.get('assunto')} - {m.get('titulo')}"
+            for m in modelos_edicao
+        ]
+        selecionado = st.selectbox("Selecione o modelo", opcoes, key="modelo_editar_select")
+        modelo_id = int(str(selecionado).split(" - ")[0])
+        modelo = next((m for m in modelos_edicao if int(m.get("id")) == modelo_id), None)
+
+        if not modelo:
+            return
+
+        with st.form(f"form_editar_modelo_{modelo_id}"):
+            col1, col2 = st.columns(2)
+            with col1:
+                secao_edit = st.selectbox(
+                    "Seção",
+                    SECOES_ATENDIMENTO,
+                    index=SECOES_ATENDIMENTO.index(normalizar_secao(modelo.get("secao"))) if normalizar_secao(modelo.get("secao")) in SECOES_ATENDIMENTO else 0,
+                    key=f"modelo_secao_edit_{modelo_id}"
+                )
+                lista_assuntos_edit = assuntos(secao_edit)
+                assunto_atual = modelo.get("assunto") or "Não informado"
+                if assunto_atual not in lista_assuntos_edit:
+                    lista_assuntos_edit = [assunto_atual] + [a for a in lista_assuntos_edit if a != assunto_atual]
+                assunto_edit = st.selectbox(
+                    "Assunto vinculado",
+                    lista_assuntos_edit,
+                    index=lista_assuntos_edit.index(assunto_atual) if assunto_atual in lista_assuntos_edit else 0,
+                    key=f"modelo_assunto_edit_{modelo_id}"
+                )
+                titulo_edit = st.text_input("Título", value=modelo.get("titulo", ""), key=f"modelo_titulo_edit_{modelo_id}")
+            with col2:
+                fundamento_edit = st.text_area("Fundamento normativo", value=modelo.get("fundamento_normativo", ""), key=f"modelo_fund_edit_{modelo_id}")
+                st.caption(f"Data do modelo: {formatar_data_hora_brasilia(modelo.get('criado_em')) if modelo.get('criado_em') else 'Não registrada'}")
+                st.caption(f"Última atualização: {formatar_data_hora_brasilia(modelo.get('atualizado_em')) if modelo.get('atualizado_em') else 'Não registrada'}")
+
+            texto_edit = st.text_area("Texto do modelo", value=modelo.get("texto_modelo", ""), height=220, key=f"modelo_texto_edit_{modelo_id}")
+
+            superada_edit = st.checkbox(
+                "Marcar como orientação superada",
+                value=bool(modelo.get("superada", False)),
+                key=f"modelo_superada_edit_{modelo_id}"
+            )
+            motivo_superacao = st.text_area(
+                "Motivo da superação / observação para memória institucional",
+                value=modelo.get("motivo_superacao", ""),
+                key=f"modelo_motivo_superada_{modelo_id}"
+            )
+
+            colb1, colb2 = st.columns(2)
+            with colb1:
+                salvar = st.form_submit_button("Salvar alterações", type="primary")
+            with colb2:
+                excluir = st.form_submit_button("Excluir modelo")
+
+        if salvar:
+            usuario = usuario_logado() or {}
+            dados = {
+                "secao": secao_edit,
+                "assunto": assunto_edit,
+                "titulo": titulo_edit.strip(),
+                "texto_modelo": texto_edit.strip(),
+                "fundamento_normativo": fundamento_edit.strip(),
+                "superada": bool(superada_edit),
+                "motivo_superacao": motivo_superacao.strip(),
+                "atualizado_em": agora_iso(),
+            }
+
+            if bool(superada_edit) and not modelo.get("superada", False):
+                dados["data_superacao"] = agora_iso()
+                dados["superada_por_email"] = usuario.get("email", "")
+                dados["superada_por_nome"] = usuario.get("nome", "")
+            elif not bool(superada_edit):
+                dados["data_superacao"] = None
+                dados["superada_por_email"] = ""
+                dados["superada_por_nome"] = ""
+                dados["motivo_superacao"] = ""
+
+            supabase_update_silencioso("modelos_resposta", dados, "id", modelo_id)
+            st.success("Modelo atualizado.")
+            st.rerun()
+
+        if excluir:
+            supabase_update_silencioso(
+                "modelos_resposta",
+                {
+                    "ativo": False,
+                    "atualizado_em": agora_iso(),
+                },
+                "id",
+                modelo_id
+            )
+            st.success("Modelo excluído da lista ativa. O registro permanece preservado no banco para memória.")
+            st.rerun()
+
 
 
 def tela_parametros_nacionais():
@@ -5244,27 +5708,130 @@ def tela_base_conhecimento():
     rows = base_conhecimento_rows()
     df = pd.DataFrame(rows)
 
-    busca = st.text_input("Pesquisar na base de conhecimento")
-    secao_filtro = st.multiselect("Seção", SECOES_ATENDIMENTO)
+    st.markdown("### Consulta e relatório gerencial da base")
+
+    colf1, colf2 = st.columns(2)
+    with colf1:
+        busca = st.text_input("Pesquisar na base de conhecimento", key="bc_busca")
+        secao_filtro = st.multiselect("Seção", SECOES_ATENDIMENTO, key="bc_secao")
+        assuntos_disponiveis = sorted(df["assunto"].dropna().astype(str).unique()) if not df.empty and "assunto" in df.columns else []
+        assunto_filtro = st.multiselect("Assunto", assuntos_disponiveis, key="bc_assunto")
+    with colf2:
+        cadastradores = []
+        if not df.empty:
+            for col in ["criado_por_nome", "criado_por_email"]:
+                if col in df.columns:
+                    cadastradores.extend(df[col].dropna().astype(str).tolist())
+        cadastradores = sorted(set([c for c in cadastradores if c.strip()]), key=lambda x: x.casefold())
+        cadastrador_filtro = st.multiselect("Quem cadastrou", cadastradores, key="bc_cadastrador")
+
+        data_inicio = st.date_input("Data inicial do cadastro", value=None, format="DD/MM/YYYY", key="bc_data_inicio")
+        data_fim = st.date_input("Data final do cadastro", value=None, format="DD/MM/YYYY", key="bc_data_fim")
 
     if not df.empty:
+        if "id" in df.columns:
+            df["Código"] = df["id"].apply(codigo_base_conhecimento)
+
         if busca:
             termo = busca.casefold()
             df = df[df.astype(str).apply(lambda linha: linha.str.casefold().str.contains(termo, na=False).any(), axis=1)]
+
         if secao_filtro and "secao" in df.columns:
             df = df[df["secao"].isin(secao_filtro)]
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+        if assunto_filtro and "assunto" in df.columns:
+            df = df[df["assunto"].isin(assunto_filtro)]
+
+        if cadastrador_filtro:
+            cond = False
+            if "criado_por_nome" in df.columns:
+                cond = cond | df["criado_por_nome"].astype(str).isin(cadastrador_filtro)
+            if "criado_por_email" in df.columns:
+                cond = cond | df["criado_por_email"].astype(str).isin(cadastrador_filtro)
+            df = df[cond]
+
+        if (data_inicio or data_fim) and "criado_em" in df.columns:
+            datas = pd.to_datetime(df["criado_em"], errors="coerce", utc=True).dt.date
+            if data_inicio:
+                df = df[datas >= data_inicio]
+                datas = pd.to_datetime(df["criado_em"], errors="coerce", utc=True).dt.date
+            if data_fim:
+                df = df[datas <= data_fim]
+
+    if not df.empty:
+        colunas_prioritarias = [
+            "Código", "secao", "assunto", "categoria", "resumo_duvida",
+            "orientacao_adotada", "fundamento_normativo", "criado_por_nome",
+            "criado_por_email", "criado_em", "atualizado_em"
+        ]
+        colunas_exibir = [c for c in colunas_prioritarias if c in df.columns]
+        demais = [c for c in df.columns if c not in colunas_exibir]
+        st.dataframe(df[colunas_exibir + demais], use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum registro encontrado na base de conhecimento.")
+
+    st.markdown("#### Exportação e relatório apresentável")
+
+    filtros_pdf = {
+        "Quantidade de registros": numero_br(len(df)),
+        "Seção": secao_filtro,
+        "Assunto": assunto_filtro,
+        "Quem cadastrou": cadastrador_filtro,
+        "Data inicial": data_inicio.strftime("%d/%m/%Y") if data_inicio else "",
+        "Data final": data_fim.strftime("%d/%m/%Y") if data_fim else "",
+        "Busca livre": busca,
+        "Data de emissão": agora_texto_brasilia(),
+    }
+
+    if df.empty:
+        st.info("Nenhum registro encontrado para relatório.")
+    else:
+        pdf_base = gerar_relatorio_pdf_base_conhecimento(df, filtros_pdf)
+        st.download_button(
+            "Gerar relatório PDF apresentável da base de conhecimento",
+            data=pdf_base,
+            file_name=f"relatorio_base_conhecimento_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            type="primary"
+        )
+
+        csv = df.to_csv(index=False, sep=";").encode("utf-8-sig")
+        st.download_button(
+            "Baixar relatório da base de conhecimento em CSV",
+            data=csv,
+            file_name=f"base_conhecimento_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv"
+        )
+
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Base conhecimento")
+            if "assunto" in df.columns:
+                df["assunto"].value_counts().rename_axis("Assunto").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por assunto")
+            if "criado_por_nome" in df.columns:
+                df["criado_por_nome"].value_counts().rename_axis("Quem cadastrou").reset_index(name="Quantidade").to_excel(writer, index=False, sheet_name="Por cadastrador")
+
+            usos_df = dataframe_usos_base_conhecimento()
+            if not usos_df.empty:
+                usos_df.to_excel(writer, index=False, sheet_name="Usos da base")
+
+        st.download_button(
+            "Baixar relatório da base de conhecimento em Excel",
+            data=buffer.getvalue(),
+            file_name=f"base_conhecimento_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     st.divider()
     st.markdown("### Cadastrar orientação manualmente")
+    st.caption("Após salvar, o registro receberá automaticamente um número de cadastro no formato BC-000001.")
 
     with st.form("form_base_conhecimento"):
         col1, col2 = st.columns(2)
         with col1:
-            secao = st.selectbox("Seção", SECOES_ATENDIMENTO)
-            assunto = st.text_input("Assunto")
-            categoria = st.text_input("Categoria")
+            secao = st.selectbox("Seção", SECOES_ATENDIMENTO, key="bc_novo_secao")
+            assunto = st.selectbox("Assunto", assuntos(secao), key="bc_novo_assunto")
+            categoria = st.text_input("Categoria", value=assunto if assunto != "Não informado" else "", key="bc_novo_categoria")
         with col2:
             atendimento_origem_id = st.number_input("ID do atendimento de origem, se houver", min_value=0, step=1)
             fundamento = st.text_area("Fundamento normativo")
@@ -5276,8 +5843,8 @@ def tela_base_conhecimento():
             row = {
                 "atendimento_origem_id": int(atendimento_origem_id) if atendimento_origem_id else None,
                 "secao": secao,
-                "assunto": assunto.strip() or "Não informado",
-                "categoria": categoria.strip() or assunto.strip() or "Não informado",
+                "assunto": assunto or "Não informado",
+                "categoria": categoria.strip() or assunto or "Não informado",
                 "resumo_duvida": resumo.strip(),
                 "orientacao_adotada": orientacao.strip(),
                 "fundamento_normativo": fundamento.strip(),
@@ -5287,9 +5854,13 @@ def tela_base_conhecimento():
                 "criado_em": agora_iso(),
                 "atualizado_em": agora_iso(),
             }
-            supabase_insert_silencioso("base_conhecimento", [row])
-            st.success("Orientação cadastrada.")
+            criado = supabase_insert_silencioso("base_conhecimento", [row])
+            if criado and isinstance(criado, list) and criado[0].get("id"):
+                st.success(f"Orientação cadastrada sob o nº {codigo_base_conhecimento(criado[0].get('id'))}.")
+            else:
+                st.success("Orientação cadastrada. O número BC será exibido na consulta da base.")
             st.rerun()
+
 
 
 def tela_backup_restauracao():
