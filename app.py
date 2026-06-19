@@ -3225,7 +3225,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     "Prazo limite",
                     value=prazo_atual,
                     format="DD/MM/YYYY",
-                    disabled=not manter_prazo,
+                    help="Marque 'Definir/manter prazo limite' para que esta data seja gravada no atendimento.",
                     key=f"{chave_prefixo}_prazo_{atendimento.get('id')}"
                 )
 
@@ -4149,7 +4149,12 @@ def tela_novo_atendimento():
 
         with col8:
             informar_prazo = st.checkbox("Definir prazo", value=False)
-            prazo_limite = st.date_input("Prazo limite", value=agora_brasilia().date(), format="DD/MM/YYYY", disabled=not informar_prazo)
+            prazo_limite = st.date_input(
+                "Prazo limite",
+                value=agora_brasilia().date(),
+                format="DD/MM/YYYY",
+                help="Marque 'Definir prazo' para que esta data seja gravada no atendimento."
+            )
 
         protocolo = st.text_input("Protocolo ou referência, se houver")
 
