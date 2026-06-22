@@ -4008,6 +4008,61 @@ def metricas_secao(lista, secao):
 
 
 
+
+def render_dashboard_secao(lista, secao):
+    """Renderiza o bloco gerencial completo de uma seção."""
+    m = metricas_secao(lista, secao)
+
+    st.markdown(f"<div class='dash-section-title'>{secao}</div>", unsafe_allow_html=True)
+
+    cards = [
+        ("Total", numero_br(m.get("total", 0)), "#174A7C"),
+        ("Triagem", numero_br(m.get("triagem", 0)), "#5B9BD5"),
+        ("Em atendimento", numero_br(m.get("em_atendimento", 0)), "#F2A365"),
+        ("Realizados", numero_br(m.get("realizados", 0)), "#74B24A"),
+        ("Pendentes", numero_br(m.get("pendentes", 0)), "#C2410C"),
+        ("% realizado", percentual_br(m.get("percentual_realizado", 0)), "#7A60A8"),
+    ]
+
+    cols = st.columns(len(cards))
+    for col, (label, value, color) in zip(cols, cards):
+        with col:
+            render_metric_card(label, value, color)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        bloco_tabela_dashboard(
+            f"{secao} - Situação dos atendimentos",
+            dataframe_status_por_secao(lista, secao),
+        )
+    with col2:
+        bloco_tabela_dashboard(
+            f"{secao} - Fontes de entrada",
+            dataframe_fontes_por_secao(lista, secao),
+        )
+
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        bloco_tabela_dashboard(
+            f"{secao} - Principais assuntos",
+            dataframe_top_assuntos_por_secao(lista, secao, limite=5),
+        )
+    with col4:
+        bloco_tabela_dashboard(
+            f"{secao} - Zonas com maior demanda",
+            dataframe_top_zonas_por_secao(lista, secao, limite=5),
+        )
+    with col5:
+        bloco_tabela_dashboard(
+            f"{secao} - Atendimentos por servidor(a)",
+            dataframe_top_servidores_por_secao(lista, secao, limite=5),
+        )
+
+    alertas = dataframe_alertas_gerenciais(lista_por_secao(lista, secao)).head(8)
+    bloco_tabela_dashboard(f"{secao} - Demandas que exigem atenção", alertas)
+
+
+
 def tela_dashboard():
     st.subheader("Dashboard")
 
