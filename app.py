@@ -11,6 +11,7 @@ import smtplib
 from email.message import EmailMessage
 import requests
 import re
+import html
 try:
     import matplotlib.pyplot as plt
     MATPLOTLIB_DISPONIVEL = True
@@ -2849,6 +2850,24 @@ def assumir_atendimento_por_id(atendimento_id):
             return True, f"Atendimento nº {atendimento_id} assumido por {nome}."
 
     return False, "Atendimento não encontrado."
+
+
+
+def render_metric_card(label, value, color="#174A7C"):
+    """Card visual usado no painel gerencial."""
+    label_html = html.escape(str(label or ""))
+    value_html = html.escape(str(value or "0"))
+    color_html = html.escape(str(color or "#174A7C"))
+
+    st.markdown(
+        f"""
+        <div class="dash-metric-card" style="border-top-color:{color_html};">
+            <div class="label">{label_html}</div>
+            <div class="value" style="color:{color_html};">{value_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_visao_executiva(lista, titulo="Visão executiva"):
