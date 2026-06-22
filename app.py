@@ -469,7 +469,7 @@ def normalizar_secao(valor):
     texto = str(valor or "").strip().upper()
     texto = SECOES_LEGADAS.get(texto, texto)
 
-    secoes_validas = secoes_atendimento() if "secoes_atendimento" in globals() else SECOES_ATENDIMENTO
+    secoes_validas = secoes_atendimento() if "secoes_atendimento" in globals() else list(SECOES_ATENDIMENTO)
 
     if texto in secoes_validas:
         return texto
@@ -477,20 +477,28 @@ def normalizar_secao(valor):
     return secoes_validas[0] if secoes_validas else "SEPRO"
 
 
-def secoes_atendimento():
+def secoes_atendimento(forcar_atualizacao=False):
     """
     Retorna as seções ativas da Corregedoria.
 
-    A fonte preferencial é a tabela public.secoes no Supabase.
-    Assim, mudanças futuras de sigla/nome podem ser feitas no banco,
-    sem alteração do código. Se o banco estiver indisponível, usa o
-    fallback definido em SECOES_ATENDIMENTO.
+    Para evitar lentidão no login, antes de haver usuário autenticado a função
+    usa o fallback local. Depois do login, consulta a tabela public.secoes uma
+    única vez por sessão e guarda em cache.
     """
+    fallback = list(SECOES_ATENDIMENTO)
+
     try:
+        if not st.session_state.get("usuario"):
+            return fallback
+
+        if not forcar_atualizacao and st.session_state.get("_secoes_atendimento_cache"):
+            return st.session_state["_secoes_atendimento_cache"]
+
         rows = supabase_get_silencioso(
             "secoes",
             {"select": "sigla,ativo,ordem", "ativo": "eq.true", "order": "ordem.asc,sigla.asc"}
         )
+
         siglas = []
         for row in rows or []:
             sigla = str(row.get("sigla") or "").strip().upper()
@@ -499,11 +507,13 @@ def secoes_atendimento():
                 siglas.append(sigla)
 
         if siglas:
+            st.session_state["_secoes_atendimento_cache"] = siglas
             return siglas
+
     except Exception:
         pass
 
-    return list(secoes_atendimento())
+    return fallback
 
 
 def senha_hash(senha):
@@ -2370,6 +2380,7 @@ def sidebar_menu():
         remover_usuario_logado()
         st.session_state.pop("usuario", None)
         st.session_state.pop("pagina_atual", None)
+        st.session_state.pop("_secoes_atendimento_cache", None)
         st.rerun()
 
     return st.session_state.get("pagina_atual", "Início")
