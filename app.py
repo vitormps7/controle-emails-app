@@ -479,8 +479,11 @@ def normalizar_secao(valor):
 
 def secoes_atendimento(forcar_atualizacao=False):
     """
-    Retorna as seções ativas da Corregedoria com cache de sessão.
-    Antes do login, usa fallback local para não atrasar a abertura do sistema.
+    Retorna as seções ativas da Corregedoria.
+
+    Mantém o painel completo e evita lentidão: antes do login usa fallback local;
+    depois do login consulta a tabela public.secoes no máximo uma vez por sessão,
+    salvo atualização manual.
     """
     fallback = list(SECOES_ATENDIMENTO)
 
@@ -489,8 +492,8 @@ def secoes_atendimento(forcar_atualizacao=False):
             return fallback
 
         if not forcar_atualizacao:
-            cached = cache_get("secoes_atendimento", ttl=600)
-            if cached is not None:
+            cached = st.session_state.get("_secoes_atendimento_cache")
+            if cached:
                 return cached
 
         rows = supabase_get_silencioso(
@@ -506,7 +509,8 @@ def secoes_atendimento(forcar_atualizacao=False):
                 siglas.append(sigla)
 
         if siglas:
-            return cache_set("secoes_atendimento", siglas)
+            st.session_state["_secoes_atendimento_cache"] = siglas
+            return siglas
 
     except Exception:
         pass
@@ -1206,11 +1210,7 @@ def gerar_relatorio_pdf_base_conhecimento(df, filtros_aplicados):
 
 
 def base_conhecimento_rows():
-    cached = cache_get("base_conhecimento", ttl=180)
-    if cached is not None:
-        return cached
-    rows = supabase_get_silencioso("base_conhecimento", {"select": "*", "ativo": "eq.true", "order": "criado_em.desc"})
-    return cache_set("base_conhecimento", rows)
+    return supabase_get_silencioso("base_conhecimento", {"select": "*", "ativo": "eq.true", "order": "criado_em.desc"})
 
 
 def auditoria_atendimento(atendimento_id):
@@ -1375,81 +1375,9 @@ def normalizar_email(email):
     return str(email or "").strip().lower()
 
 
-
-# ============================================================
-# CACHE DE SESSÃO - REDUÇÃO DE CONSULTAS AO SUPABASE
-# ============================================================
-
-CACHE_TTL_SEGUNDOS = 120
-
-
-def cache_agora_segundos():
-    return int(datetime.now(timezone.utc).timestamp())
-
-
-def cache_get(chave, ttl=CACHE_TTL_SEGUNDOS):
-    cache = st.session_state.setdefault("_cache_siga_cor", {})
-    item = cache.get(chave)
-
-    if not item:
-        return None
-
-    criado_em = item.get("criado_em", 0)
-    if cache_agora_segundos() - criado_em > ttl:
-        cache.pop(chave, None)
-        return None
-
-    return item.get("valor")
-
-
-def cache_set(chave, valor):
-    cache = st.session_state.setdefault("_cache_siga_cor", {})
-    cache[chave] = {
-        "valor": valor,
-        "criado_em": cache_agora_segundos(),
-    }
-    return valor
-
-
-def cache_limpar(*chaves):
-    cache = st.session_state.setdefault("_cache_siga_cor", {})
-
-    if not chaves:
-        cache.clear()
-        st.session_state.pop("_secoes_atendimento_cache", None)
-        return
-
-    for chave in chaves:
-        cache.pop(chave, None)
-
-    if "secoes_atendimento" in chaves:
-        st.session_state.pop("_secoes_atendimento_cache", None)
-
-
-def cache_limpar_dados_principais():
-    cache_limpar(
-        "usuarios",
-        "atendimentos",
-        "assuntos_rows",
-        "base_conhecimento",
-        "modelos_resposta",
-        "tribunais",
-        "unidades_corregedoria",
-        "zonas_eleitorais",
-        "usuarios_logados",
-        "secoes_atendimento",
-    )
-
-
-
 def usuarios():
-    cached = cache_get("usuarios")
-    if cached is not None:
-        return cached
-
     rows = supabase_get("usuarios", {"select": "*", "order": "id.asc"})
-    dados = [usuario_db_para_app(row) for row in (rows or [])]
-    return cache_set("usuarios", dados)
+    return [usuario_db_para_app(row) for row in (rows or [])]
 
 
 def salvar_usuarios(lista):
@@ -1461,18 +1389,12 @@ def salvar_usuarios(lista):
             r.pop("id", None)
         supabase_upsert_many("usuarios", rows, on_conflict="email")
         supabase_delete_not_in("usuarios", "email", [r.get("email") for r in rows])
-    cache_limpar("usuarios", "usuarios_logados")
     criar_backup_automatico("apos_salvar_usuarios")
 
 
 def atendimentos():
-    cached = cache_get("atendimentos", ttl=90)
-    if cached is not None:
-        return cached
-
     rows = supabase_get("atendimentos", {"select": "*", "order": "id.asc"})
-    dados = [atendimento_db_para_app(row) for row in (rows or [])]
-    return cache_set("atendimentos", dados)
+    return [atendimento_db_para_app(row) for row in (rows or [])]
 
 
 def salvar_atendimentos(lista):
@@ -1489,7 +1411,6 @@ def salvar_atendimentos(lista):
     else:
         supabase_delete_all("atendimentos")
 
-    cache_limpar("atendimentos", "base_conhecimento", "modelos_resposta")
     criar_backup_automatico("apos_salvar_atendimentos")
 
 
@@ -1504,10 +1425,6 @@ def excluir_atendimento_por_id(id_atendimento):
 
 
 def assunto_rows():
-    cached = cache_get("assuntos_rows")
-    if cached is not None:
-        return cached
-
     # Busca todos os assuntos. O filtro de ativo é feito em Python para evitar
     # inconsistências caso algum registro antigo esteja sem o campo ativo.
     rows = supabase_get("assuntos", {"select": "*", "order": "secao.asc,nome.asc"})
@@ -1543,7 +1460,8 @@ def assunto_rows():
             str(r.get("nome", "")).casefold()
         )
     )
-    return cache_set("assuntos_rows", registros)
+    return registros
+
 
 def assuntos(secao=None):
     registros = assunto_rows()
@@ -1610,7 +1528,6 @@ def salvar_assuntos_registros(registros):
 
     if normalizados:
         supabase_insert("assuntos", normalizados)
-    cache_limpar("assuntos_rows")
     criar_backup_automatico("apos_salvar_assuntos")
 
 
@@ -1708,21 +1625,58 @@ def sessao_esta_ativa(row):
     return ultimo >= limite
 
 
+
+def cache_sessao_get(chave, ttl_segundos=60):
+    cache = st.session_state.setdefault("_cache_leve_siga_cor", {})
+    item = cache.get(chave)
+
+    if not item:
+        return None
+
+    try:
+        criado = item.get("criado_em", 0)
+        agora = int(datetime.now(timezone.utc).timestamp())
+        if agora - criado > ttl_segundos:
+            cache.pop(chave, None)
+            return None
+        return item.get("valor")
+    except Exception:
+        cache.pop(chave, None)
+        return None
+
+
+def cache_sessao_set(chave, valor):
+    cache = st.session_state.setdefault("_cache_leve_siga_cor", {})
+    cache[chave] = {
+        "valor": valor,
+        "criado_em": int(datetime.now(timezone.utc).timestamp()),
+    }
+    return valor
+
+
+def cache_sessao_limpar():
+    st.session_state.pop("_cache_leve_siga_cor", None)
+    st.session_state.pop("_secoes_atendimento_cache", None)
+
+
+
 def usuarios_logados():
-    rows = supabase_get("sessoes", {"select": "*", "ativo": "eq.true", "order": "ultimo_login.desc"}) or []
+    """
+    Retorna usuários ativos sem fazer atualização/limpeza automática no banco.
+    Isso preserva o painel gerencial completo, mas evita lentidão causada por
+    múltiplos PATCH em sessões antigas durante a abertura do dashboard.
+    """
+    cached = cache_sessao_get("usuarios_logados", ttl_segundos=60)
+    if cached is not None:
+        return cached
+
+    rows = supabase_get_silencioso(
+        "sessoes",
+        {"select": "email,nome,ultimo_login,ultimo_ping,ativo", "ativo": "eq.true", "order": "ultimo_login.desc"}
+    ) or []
+
     ativos = [row for row in rows if sessao_esta_ativa(row)]
-
-    # Limpa visualmente sessões antigas para que não permaneçam como ativas no banco.
-    for row in rows:
-        if row not in ativos and row.get("ativo", False):
-            email = normalizar_email(row.get("email"))
-            if email:
-                try:
-                    supabase_update("sessoes", {"ativo": False, "ultimo_logout": agora_iso()}, "email", email)
-                except Exception:
-                    pass
-
-    return ativos
+    return cache_sessao_set("usuarios_logados", ativos)
 
 
 def email_institucional(email):
@@ -2457,9 +2411,8 @@ def sidebar_menu():
 
     st.sidebar.divider()
 
-    if st.sidebar.button("🔄 Atualizar dados", use_container_width=True):
-        cache_limpar_dados_principais()
-        st.success("Dados atualizados.")
+    if st.sidebar.button("🔄 Atualizar dados do sistema", use_container_width=True):
+        cache_sessao_limpar()
         st.rerun()
 
     st.sidebar.divider()
@@ -2471,8 +2424,7 @@ def sidebar_menu():
         remover_usuario_logado()
         st.session_state.pop("usuario", None)
         st.session_state.pop("pagina_atual", None)
-        st.session_state.pop("_secoes_atendimento_cache", None)
-        cache_limpar()
+        cache_sessao_limpar()
         st.rerun()
 
     return st.session_state.get("pagina_atual", "Início")
@@ -2526,43 +2478,28 @@ def comentarios_atendimento_rows(atendimento_id):
 
 
 def tribunais_rows():
-    cached = cache_get("tribunais", ttl=600)
-    if cached is not None:
-        return cached
-
     rows = supabase_get_silencioso("tribunais", {"select": "*", "ativo": "eq.true", "order": "ordem.asc,sigla.asc"})
     if rows:
-        return cache_set("tribunais", rows)
-
+        return rows
     return [{"sigla": TRIBUNAL_PADRAO, "uf": UF_PADRAO, "nome": "Tribunal Regional Eleitoral da Bahia", "ativo": True, "ordem": 1}]
 
 
 def unidades_corregedoria_rows(tribunal=None):
-    cache_key = f"unidades_corregedoria::{tribunal or 'todas'}"
-    cached = cache_get(cache_key, ttl=600)
-    if cached is not None:
-        return cached
-
     params = {"select": "*", "ativo": "eq.true", "order": "ordem.asc,sigla.asc"}
     if tribunal:
         params["tribunal_sigla"] = f"eq.{tribunal}"
     rows = supabase_get_silencioso("unidades_corregedoria", params)
     if rows:
-        return cache_set(cache_key, rows)
-
+        return rows
     return [{"tribunal_sigla": TRIBUNAL_PADRAO, "sigla": "CRE-BA", "nome": "Corregedoria Regional Eleitoral da Bahia", "ativo": True, "ordem": 1}]
 
-def zonas_eleitorais_rows(tribunal=None):
-    cache_key = f"zonas_eleitorais::{tribunal or 'todas'}"
-    cached = cache_get(cache_key, ttl=600)
-    if cached is not None:
-        return cached
 
+def zonas_eleitorais_rows(tribunal=None):
     params = {"select": "*", "ativo": "eq.true", "order": "numero.asc"}
     if tribunal:
         params["tribunal_sigla"] = f"eq.{tribunal}"
-    rows = supabase_get_silencioso("zonas_eleitorais", params)
-    return cache_set(cache_key, rows)
+    return supabase_get_silencioso("zonas_eleitorais", params)
+
 
 def opcoes_zonas_nacionais(tribunal=None):
     zonas = zonas_eleitorais_rows(tribunal)
@@ -2598,11 +2535,6 @@ def supabase_update_silencioso(tabela, dados, coluna, valor):
 
 
 def modelos_resposta_rows(secao=None, assunto=None, incluir_superadas=True):
-    cache_key = f"modelos_resposta::{secao or 'todas'}::{assunto or 'todos'}::{incluir_superadas}"
-    cached = cache_get(cache_key, ttl=180)
-    if cached is not None:
-        return cached
-
     params = {"select": "*", "ativo": "eq.true", "order": "secao.asc,assunto.asc,titulo.asc"}
     if secao:
         params["secao"] = f"eq.{normalizar_secao(secao)}"
@@ -2618,7 +2550,7 @@ def modelos_resposta_rows(secao=None, assunto=None, incluir_superadas=True):
             if termo in str(r.get("assunto") or "").casefold()
             or str(r.get("assunto") or "").casefold() in termo
         ]
-    return cache_set(cache_key, rows)
+    return rows
 
 
 def registrar_fluxo_validacao(atendimento, situacao, observacao=""):
