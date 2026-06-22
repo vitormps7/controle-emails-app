@@ -466,10 +466,17 @@ def parse_data_opcional(valor):
 
 
 def normalizar_secao(valor):
+    """
+    Normalização rápida de seção.
+
+    Importante: esta função é chamada centenas/milhares de vezes ao montar o
+    painel. Por isso, ela não consulta o Supabase. Usa apenas o mapa de siglas
+    legadas e a lista local/cacheada.
+    """
     texto = str(valor or "").strip().upper()
     texto = SECOES_LEGADAS.get(texto, texto)
 
-    secoes_validas = secoes_atendimento() if "secoes_atendimento" in globals() else list(SECOES_ATENDIMENTO)
+    secoes_validas = st.session_state.get("_secoes_atendimento_cache") or list(SECOES_ATENDIMENTO)
 
     if texto in secoes_validas:
         return texto
@@ -1375,9 +1382,74 @@ def normalizar_email(email):
     return str(email or "").strip().lower()
 
 
+
+# ============================================================
+# CACHE LEVE DE SESSÃO
+# ============================================================
+
+def cache_sessao_get(chave, ttl_segundos=120):
+    cache = st.session_state.setdefault("_cache_leve_siga_cor", {})
+    item = cache.get(chave)
+
+    if not item:
+        return None
+
+    try:
+        criado = item.get("criado_em", 0)
+        agora = int(datetime.now(timezone.utc).timestamp())
+        if agora - criado > ttl_segundos:
+            cache.pop(chave, None)
+            return None
+        return item.get("valor")
+    except Exception:
+        cache.pop(chave, None)
+        return None
+
+
+def cache_sessao_set(chave, valor):
+    cache = st.session_state.setdefault("_cache_leve_siga_cor", {})
+    cache[chave] = {
+        "valor": valor,
+        "criado_em": int(datetime.now(timezone.utc).timestamp()),
+    }
+    return valor
+
+
+def cache_sessao_limpar(*chaves):
+    if not chaves:
+        st.session_state.pop("_cache_leve_siga_cor", None)
+        st.session_state.pop("_secoes_atendimento_cache", None)
+        return
+
+    cache = st.session_state.setdefault("_cache_leve_siga_cor", {})
+    for chave in chaves:
+        cache.pop(chave, None)
+
+    if "secoes_atendimento" in chaves:
+        st.session_state.pop("_secoes_atendimento_cache", None)
+
+
+def cache_sessao_limpar_dados():
+    cache_sessao_limpar(
+        "usuarios",
+        "atendimentos",
+        "assuntos_rows",
+        "usuarios_logados",
+        "base_conhecimento",
+        "modelos_resposta",
+        "secoes_atendimento",
+    )
+
+
+
 def usuarios():
+    cached = cache_sessao_get("usuarios", ttl_segundos=180)
+    if cached is not None:
+        return cached
+
     rows = supabase_get("usuarios", {"select": "*", "order": "id.asc"})
-    return [usuario_db_para_app(row) for row in (rows or [])]
+    dados = [usuario_db_para_app(row) for row in (rows or [])]
+    return cache_sessao_set("usuarios", dados)
 
 
 def salvar_usuarios(lista):
@@ -1389,12 +1461,18 @@ def salvar_usuarios(lista):
             r.pop("id", None)
         supabase_upsert_many("usuarios", rows, on_conflict="email")
         supabase_delete_not_in("usuarios", "email", [r.get("email") for r in rows])
+    cache_sessao_limpar("usuarios", "usuarios_logados")
     criar_backup_automatico("apos_salvar_usuarios")
 
 
 def atendimentos():
+    cached = cache_sessao_get("atendimentos", ttl_segundos=180)
+    if cached is not None:
+        return cached
+
     rows = supabase_get("atendimentos", {"select": "*", "order": "id.asc"})
-    return [atendimento_db_para_app(row) for row in (rows or [])]
+    dados = [atendimento_db_para_app(row) for row in (rows or [])]
+    return cache_sessao_set("atendimentos", dados)
 
 
 def salvar_atendimentos(lista):
@@ -1411,6 +1489,7 @@ def salvar_atendimentos(lista):
     else:
         supabase_delete_all("atendimentos")
 
+    cache_sessao_limpar("atendimentos", "usuarios_logados")
     criar_backup_automatico("apos_salvar_atendimentos")
 
 
@@ -1425,6 +1504,10 @@ def excluir_atendimento_por_id(id_atendimento):
 
 
 def assunto_rows():
+    cached = cache_sessao_get("assuntos_rows", ttl_segundos=300)
+    if cached is not None:
+        return cached
+
     # Busca todos os assuntos. O filtro de ativo é feito em Python para evitar
     # inconsistências caso algum registro antigo esteja sem o campo ativo.
     rows = supabase_get("assuntos", {"select": "*", "order": "secao.asc,nome.asc"})
@@ -1460,8 +1543,7 @@ def assunto_rows():
             str(r.get("nome", "")).casefold()
         )
     )
-    return registros
-
+    return cache_sessao_set("assuntos_rows", registros)
 
 def assuntos(secao=None):
     registros = assunto_rows()
@@ -1528,6 +1610,7 @@ def salvar_assuntos_registros(registros):
 
     if normalizados:
         supabase_insert("assuntos", normalizados)
+    cache_sessao_limpar("assuntos_rows")
     criar_backup_automatico("apos_salvar_assuntos")
 
 
@@ -1626,47 +1709,12 @@ def sessao_esta_ativa(row):
 
 
 
-def cache_sessao_get(chave, ttl_segundos=60):
-    cache = st.session_state.setdefault("_cache_leve_siga_cor", {})
-    item = cache.get(chave)
-
-    if not item:
-        return None
-
-    try:
-        criado = item.get("criado_em", 0)
-        agora = int(datetime.now(timezone.utc).timestamp())
-        if agora - criado > ttl_segundos:
-            cache.pop(chave, None)
-            return None
-        return item.get("valor")
-    except Exception:
-        cache.pop(chave, None)
-        return None
-
-
-def cache_sessao_set(chave, valor):
-    cache = st.session_state.setdefault("_cache_leve_siga_cor", {})
-    cache[chave] = {
-        "valor": valor,
-        "criado_em": int(datetime.now(timezone.utc).timestamp()),
-    }
-    return valor
-
-
-def cache_sessao_limpar():
-    st.session_state.pop("_cache_leve_siga_cor", None)
-    st.session_state.pop("_secoes_atendimento_cache", None)
-
-
-
 def usuarios_logados():
     """
-    Retorna usuários ativos sem fazer atualização/limpeza automática no banco.
-    Isso preserva o painel gerencial completo, mas evita lentidão causada por
-    múltiplos PATCH em sessões antigas durante a abertura do dashboard.
+    Retorna usuários ativos sem fazer limpeza automática no banco.
+    A limpeza por PATCH em cada sessão antiga deixava o painel lento.
     """
-    cached = cache_sessao_get("usuarios_logados", ttl_segundos=60)
+    cached = cache_sessao_get("usuarios_logados", ttl_segundos=90)
     if cached is not None:
         return cached
 
@@ -2412,7 +2460,7 @@ def sidebar_menu():
     st.sidebar.divider()
 
     if st.sidebar.button("🔄 Atualizar dados do sistema", use_container_width=True):
-        cache_sessao_limpar()
+        cache_sessao_limpar_dados()
         st.rerun()
 
     st.sidebar.divider()
@@ -3818,9 +3866,28 @@ def lista_por_secao(lista, secao):
     return [a for a in lista if normalizar_secao(a.get("secao")) == secao]
 
 
-def dataframe_status_por_secao(lista, secao):
+def df_por_secao_rapido(lista, secao):
     base = lista_por_secao(lista, secao)
-    df_secao = atendimentos_df(base)
+    if not base:
+        return pd.DataFrame()
+    df = pd.DataFrame(base)
+    mapa = {
+        "status": "Status",
+        "fonte": "Fonte",
+        "assunto": "Assunto",
+        "zona_eleitoral": "Zona eleitoral",
+        "servidor": "Servidor(a)",
+    }
+    for origem, destino in mapa.items():
+        if origem in df.columns:
+            df[destino] = df[origem]
+        elif destino not in df.columns:
+            df[destino] = ""
+    return df
+
+
+def dataframe_status_por_secao(lista, secao):
+    df_secao = df_por_secao_rapido(lista, secao)
     if df_secao.empty:
         return pd.DataFrame(columns=["Situação", "Qtd."])
 
@@ -3831,8 +3898,7 @@ def dataframe_status_por_secao(lista, secao):
 
 
 def dataframe_fontes_por_secao(lista, secao):
-    base = lista_por_secao(lista, secao)
-    df_secao = atendimentos_df(base)
+    df_secao = df_por_secao_rapido(lista, secao)
     if df_secao.empty:
         return pd.DataFrame(columns=["Fonte", "Qtd."])
 
@@ -3844,8 +3910,7 @@ def dataframe_fontes_por_secao(lista, secao):
 
 
 def dataframe_top_assuntos_por_secao(lista, secao, limite=5):
-    base = lista_por_secao(lista, secao)
-    df_secao = atendimentos_df(base)
+    df_secao = df_por_secao_rapido(lista, secao)
     if df_secao.empty:
         return pd.DataFrame(columns=["Assunto", "Qtd."])
 
@@ -3863,8 +3928,7 @@ def dataframe_top_assuntos_por_secao(lista, secao, limite=5):
 
 
 def dataframe_top_zonas_por_secao(lista, secao, limite=5):
-    base = lista_por_secao(lista, secao)
-    df_secao = atendimentos_df(base)
+    df_secao = df_por_secao_rapido(lista, secao)
     if df_secao.empty or "Zona eleitoral" not in df_secao.columns:
         return pd.DataFrame(columns=["Zona eleitoral", "Qtd."])
 
@@ -3882,8 +3946,7 @@ def dataframe_top_zonas_por_secao(lista, secao, limite=5):
 
 
 def dataframe_top_servidores_por_secao(lista, secao, limite=5):
-    base = lista_por_secao(lista, secao)
-    df_secao = atendimentos_df(base)
+    df_secao = df_por_secao_rapido(lista, secao)
     if df_secao.empty:
         return pd.DataFrame(columns=["Servidor(a)", "Qtd."])
 
@@ -3914,73 +3977,16 @@ def metricas_secao(lista, secao):
 
     return {
         "total": total,
-        "realizados": realizados,
         "triagem": triagem,
         "em_atendimento": em_atendimento,
+        "realizados": realizados,
         "pendentes": pendentes,
         "alertas": alertas,
         "sem_responsavel": sem_resp,
         "urgentes": urgentes,
-        "percentual": percentual,
+        "percentual_realizado": percentual,
     }
 
-
-def render_metric_card(label, value, color):
-    st.markdown(
-        f"<div class='dash-metric-card' style='border-top-color:{color};'><div class='label'>{label}</div><div class='value' style='color:{color};'>{value}</div></div>",
-        unsafe_allow_html=True,
-    )
-
-
-def render_dashboard_secao(lista, secao):
-    base = lista_por_secao(lista, secao)
-    m = metricas_secao(lista, secao)
-
-    st.markdown(
-        f"<div class='dash-section-title'>Painel {secao}</div>",
-        unsafe_allow_html=True,
-    )
-
-    cols = st.columns(7)
-    cards = [
-        ("Total", numero_br(m["total"]), "#174A7C"),
-        ("Triagem", numero_br(m["triagem"]), "#5B9BD5"),
-        ("Em atendimento", numero_br(m["em_atendimento"]), "#F2A365"),
-        ("Realizados", numero_br(m["realizados"]), "#74B24A"),
-        ("% realizado", percentual_br(m["percentual"]), "#7A60A8"),
-        ("Alertas", numero_br(m["alertas"]), "#B91C1C"),
-        ("Sem responsável", numero_br(m["sem_responsavel"]), "#C2410C"),
-    ]
-
-    for col, (label, value, color) in zip(cols, cards):
-        with col:
-            render_metric_card(label, value, color)
-
-    tempo_medio = dataframe_tempo_medio_por_fonte(base)
-    alertas = dataframe_alertas_gerenciais(base).head(8)
-    qualidade = dataframe_qualidade_base(base)
-    status_tbl = dataframe_status_por_secao(lista, secao)
-    fonte_tbl = dataframe_fontes_por_secao(lista, secao)
-    top_zonas = dataframe_top_zonas_por_secao(lista, secao)
-    top_assuntos = dataframe_top_assuntos_por_secao(lista, secao)
-    top_servidores = dataframe_top_servidores_por_secao(lista, secao)
-
-    col_a, col_b = st.columns([1.15, 1.35])
-    with col_a:
-        bloco_tabela_dashboard(f"{secao} - Situação", status_tbl)
-        bloco_tabela_dashboard(f"{secao} - Fonte do atendimento", fonte_tbl)
-        bloco_tabela_dashboard(f"{secao} - Tempo médio por fonte", tempo_medio)
-    with col_b:
-        bloco_tabela_dashboard(f"{secao} - Alertas gerenciais", alertas)
-        bloco_tabela_dashboard(f"{secao} - Qualidade cadastral", qualidade)
-
-    col_c, col_d, col_e = st.columns(3)
-    with col_c:
-        bloco_tabela_dashboard(f"{secao} - Zonas que mais demandam", top_zonas)
-    with col_d:
-        bloco_tabela_dashboard(f"{secao} - Assuntos mais frequentes", top_assuntos)
-    with col_e:
-        bloco_tabela_dashboard(f"{secao} - Servidores responsáveis", top_servidores)
 
 
 def tela_dashboard():
