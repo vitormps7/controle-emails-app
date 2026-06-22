@@ -95,8 +95,12 @@ FONTES = [
 
 SECOES_ATENDIMENTO = [
     "SEPRO",
-    "SEORZE",
+    "SEOCE",
 ]
+
+SECOES_LEGADAS = {
+    "SEORZE": "SEOCE",
+}
 
 COMPLEXIDADES_ATENDIMENTO = [
     "Não informada",
@@ -109,9 +113,9 @@ COMPLEXIDADES_ATENDIMENTO = [
 PERFIS_USUARIO = [
     "Administrador geral",
     "Chefia SEPRO",
-    "Chefia SEORZE",
+    "Chefia SEOCE",
     "Operador SEPRO",
-    "Operador SEORZE",
+    "Operador SEOCE",
     "Consulta",
     "Administrador",
     "Usuário",
@@ -425,20 +429,19 @@ def usuario_pode_ver_secao(secao):
     usuario = usuario_logado()
     if not usuario:
         return False
+
     perfil = perfil_normalizado(usuario.get("perfil"))
     secao_usuario = normalizar_secao(usuario.get("secao_operador") or usuario.get("secao") or "SEPRO")
     secao = normalizar_secao(secao)
 
     if perfil in ("Administrador geral", "Administrador", "Consulta"):
         return True
-    if perfil == "Chefia SEPRO" and secao == "SEPRO":
-        return True
-    if perfil == "Chefia SEORZE" and secao == "SEORZE":
-        return True
-    if perfil == "Operador SEPRO" and secao == "SEPRO":
-        return True
-    if perfil == "Operador SEORZE" and secao == "SEORZE":
-        return True
+
+    # Perfis no formato "Chefia SEOCE", "Operador SEPRO" etc.
+    for prefixo in ("Chefia ", "Operador "):
+        if perfil.startswith(prefixo):
+            secao_perfil = normalizar_secao(perfil.replace(prefixo, "", 1))
+            return secao_perfil == secao
 
     return secao_usuario == secao
 
@@ -464,9 +467,43 @@ def parse_data_opcional(valor):
 
 def normalizar_secao(valor):
     texto = str(valor or "").strip().upper()
-    if texto in SECOES_ATENDIMENTO:
+    texto = SECOES_LEGADAS.get(texto, texto)
+
+    secoes_validas = secoes_atendimento() if "secoes_atendimento" in globals() else SECOES_ATENDIMENTO
+
+    if texto in secoes_validas:
         return texto
-    return "SEPRO"
+
+    return secoes_validas[0] if secoes_validas else "SEPRO"
+
+
+def secoes_atendimento():
+    """
+    Retorna as seções ativas da Corregedoria.
+
+    A fonte preferencial é a tabela public.secoes no Supabase.
+    Assim, mudanças futuras de sigla/nome podem ser feitas no banco,
+    sem alteração do código. Se o banco estiver indisponível, usa o
+    fallback definido em SECOES_ATENDIMENTO.
+    """
+    try:
+        rows = supabase_get_silencioso(
+            "secoes",
+            {"select": "sigla,ativo,ordem", "ativo": "eq.true", "order": "ordem.asc,sigla.asc"}
+        )
+        siglas = []
+        for row in rows or []:
+            sigla = str(row.get("sigla") or "").strip().upper()
+            sigla = SECOES_LEGADAS.get(sigla, sigla)
+            if sigla and sigla not in siglas:
+                siglas.append(sigla)
+
+        if siglas:
+            return siglas
+    except Exception:
+        pass
+
+    return list(secoes_atendimento())
 
 
 def senha_hash(senha):
@@ -2495,7 +2532,7 @@ def usuario_pode_validar(atendimento):
         return True
     if perfil == "Chefia SEPRO" and secao == "SEPRO":
         return True
-    if perfil == "Chefia SEORZE" and secao == "SEORZE":
+    if perfil == "Chefia SEOCE" and secao == "SEOCE":
         return True
     return False
 
@@ -2618,8 +2655,8 @@ def aplicar_filtro_rapido(lista, filtro):
         return [a for a in lista if atendimento_eh_meu(a)]
     if filtro == "Apenas SEPRO":
         return [a for a in lista if normalizar_secao(a.get("secao")) == "SEPRO"]
-    if filtro == "Apenas SEORZE":
-        return [a for a in lista if normalizar_secao(a.get("secao")) == "SEORZE"]
+    if filtro == "Apenas SEOCE":
+        return [a for a in lista if normalizar_secao(a.get("secao")) == "SEOCE"]
     if filtro == "Urgentes":
         return [a for a in lista if str(a.get("prioridade") or "").strip().casefold() == "urgente"]
     if filtro == "Prazo vencido":
@@ -2652,7 +2689,7 @@ def render_filtros_rapidos(lista, chave):
         "Todos",
         "Meus atendimentos",
         "Apenas SEPRO",
-        "Apenas SEORZE",
+        "Apenas SEOCE",
         "Urgentes",
         "Prazo vencido",
         "Sem responsável",
@@ -2924,7 +2961,7 @@ def dataframe_qualidade_base(lista):
 
 def dataframe_resumo_por_secao(lista):
     linhas = []
-    secoes = SECOES_ATENDIMENTO if "SECOES_ATENDIMENTO" in globals() else ["SEPRO"]
+    secoes = secoes_atendimento()
 
     for secao in secoes:
         base = [a for a in lista if normalizar_secao(a.get("secao")) == secao]
@@ -3000,7 +3037,7 @@ def filtros_base(lista):
 
     busca = st.sidebar.text_input("Busca livre")
     status = st.sidebar.multiselect("Status", STATUS_OPCOES)
-    filtro_secoes = st.sidebar.multiselect("Seção", SECOES_ATENDIMENTO)
+    filtro_secoes = st.sidebar.multiselect("Seção", secoes_atendimento())
     fontes = st.sidebar.multiselect("Fonte", FONTES)
     lista_assuntos = assuntos()
     filtro_assuntos = st.sidebar.multiselect("Assunto", lista_assuntos)
@@ -3175,8 +3212,8 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 secao_atual = normalizar_secao(atendimento.get("secao"))
                 nova_secao = st.selectbox(
                     "Seção",
-                    SECOES_ATENDIMENTO,
-                    index=SECOES_ATENDIMENTO.index(secao_atual) if secao_atual in SECOES_ATENDIMENTO else 0,
+                    secoes_atendimento(),
+                    index=secoes_atendimento().index(secao_atual) if secao_atual in secoes_atendimento() else 0,
                     key=f"{chave_prefixo}_secao_{atendimento.get('id')}"
                 )
                 servidores_disponiveis = nomes_usuarios_ativos() or []
@@ -3913,7 +3950,7 @@ def tela_dashboard():
 
     usuarios_online = usuarios_logados()
 
-    secoes_disponiveis = SECOES_ATENDIMENTO if "SECOES_ATENDIMENTO" in globals() else ["SEPRO"]
+    secoes_disponiveis = secoes_atendimento()
     contagem_secoes = {
         secao: len(lista_por_secao(lista, secao))
         for secao in secoes_disponiveis
@@ -3959,7 +3996,7 @@ def tela_dashboard():
         bloco_tabela_dashboard("Evolução mensal por seção", evolucao_secao.head(12))
 
     st.markdown(
-        "<div class='mini-note'><b>Leitura gerencial:</b> a visão consolidada apresenta apenas o panorama geral. A análise operacional deve ser feita nos painéis segregados de SEPRO e SEORZE abaixo.</div>",
+        "<div class='mini-note'><b>Leitura gerencial:</b> a visão consolidada apresenta apenas o panorama geral. A análise operacional deve ser feita nos painéis segregados de SEPRO e SEOCE abaixo.</div>",
         unsafe_allow_html=True,
     )
 
@@ -4102,7 +4139,7 @@ def tela_novo_atendimento():
     with col_param3:
         secao_atendimento = st.selectbox(
             "Seção responsável",
-            SECOES_ATENDIMENTO,
+            secoes_atendimento(),
             index=0,
             key="novo_atendimento_secao_responsavel"
         )
@@ -4376,8 +4413,8 @@ def card_triagem(atendimento, chave_prefixo):
                 )
                 nova_secao_triagem = st.selectbox(
                     "Seção",
-                    SECOES_ATENDIMENTO,
-                    index=SECOES_ATENDIMENTO.index(secao_atual) if secao_atual in SECOES_ATENDIMENTO else 0,
+                    secoes_atendimento(),
+                    index=secoes_atendimento().index(secao_atual) if secao_atual in secoes_atendimento() else 0,
                     key=f"{chave_prefixo}_edit_secao_{atendimento.get('id')}"
                 )
                 novo_protocolo = st.text_input(
@@ -4932,7 +4969,7 @@ def tela_relatorios_exportacao():
     )
     lista = aplicar_filtro_gerencial(lista, filtro_gerencial_relatorio)
 
-    filtro_secao_relatorio = st.multiselect("Seção", SECOES_ATENDIMENTO, key="filtro_secao_relatorio")
+    filtro_secao_relatorio = st.multiselect("Seção", secoes_atendimento(), key="filtro_secao_relatorio")
     if filtro_secao_relatorio:
         lista = [a for a in lista if normalizar_secao(a.get("secao")) in filtro_secao_relatorio]
 
@@ -5087,7 +5124,7 @@ def tela_assuntos():
         with col_a:
             novo = st.text_input("Novo assunto")
         with col_b:
-            secao_novo = st.selectbox("Seção do assunto", SECOES_ATENDIMENTO)
+            secao_novo = st.selectbox("Seção do assunto", secoes_atendimento())
 
         if st.form_submit_button("Adicionar assunto", type="primary"):
             novo = novo.strip()
@@ -5114,11 +5151,11 @@ def tela_assuntos():
 
     st.divider()
     st.markdown("#### Assuntos cadastrados por seção")
-    st.caption("Use as abas abaixo para visualizar e editar separadamente os assuntos da SEPRO e da SEORZE.")
+    st.caption("Use as abas abaixo para visualizar e editar separadamente os assuntos da SEPRO e da SEOCE.")
 
-    abas = st.tabs(SECOES_ATENDIMENTO)
+    abas = st.tabs(secoes_atendimento())
 
-    for aba, secao_exibida in zip(abas, SECOES_ATENDIMENTO):
+    for aba, secao_exibida in zip(abas, secoes_atendimento()):
         with aba:
             registros_secao = [
                 r for r in registros
@@ -5163,8 +5200,8 @@ def tela_assuntos():
                     with col2:
                         nova_secao = st.selectbox(
                             "Seção",
-                            SECOES_ATENDIMENTO,
-                            index=SECOES_ATENDIMENTO.index(secao_atual) if secao_atual in SECOES_ATENDIMENTO else 0,
+                            secoes_atendimento(),
+                            index=secoes_atendimento().index(secao_atual) if secao_atual in secoes_atendimento() else 0,
                             key=f"assunto_secao_{secao_exibida}_{idx_global}_{assunto}"
                         )
 
@@ -5287,8 +5324,8 @@ def tela_usuarios():
             secao_usuario_atual = normalizar_secao(usuario.get("secao_operador"))
             nova_secao_operador = st.selectbox(
                 "Operador da seção",
-                SECOES_ATENDIMENTO,
-                index=SECOES_ATENDIMENTO.index(secao_usuario_atual) if secao_usuario_atual in SECOES_ATENDIMENTO else 0,
+                secoes_atendimento(),
+                index=secoes_atendimento().index(secao_usuario_atual) if secao_usuario_atual in secoes_atendimento() else 0,
                 key=f"usuario_secao_{email_original}"
             )
 
@@ -5436,7 +5473,7 @@ def tela_modelos_resposta():
     st.subheader("Modelos de resposta")
     st.caption("Modelos institucionais de orientação vinculados por seção e assunto.")
 
-    secao_filtro = st.selectbox("Seção", ["Todas"] + SECOES_ATENDIMENTO, key="modelo_secao_filtro")
+    secao_filtro = st.selectbox("Seção", ["Todas"] + secoes_atendimento(), key="modelo_secao_filtro")
     incluir_superadas = st.checkbox("Exibir orientações superadas", value=True, key="modelo_exibir_superadas")
     assunto_filtro = st.text_input("Filtrar por assunto, título ou palavra-chave", key="modelo_busca")
 
@@ -5469,7 +5506,7 @@ def tela_modelos_resposta():
         with st.form("form_modelo_resposta"):
             col1, col2 = st.columns(2)
             with col1:
-                secao = st.selectbox("Seção do modelo", SECOES_ATENDIMENTO, key="modelo_novo_secao")
+                secao = st.selectbox("Seção do modelo", secoes_atendimento(), key="modelo_novo_secao")
                 lista_assuntos_secao = assuntos(secao)
                 assunto = st.selectbox(
                     "Assunto vinculado",
@@ -5533,8 +5570,8 @@ def tela_modelos_resposta():
             with col1:
                 secao_edit = st.selectbox(
                     "Seção",
-                    SECOES_ATENDIMENTO,
-                    index=SECOES_ATENDIMENTO.index(normalizar_secao(modelo.get("secao"))) if normalizar_secao(modelo.get("secao")) in SECOES_ATENDIMENTO else 0,
+                    secoes_atendimento(),
+                    index=secoes_atendimento().index(normalizar_secao(modelo.get("secao"))) if normalizar_secao(modelo.get("secao")) in secoes_atendimento() else 0,
                     key=f"modelo_secao_edit_{modelo_id}"
                 )
                 lista_assuntos_edit = assuntos(secao_edit)
@@ -5718,7 +5755,7 @@ def tela_base_conhecimento():
     colf1, colf2 = st.columns(2)
     with colf1:
         busca = st.text_input("Pesquisar na base de conhecimento", key="bc_busca")
-        secao_filtro = st.multiselect("Seção", SECOES_ATENDIMENTO, key="bc_secao")
+        secao_filtro = st.multiselect("Seção", secoes_atendimento(), key="bc_secao")
         assuntos_disponiveis = sorted(df["assunto"].dropna().astype(str).unique()) if not df.empty and "assunto" in df.columns else []
         assunto_filtro = st.multiselect("Assunto", assuntos_disponiveis, key="bc_assunto")
     with colf2:
@@ -5834,7 +5871,7 @@ def tela_base_conhecimento():
     with st.form("form_base_conhecimento"):
         col1, col2 = st.columns(2)
         with col1:
-            secao = st.selectbox("Seção", SECOES_ATENDIMENTO, key="bc_novo_secao")
+            secao = st.selectbox("Seção", secoes_atendimento(), key="bc_novo_secao")
             assunto = st.selectbox("Assunto", assuntos(secao), key="bc_novo_assunto")
             categoria = st.text_input("Categoria", value=assunto if assunto != "Não informado" else "", key="bc_novo_categoria")
         with col2:
