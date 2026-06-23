@@ -2443,6 +2443,7 @@ def sidebar_menu():
             ("🗂️ Base geral", "Base geral"),
             ("🧠 Base de conhecimento", "Base de conhecimento"),
             ("💬 Modelos de resposta", "Modelos de resposta"),
+            ("🧩 Governança técnica", "Governança técnica"),
             ("💾 Backup e restauração", "Backup e restauração"),
         ]
 
@@ -6144,6 +6145,339 @@ def tela_backup_restauracao():
 # EXECUÇÃO PRINCIPAL
 # ============================================================
 
+
+
+# ============================================================
+# GOVERNANÇA TÉCNICA, MODELAGEM DE PROCESSOS E ARQUITETURA
+# ============================================================
+
+def processo_as_is_to_be():
+    return [
+        {
+            "Dimensão": "Identificação da demanda",
+            "AS-IS": "Recebimento por e-mail, telefone, WhatsApp ou registro manual, com risco de dispersão da informação.",
+            "TO-BE": "Registro centralizado no SIGA-COR, com fonte, seção responsável, assunto, prioridade, prazo e histórico.",
+            "Recurso no sistema": "Novo atendimento; fonte; seção; assunto parametrizado; prazo limite.",
+        },
+        {
+            "Dimensão": "Triagem e delimitação do processo",
+            "AS-IS": "Distribuição por conhecimento tácito ou controle externo.",
+            "TO-BE": "Triagem formal, designação de responsável e passagem para fila de atendimento.",
+            "Recurso no sistema": "Triagem; assumir/designar responsável; status do atendimento.",
+        },
+        {
+            "Dimensão": "Execução da orientação",
+            "AS-IS": "Resposta construída de forma descentralizada e com baixa reutilização da memória institucional.",
+            "TO-BE": "Uso de modelos, base de conhecimento e registro do fundamento adotado.",
+            "Recurso no sistema": "Modelos de resposta; Base de conhecimento; registro de uso BC-000001.",
+        },
+        {
+            "Dimensão": "Validação e qualidade",
+            "AS-IS": "Revisão eventual pela chefia, sem trilha padronizada.",
+            "TO-BE": "Fluxo de validação, devolução para ajuste, registro de comentários e histórico.",
+            "Recurso no sistema": "Validação da chefia; comentários internos; histórico; auditoria.",
+        },
+        {
+            "Dimensão": "Monitoramento gerencial",
+            "AS-IS": "Acompanhamento por planilhas ou consultas manuais.",
+            "TO-BE": "Indicadores em painel, relatórios PDF/Excel e alertas de prazo/prioridade.",
+            "Recurso no sistema": "Painel gerencial; relatórios; filtros; indicadores por seção e assunto.",
+        },
+    ]
+
+
+def matriz_praticas_tecnicas_siga_cor():
+    return [
+        {
+            "Tema": "Modelagem de processos de negócio",
+            "Aplicação no SIGA-COR": "Fluxo cadastro → triagem → atendimento → validação → conclusão → memória institucional.",
+            "Evidência/Funcionalidade": "Status, histórico, validação, relatórios e base de conhecimento.",
+        },
+        {
+            "Tema": "BPMN / AS-IS / TO-BE",
+            "Aplicação no SIGA-COR": "Representação textual do processo atual e do processo proposto, com etapas, responsáveis e pontos de controle.",
+            "Evidência/Funcionalidade": "Tela Governança técnica > Processo AS-IS/TO-BE.",
+        },
+        {
+            "Tema": "Indicadores de processo",
+            "Aplicação no SIGA-COR": "Mensuração de volume, pendências, prazos vencidos, urgências, produtividade por seção/servidor e assuntos recorrentes.",
+            "Evidência/Funcionalidade": "Painel gerencial e relatórios apresentáveis.",
+        },
+        {
+            "Tema": "Orientação a objetos",
+            "Aplicação no SIGA-COR": "Separação lógica de entidades do domínio: atendimento, usuário, assunto, seção, modelo, base de conhecimento e histórico.",
+            "Evidência/Funcionalidade": "Funções de conversão app/banco e estruturas de domínio no código.",
+        },
+        {
+            "Tema": "Ciclo de vida do software",
+            "Aplicação no SIGA-COR": "Evolução incremental por versões, migrações SQL, backup, validação e registro de ajustes.",
+            "Evidência/Funcionalidade": "Backup/restauração, migrações SQL e painel de governança.",
+        },
+        {
+            "Tema": "Metodologias ágeis",
+            "Aplicação no SIGA-COR": "Entregas incrementais, melhoria contínua, validação com usuário e priorização por valor institucional.",
+            "Evidência/Funcionalidade": "Backlog gerencial sugerido e ciclos de melhoria.",
+        },
+        {
+            "Tema": "CSS e páginas responsivas",
+            "Aplicação no SIGA-COR": "Interface Streamlit customizada com CSS institucional, cards, dashboards e tabelas responsivas.",
+            "Evidência/Funcionalidade": "CSS interno e layout wide.",
+        },
+        {
+            "Tema": "Arquitetura web / nuvem",
+            "Aplicação no SIGA-COR": "Aplicação Streamlit em nuvem, persistência Supabase/PostgreSQL e API REST.",
+            "Evidência/Funcionalidade": "Streamlit Cloud + Supabase REST.",
+        },
+        {
+            "Tema": "Integração por API REST",
+            "Aplicação no SIGA-COR": "Comunicação com Supabase via endpoints REST para usuários, atendimentos, assuntos, modelos e base de conhecimento.",
+            "Evidência/Funcionalidade": "Funções supabase_get, supabase_insert, supabase_update, upsert e delete.",
+        },
+        {
+            "Tema": "Testes e qualidade",
+            "Aplicação no SIGA-COR": "Validação sintática, testes manuais dirigidos por fluxo e proposta de testes unitários/integração em fase posterior.",
+            "Evidência/Funcionalidade": "Checklist de qualidade e plano de testes.",
+        },
+        {
+            "Tema": "Versionamento Git",
+            "Aplicação no SIGA-COR": "Publicação controlada via GitHub, commits por alteração funcional e rastreabilidade de versões.",
+            "Evidência/Funcionalidade": "Fluxo GitHub → Streamlit Cloud.",
+        },
+        {
+            "Tema": "Segurança OWASP",
+            "Aplicação no SIGA-COR": "Controle de acesso por perfil, senha com hash, validação institucional, RLS e cuidado com segredos.",
+            "Evidência/Funcionalidade": "Login, perfis, secrets, Supabase RLS e políticas.",
+        },
+    ]
+
+
+def checklist_owasp_siga_cor():
+    return [
+        {
+            "Controle": "Autenticação e autorização",
+            "Situação no protótipo": "Implementado em nível de aplicação, com usuário, senha hash, validação e perfis.",
+            "Melhoria recomendada": "Evoluir para autenticação institucional/OAuth ou SSO quando institucionalizado.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Controle": "Controle de acesso por perfil",
+            "Situação no protótipo": "Perfis Administrador, Chefia, Operador e Consulta; segregação por seção.",
+            "Melhoria recomendada": "Reforçar regras também no banco com RLS específica por usuário/perfil.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Controle": "Proteção de segredos",
+            "Situação no protótipo": "Uso de Streamlit Secrets para chaves e SMTP.",
+            "Melhoria recomendada": "Nunca versionar secrets; criar rotação periódica das chaves.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Controle": "Validação de entrada",
+            "Situação no protótipo": "Campos obrigatórios e normalização básica.",
+            "Melhoria recomendada": "Ampliar validação de URL, e-mail, tamanho de texto e tipos de dados.",
+            "Prioridade": "Média",
+        },
+        {
+            "Controle": "Auditoria",
+            "Situação no protótipo": "Histórico e auditoria de alterações relevantes.",
+            "Melhoria recomendada": "Criar relatório específico de auditoria e trilha de acesso.",
+            "Prioridade": "Média",
+        },
+        {
+            "Controle": "Backup e recuperação",
+            "Situação no protótipo": "Rotina interna de backup/restauração.",
+            "Melhoria recomendada": "Associar a política institucional de backup do banco.",
+            "Prioridade": "Média",
+        },
+    ]
+
+
+def gerar_relatorio_pdf_governanca():
+    buffer_pdf = BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer_pdf,
+        pagesize=landscape(A4),
+        rightMargin=1.1 * cm,
+        leftMargin=1.1 * cm,
+        topMargin=3.0 * cm,
+        bottomMargin=1.4 * cm,
+        title="Relatório de Governança Técnica - SIGA-COR",
+    )
+
+    estilos = getSampleStyleSheet()
+    titulo = ParagraphStyle(
+        "TituloGovernanca",
+        parent=estilos["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        leading=20,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#174A7C"),
+        spaceAfter=8,
+    )
+    h2 = ParagraphStyle(
+        "H2Governanca",
+        parent=estilos["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#174A7C"),
+        spaceBefore=10,
+        spaceAfter=6,
+    )
+    normal = ParagraphStyle(
+        "NormalGovernanca",
+        parent=estilos["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#1F2937"),
+    )
+
+    def tabela_pdf(df, widths):
+        dados = [[Paragraph(str(c), normal) for c in df.columns]]
+        for _, row in df.iterrows():
+            dados.append([Paragraph(str(row.get(c, "") or ""), normal) for c in df.columns])
+        tabela = Table(dados, colWidths=widths, repeatRows=1)
+        tabela.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174A7C")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        return tabela
+
+    elementos = [
+        Paragraph("RELATÓRIO DE GOVERNANÇA TÉCNICA E MODELAGEM DO SIGA-COR", titulo),
+        Paragraph(f"Emitido em {agora_texto_brasilia()}. Documento gerencial de aderência a processos, arquitetura, qualidade e segurança.", normal),
+        Spacer(1, 0.3 * cm),
+        Paragraph("1. Processo AS-IS / TO-BE", h2),
+        tabela_pdf(pd.DataFrame(processo_as_is_to_be()), [4.2 * cm, 7.5 * cm, 7.5 * cm, 7.0 * cm]),
+        PageBreak(),
+        Paragraph("2. Matriz de aderência técnica", h2),
+        tabela_pdf(pd.DataFrame(matriz_praticas_tecnicas_siga_cor()), [5.0 * cm, 11.0 * cm, 11.0 * cm]),
+        PageBreak(),
+        Paragraph("3. Segurança e controles OWASP", h2),
+        tabela_pdf(pd.DataFrame(checklist_owasp_siga_cor()), [5.0 * cm, 8.0 * cm, 10.0 * cm, 3.0 * cm]),
+    ]
+
+    doc.build(elementos, onFirstPage=cabecalho_relatorio, onLaterPages=cabecalho_relatorio)
+    buffer_pdf.seek(0)
+    return buffer_pdf.getvalue()
+
+
+def tela_governanca_tecnica():
+    st.subheader("Governança técnica e modelagem do SIGA-COR")
+    st.caption("Adequação do sistema a práticas de BPM, arquitetura, ciclo de vida, qualidade, integração, versionamento e segurança.")
+
+    abas = st.tabs([
+        "Processo AS-IS/TO-BE",
+        "BPMN textual",
+        "Indicadores e qualidade",
+        "Arquitetura e integração",
+        "Segurança OWASP",
+        "Relatório",
+    ])
+
+    with abas[0]:
+        st.markdown("### Modelagem de processo de negócio")
+        st.write(
+            "Esta visão documenta a transição do processo atual para o processo proposto no SIGA-COR, "
+            "com foco na delimitação do processo, melhoria contínua, rastreabilidade e memória institucional."
+        )
+        st.dataframe(pd.DataFrame(processo_as_is_to_be()), use_container_width=True, hide_index=True)
+
+    with abas[1]:
+        st.markdown("### BPMN textual do processo")
+        st.info("Representação textual simplificada, adequada ao protótipo. Em etapa posterior, pode ser convertida para diagrama BPMN formal.")
+        st.markdown(
+            """
+            **Pool:** Corregedoria Regional Eleitoral  
+            **Lanes:** Solicitante / Triagem / SEPRO-SEOCE / Chefia / Base de conhecimento
+
+            1. **Evento inicial:** demanda recebida ou cadastrada.
+            2. **Atividade:** registrar atendimento no SIGA-COR.
+            3. **Gateway:** identificar seção responsável e assunto.
+            4. **Atividade:** triagem e designação do responsável.
+            5. **Atividade:** análise técnica e elaboração da orientação.
+            6. **Subprocesso:** consulta a modelo de resposta ou base de conhecimento.
+            7. **Gateway:** exige validação da chefia?
+            8. **Atividade:** validar, devolver para ajuste ou concluir.
+            9. **Evento final:** atendimento realizado, auditado e disponível para memória institucional.
+            """
+        )
+
+    with abas[2]:
+        st.markdown("### Indicadores de processo e qualidade")
+        indicadores = pd.DataFrame([
+            {"Indicador": "Volume de atendimentos", "Objetivo": "Mensurar demanda total.", "Fonte": "Tabela de atendimentos"},
+            {"Indicador": "Pendências", "Objetivo": "Controlar triagem e atendimentos em aberto.", "Fonte": "Status"},
+            {"Indicador": "Prazo vencido", "Objetivo": "Apoiar gestão de risco operacional.", "Fonte": "Prazo limite"},
+            {"Indicador": "Assuntos recorrentes", "Objetivo": "Identificar temas para padronização e capacitação.", "Fonte": "Assunto/Base de conhecimento"},
+            {"Indicador": "Uso da base de conhecimento", "Objetivo": "Mensurar reaproveitamento da memória institucional.", "Fonte": "Usos BC"},
+            {"Indicador": "Validação pela chefia", "Objetivo": "Acompanhar qualidade e revisão.", "Fonte": "Fluxo de validação"},
+        ])
+        st.dataframe(indicadores, use_container_width=True, hide_index=True)
+
+        st.markdown("### Backlog técnico sugerido")
+        backlog = pd.DataFrame([
+            {"Item": "Testes unitários e integração", "Referência": "JUnit/Mockito/Jest equivalente", "Aplicação": "Criar suíte automatizada em futura arquitetura institucional."},
+            {"Item": "Pipeline de versionamento", "Referência": "Git", "Aplicação": "Padronizar commits, tags de versão e changelog."},
+            {"Item": "RLS refinado", "Referência": "OWASP/controle de acesso", "Aplicação": "Migrar controle de acesso sensível para camada de banco."},
+            {"Item": "API institucional", "Referência": "REST", "Aplicação": "Criar endpoints documentados caso o SIGA-COR seja integrado a outros sistemas."},
+            {"Item": "Containerização", "Referência": "Docker/Kubernetes", "Aplicação": "Preparar Dockerfile e deployment para infraestrutura institucional."},
+        ])
+        st.dataframe(backlog, use_container_width=True, hide_index=True)
+
+    with abas[3]:
+        st.markdown("### Arquitetura atual e evolução recomendada")
+        arquitetura = pd.DataFrame([
+            {"Camada": "Apresentação", "Atual": "Streamlit com CSS institucional.", "Evolução": "Frontend institucional responsivo ou manutenção do Streamlit em ambiente controlado."},
+            {"Camada": "Aplicação", "Atual": "Funções Python organizadas por domínio funcional.", "Evolução": "Separação em módulos/camadas, aproximando MVC/hexagonal."},
+            {"Camada": "Domínio", "Atual": "Atendimento, usuário, assunto, seção, modelo, base de conhecimento.", "Evolução": "Objetos/serviços de domínio e regras centralizadas."},
+            {"Camada": "Persistência", "Atual": "Supabase/PostgreSQL via REST.", "Evolução": "Repository pattern, RLS por perfil e migrações versionadas."},
+            {"Camada": "Integração", "Atual": "Supabase REST e SMTP.", "Evolução": "APIs documentadas, autenticação institucional e integração com sistemas eleitorais, quando autorizada."},
+        ])
+        st.dataframe(arquitetura, use_container_width=True, hide_index=True)
+
+    with abas[4]:
+        st.markdown("### Segurança no desenvolvimento")
+        st.dataframe(pd.DataFrame(checklist_owasp_siga_cor()), use_container_width=True, hide_index=True)
+        st.warning(
+            "Observação: por se tratar de protótipo funcional, controles de autenticação institucional, "
+            "RLS granular e testes automatizados devem ser priorizados antes de eventual produção institucional ampla."
+        )
+
+    with abas[5]:
+        st.markdown("### Relatório apresentável de governança")
+        pdf = gerar_relatorio_pdf_governanca()
+        st.download_button(
+            "Gerar relatório PDF de governança técnica",
+            data=pdf,
+            file_name=f"relatorio_governanca_tecnica_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            type="primary",
+        )
+
+        matriz = pd.DataFrame(matriz_praticas_tecnicas_siga_cor())
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            pd.DataFrame(processo_as_is_to_be()).to_excel(writer, index=False, sheet_name="AS-IS TO-BE")
+            matriz.to_excel(writer, index=False, sheet_name="Aderencia tecnica")
+            pd.DataFrame(checklist_owasp_siga_cor()).to_excel(writer, index=False, sheet_name="Seguranca OWASP")
+
+        st.download_button(
+            "Baixar matriz de governança em Excel",
+            data=buffer.getvalue(),
+            file_name=f"matriz_governanca_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+
+
 def main():
     if not usuario_logado():
         tela_login()
@@ -6210,6 +6544,9 @@ def main():
 
     elif escolha == "Modelos de resposta":
         tela_modelos_resposta()
+
+    elif escolha == "Governança técnica":
+        tela_governanca_tecnica()
 
     elif escolha == "Backup e restauração":
         tela_backup_restauracao()
