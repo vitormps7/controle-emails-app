@@ -2137,10 +2137,13 @@ def cabecalho():
         f"""
         <div class="main-header" style="display:grid;grid-template-columns:380px 1fr 270px;align-items:center;gap:22px;">
             <div class="logo-box"><img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}"></div>
-            <div style="text-align:center;border-left:1px solid #E2EAF5;border-right:1px solid #E2EAF5;padding:0 18px;">
-                <h1>⚖️ SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria</h1>
-                <p>Corregedoria Regional Eleitoral da Bahia</p>
-                <p>Ambiente de gestão, orientação, governança e memória institucional</p>
+            <div style="display:flex;align-items:center;justify-content:center;border-left:1px solid #E2EAF5;border-right:1px solid #E2EAF5;padding:0 18px;min-height:78px;">
+                <div class="center-icon">▣</div>
+                <div style="text-align:left;">
+                    <h1>Gestão Integrada de Atendimentos da Corregedoria</h1>
+                    <p>Corregedoria Regional Eleitoral da Bahia</p>
+                    <p>Atendimentos, orientações, governança e memória institucional</p>
+                </div>
             </div>
             <div style="text-align:right;">
                 <div style="font-weight:950;color:#082A52;font-size:14px;">{nome}</div>
@@ -2202,11 +2205,11 @@ def css_menu_institucional():
         """
         <style>
         :root {
-            --siga-navy: #062A4F;
+            --siga-navy: #052A4F;
             --siga-sidebar: #06294C;
             --siga-sidebar-2: #031B34;
             --siga-blue: #0E63B6;
-            --siga-line: #E2EAF5;
+            --siga-line: #E1EAF5;
             --siga-bg: #F7FAFE;
             --siga-text: #0B2240;
             --siga-muted: #5E738D;
@@ -2220,14 +2223,14 @@ def css_menu_institucional():
         }
 
         [data-testid="stHeader"] {
-            background: rgba(247,250,254,.92) !important;
+            background: rgba(247,250,254,.94) !important;
             backdrop-filter: blur(10px);
             border-bottom: 1px solid #E8EEF6;
             height: 44px !important;
         }
 
         .block-container {
-            max-width: 1500px !important;
+            max-width: 1530px !important;
             padding-top: .55rem !important;
             padding-left: 1.65rem !important;
             padding-right: 1.65rem !important;
@@ -2235,13 +2238,13 @@ def css_menu_institucional():
         }
 
         section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #04213E 0%, #062A4F 55%, #083862 100%) !important;
+            background: linear-gradient(180deg, #031B34 0%, #062A4F 55%, #083B68 100%) !important;
             border-right: 1px solid rgba(255,255,255,.08);
             box-shadow: 10px 0 24px rgba(3,27,52,.15);
         }
 
         section[data-testid="stSidebar"] * {
-            color: rgba(255,255,255,.90) !important;
+            color: rgba(255,255,255,.92) !important;
         }
 
         section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
@@ -2250,10 +2253,10 @@ def css_menu_institucional():
         }
 
         .siga-sidebar-title {
-            font-size: 26px;
+            font-size: 27px;
             font-weight: 950;
             color: #FFFFFF !important;
-            letter-spacing: .8px;
+            letter-spacing: .9px;
             margin: 12px 0 4px 0;
         }
 
@@ -2265,28 +2268,30 @@ def css_menu_institucional():
         }
 
         section[data-testid="stSidebar"] .stButton > button {
-            background: transparent !important;
+            background: rgba(255,255,255,.045) !important;
             color: rgba(255,255,255,.92) !important;
-            border: 1px solid transparent !important;
-            border-radius: 13px !important;
-            min-height: 42px;
-            font-weight: 760;
-            text-align: left;
-            justify-content: flex-start;
+            border: 1px solid rgba(255,255,255,.10) !important;
+            border-radius: 14px !important;
+            min-height: 46px;
+            font-weight: 780;
+            text-align: right !important;
+            justify-content: flex-end !important;
+            padding-right: 20px !important;
+            padding-left: 18px !important;
             box-shadow: none !important;
             transition: all .16s ease;
         }
 
         section[data-testid="stSidebar"] .stButton > button:hover {
             background: rgba(20, 102, 185, .66) !important;
-            border-color: rgba(125,184,240,.28) !important;
+            border-color: rgba(125,184,240,.34) !important;
             transform: translateX(2px);
         }
 
         section[data-testid="stSidebar"] [data-testid="stExpander"] {
             background: rgba(255,255,255,.045) !important;
             border: 1px solid rgba(255,255,255,.14) !important;
-            border-radius: 13px !important;
+            border-radius: 14px !important;
         }
 
         section[data-testid="stSidebar"] hr {
@@ -2298,8 +2303,8 @@ def css_menu_institucional():
             border: 1px solid var(--siga-line);
             border-radius: 16px;
             box-shadow: var(--siga-shadow);
-            padding: 14px 18px;
-            margin-bottom: 18px;
+            padding: 13px 18px;
+            margin-bottom: 22px;
             position: relative;
         }
 
@@ -2309,22 +2314,37 @@ def css_menu_institucional():
             border-radius: 14px;
             padding: 8px 12px;
             width: 360px;
-            height: 74px;
+            height: 76px;
             display:flex;
             align-items:center;
             justify-content:center;
         }
 
         .main-header .logo-box img {
-            max-height: 58px !important;
+            max-height: 60px !important;
             max-width: 330px !important;
             width: auto !important;
             object-fit: contain;
         }
 
+        .main-header .center-icon {
+            width: 58px;
+            height: 58px;
+            border: 2px solid #0A315C;
+            border-radius: 14px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:#0A315C;
+            font-size: 30px;
+            font-weight: 900;
+            margin-right: 14px;
+            background: #F8FBFF;
+        }
+
         .main-header h1 {
-            font-size: 22px !important;
-            line-height: 1.18 !important;
+            font-size: 21px !important;
+            line-height: 1.16 !important;
             color: #082A52 !important;
             margin: 0 0 5px 0 !important;
             font-weight: 950 !important;
@@ -2346,14 +2366,14 @@ def css_menu_institucional():
             color: #082A52;
             font-size: 18px;
             font-weight: 950;
-            margin: 8px 0 14px 0;
+            margin: 6px 0 14px 0;
             letter-spacing: -.2px;
         }
 
         .siga-card-nav {
             min-height: 156px;
             border: 1px solid #DDE8F5;
-            border-top: 3px solid #0E63B6;
+            border-top: 4px solid #0E63B6;
             border-radius: 14px;
             background: #FFFFFF;
             padding: 20px 19px 16px 19px;
@@ -2415,6 +2435,16 @@ def css_menu_institucional():
             z-index: 1;
         }
 
+        .siga-card-arrow {
+            position:absolute;
+            right: 18px;
+            bottom: 18px;
+            color:#58708B;
+            font-size: 22px;
+            font-weight: 900;
+            z-index: 1;
+        }
+
         .stButton > button {
             border-radius: 11px !important;
             border: 1px solid #E0E8F2 !important;
@@ -2436,56 +2466,88 @@ def css_menu_institucional():
             background: #FFFFFF !important;
             color: #082A52 !important;
             font-weight: 950 !important;
-            text-transform: uppercase;
-            font-size: 14px !important;
-            letter-spacing: .3px;
-            padding: 16px 18px !important;
+            text-transform: none;
+            font-size: 19px !important;
+            letter-spacing: -.2px;
+            padding: 20px 20px 4px 20px !important;
             border: 1px solid #DDE8F5 !important;
             border-bottom: 0 !important;
-            border-radius: 16px 16px 0 0 !important;
+            border-radius: 18px 18px 0 0 !important;
             margin-top: 18px !important;
             margin-bottom: 0 !important;
             box-shadow: 0 8px 20px rgba(8,42,82,.055);
         }
 
+        .dash-section-title::after {
+            content: "Visão geral dos atendimentos e da operação";
+            display:block;
+            font-size: 12px;
+            color: #5E738D;
+            font-weight: 700;
+            margin-top: 3px;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
         .dash-metric-card {
             background: #FFFFFF !important;
             border: 1px solid #E0E8F2 !important;
-            border-top: 0 !important;
-            border-radius: 0 !important;
-            padding: 18px 10px !important;
-            min-height: 112px !important;
-            text-align: center;
-            box-shadow: none !important;
+            border-radius: 13px !important;
+            padding: 14px 10px 12px 10px !important;
+            min-height: 120px !important;
+            text-align: left;
+            box-shadow: 0 8px 18px rgba(8,42,82,.05);
             position: relative;
         }
 
-        .dash-metric-card::before {
-            content: "";
-            position: absolute;
-            left: 50%;
-            top: 14px;
-            width: 40px;
-            height: 40px;
-            transform: translateX(-50%);
-            border-radius: 50%;
+        .dash-metric-card .metric-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size: 20px;
+            margin-bottom: 9px;
             background: rgba(14,99,182,.10);
         }
 
         .dash-metric-card .label {
             color: #52677F !important;
-            font-size: 12px !important;
-            font-weight: 800 !important;
-            margin-top: 43px !important;
-            margin-bottom: 6px !important;
+            font-size: 11px !important;
+            font-weight: 850 !important;
+            margin-bottom: 4px !important;
         }
 
         .dash-metric-card .value {
-            font-size: 26px !important;
+            font-size: 25px !important;
             font-weight: 950 !important;
             color: #082A52 !important;
             line-height: 1.1 !important;
             letter-spacing: -.3px;
+        }
+
+        .dash-metric-card .sub {
+            color: #52677F;
+            font-size: 11px;
+            font-weight: 700;
+            margin-top: 8px;
+        }
+
+        .dash-spark {
+            height: 4px;
+            border-radius: 999px;
+            background: #E2E8F0;
+            margin-top: 8px;
+            overflow:hidden;
+        }
+
+        .dash-spark span {
+            display:block;
+            height: 100%;
+            border-radius: 999px;
+            background: currentColor;
+            opacity: .88;
         }
 
         .dash-table-title {
@@ -2570,11 +2632,12 @@ def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key):
         <div class="siga-card-nav">
             <div class="siga-card-title"><span class="siga-card-icon">{icone}</span>{html.escape(str(titulo))}</div>
             <div class="siga-card-desc">{html.escape(str(descricao))}</div>
+            <div class="siga-card-arrow">›</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    botao_navegacao(f"{texto_botao}  ›", destino, key)
+    botao_navegacao(texto_botao, destino, key)
 
 
 
@@ -2586,7 +2649,7 @@ def tela_menu_principal():
     linha1 = st.columns(5)
     with linha1[0]:
         render_card_navegacao(
-            "➕",
+            "＋",
             "Novo atendimento",
             "Registrar nova demanda, definir seção responsável, assunto, prioridade e prazo.",
             "Criar atendimento",
@@ -2595,7 +2658,7 @@ def tela_menu_principal():
         )
     with linha1[1]:
         render_card_navegacao(
-            "🛡️",
+            "▣",
             "Validação da chefia",
             "Revisar orientações preparadas pela equipe e validar ou devolver para ajuste.",
             "Validar orientações",
@@ -2604,7 +2667,7 @@ def tela_menu_principal():
         )
     with linha1[2]:
         render_card_navegacao(
-            "📊",
+            "▥",
             "Painel gerencial",
             "Acompanhar indicadores, alertas, produtividade, seções, zonas e evolução dos atendimentos.",
             "Abrir painel",
@@ -2613,7 +2676,7 @@ def tela_menu_principal():
         )
     with linha1[3]:
         render_card_navegacao(
-            "🧭",
+            "◉",
             "Orientações às Zonas",
             "Consultar modelos de resposta, base de conhecimento e fundamentos por assunto.",
             "Abrir orientações",
@@ -2622,7 +2685,7 @@ def tela_menu_principal():
         )
     with linha1[4]:
         render_card_navegacao(
-            "📄",
+            "▤",
             "Relatórios",
             "Emitir relatórios para gestão, auditoria e acompanhamento pela Corregedoria.",
             "Emitir relatório",
@@ -2635,7 +2698,7 @@ def tela_menu_principal():
 
 
 def tela_validacao_chefia():
-    st.subheader("🔎 Validação da chefia")
+    st.subheader("◇  Validação da chefia  ›")
     st.caption("Orientações e respostas que dependem de conferência, validação ou devolução para ajuste pela chefia.")
 
     lista = filtros_base(atendimentos())
@@ -2673,7 +2736,7 @@ def tela_validacao_chefia():
 
 
 def tela_orientacoes_zonas():
-    st.subheader("🧭 Orientações às Zonas")
+    st.subheader("◉  Orientações às Zonas ›")
     st.caption("Modelos de resposta, base de conhecimento e fundamentos para padronizar as orientações às zonas eleitorais.")
 
     aba1, aba2 = st.tabs(["Modelos de resposta", "Base de conhecimento"])
@@ -2701,12 +2764,12 @@ def sidebar_menu():
     st.sidebar.markdown("### Navegação")
 
     itens_principais = [
-        ("🏠 Início", "Início"),
-        ("➕ Novo atendimento", "Novo atendimento"),
-        ("🔎 Validação da chefia", "Validação da chefia"),
-        ("📊 Painel gerencial", "Dashboard"),
-        ("🧭 Orientações às Zonas", "Orientações às Zonas"),
-        ("📄 Relatórios", "Relatórios e exportação"),
+        ("⌂  Início          ›", "Início"),
+        ("＋  Novo atendimento     ›", "Novo atendimento"),
+        ("◇  Validação da chefia  ›", "Validação da chefia"),
+        ("▥  Painel gerencial     ›", "Dashboard"),
+        ("◉  Orientações às Zonas ›", "Orientações às Zonas"),
+        ("▤  Relatórios           ›", "Relatórios e exportação"),
     ]
 
     for label, destino in itens_principais:
@@ -2714,7 +2777,7 @@ def sidebar_menu():
             ir_para_pagina(destino)
             st.rerun()
 
-    with st.sidebar.expander("Mais opções"):
+    with st.sidebar.expander("▦  Mais opções          ⌄"):
         outros = [
             ("👤 Meus atendimentos", "Meus atendimentos"),
             ("📥 Triagem", "Triagem"),
@@ -3135,23 +3198,47 @@ def assumir_atendimento_por_id(atendimento_id):
 
 
 def render_metric_card(label, value, color="#174A7C"):
-    """Card visual usado no painel gerencial."""
-    label_html = html.escape(str(label or ""))
+    """Card visual usado no painel gerencial, com ícone significativo e sem círculo vazio."""
+    label_txt = str(label or "")
+    label_html = html.escape(label_txt)
     value_html = html.escape(str(value or "0"))
     color_html = html.escape(str(color or "#174A7C"))
 
+    icones = {
+        "Triagem": "▱",
+        "Em atendimento": "☰",
+        "Realizados": "✓",
+        "Urgentes abertas": "⚡",
+        "Prazo vencido": "◷",
+        "Sem responsável": "○",
+        "Meus pendentes": "◎",
+        "Total": "▦",
+        "Pendentes": "⋯",
+        "% realizado": "%",
+    }
+    icone = icones.get(label_txt, "▦")
+    try:
+        valor_num = int(str(value).replace(".", "").replace(",", ""))
+    except Exception:
+        valor_num = 0
+    largura = 0 if valor_num == 0 else min(100, max(8, valor_num % 100))
+
     st.markdown(
         f"""
-        <div class="dash-metric-card" style="border-top-color:{color_html};">
+        <div class="dash-metric-card" style="color:{color_html};">
+            <div class="metric-icon" style="color:{color_html};background:color-mix(in srgb, {color_html} 12%, white);">{icone}</div>
             <div class="label">{label_html}</div>
-            <div class="value" style="color:{color_html};">{value_html}</div>
+            <div class="value" style="color:#082A52;">{value_html}</div>
+            <div class="sub">Indicador operacional</div>
+            <div class="dash-spark"><span style="width:{largura}%;background:{color_html};"></span></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_visao_executiva(lista, titulo="Visão executiva"):
+
+def render_visao_executiva(lista, titulo="Resumo executivo"):
     ind = indicadores_executivos(lista)
 
     st.markdown(f"<div class='dash-section-title'>{titulo}</div>", unsafe_allow_html=True)
@@ -4377,7 +4464,7 @@ def tela_dashboard():
         unsafe_allow_html=True,
     )
 
-    render_visao_executiva(lista, "Visão executiva da chefia")
+    render_visao_executiva(lista, "Resumo executivo")
 
     st.markdown("<div class='dash-section-title'>Visão consolidada da Corregedoria</div>", unsafe_allow_html=True)
 
