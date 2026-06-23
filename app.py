@@ -2132,21 +2132,20 @@ def cabecalho():
     u = usuario_logado() or {}
     nome = html.escape(str(u.get("nome", "") or "Usuário"))
     perfil = html.escape(str(u.get("perfil", "") or ""))
+
     st.markdown(
         f"""
-        <div class="main-header" style="display:flex;align-items:center;justify-content:space-between;gap:22px;">
-            <div style="display:flex;align-items:center;gap:22px;">
-                <div class="logo-box"><img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}"></div>
-                <div>
-                    <h1>⚖️ SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria</h1>
-                    <p>Corregedoria Regional Eleitoral da Bahia</p>
-                    <p>Ambiente de gestão, orientação, governança e memória institucional</p>
-                </div>
+        <div class="main-header" style="display:grid;grid-template-columns:380px 1fr 270px;align-items:center;gap:22px;">
+            <div class="logo-box"><img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}"></div>
+            <div style="text-align:center;border-left:1px solid #E2EAF5;border-right:1px solid #E2EAF5;padding:0 18px;">
+                <h1>⚖️ SIGA-COR - Sistema Integrado de Gestão de Atendimentos da Corregedoria</h1>
+                <p>Corregedoria Regional Eleitoral da Bahia</p>
+                <p>Ambiente de gestão, orientação, governança e memória institucional</p>
             </div>
-            <div style="min-width:250px;text-align:right;border-left:1px solid #DCE7F3;padding-left:18px;">
-                <div style="font-weight:900;color:#082A52;font-size:14px;">{nome}</div>
-                <div style="font-weight:700;color:#64748B;font-size:12px;">{perfil}</div>
-                <div style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:#ECFDF5;color:#047857;border:1px solid #BBF7D0;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:900;">
+            <div style="text-align:right;">
+                <div style="font-weight:950;color:#082A52;font-size:14px;">{nome}</div>
+                <div style="font-weight:760;color:#64748B;font-size:12px;margin-top:4px;">{perfil}</div>
+                <div style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;background:#ECFDF5;color:#047857;border:1px solid #BBF7D0;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:950;">
                     ● Online
                 </div>
             </div>
@@ -2204,47 +2203,41 @@ def css_menu_institucional():
         <style>
         :root {
             --siga-navy: #062A4F;
-            --siga-blue: #0B4A8B;
-            --siga-blue-2: #0E63B6;
-            --siga-sky: #EAF4FF;
-            --siga-bg: #F5F8FC;
-            --siga-card: rgba(255, 255, 255, 0.96);
-            --siga-line: #DCE7F3;
+            --siga-sidebar: #06294C;
+            --siga-sidebar-2: #031B34;
+            --siga-blue: #0E63B6;
+            --siga-line: #E2EAF5;
+            --siga-bg: #F7FAFE;
             --siga-text: #0B2240;
-            --siga-muted: #64748B;
-            --siga-green: #22C55E;
-            --siga-amber: #F59E0B;
-            --siga-red: #EF4444;
-            --siga-purple: #7C3AED;
-            --siga-shadow: 0 14px 38px rgba(7, 43, 83, 0.10);
-            --siga-shadow-soft: 0 8px 22px rgba(7, 43, 83, 0.075);
+            --siga-muted: #5E738D;
+            --siga-shadow: 0 10px 26px rgba(8, 42, 82, .08);
         }
 
         html, body, [data-testid="stAppViewContainer"] {
-            background:
-                radial-gradient(circle at top left, rgba(14,99,182,0.12), transparent 30%),
-                linear-gradient(180deg, #F8FBFF 0%, #F3F7FC 100%) !important;
+            background: #F7FAFE !important;
             color: var(--siga-text);
             font-family: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
         }
 
         [data-testid="stHeader"] {
-            background: rgba(248, 251, 255, 0.78) !important;
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(220, 231, 243, 0.70);
+            background: rgba(247,250,254,.92) !important;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #E8EEF6;
+            height: 44px !important;
         }
 
         .block-container {
-            padding-top: 1.15rem !important;
-            padding-left: 2.4rem !important;
-            padding-right: 2.4rem !important;
-            max-width: 1720px !important;
+            max-width: 1500px !important;
+            padding-top: .55rem !important;
+            padding-left: 1.65rem !important;
+            padding-right: 1.65rem !important;
+            padding-bottom: 2rem !important;
         }
 
         section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #031B34 0%, #062A4F 48%, #083763 100%) !important;
+            background: linear-gradient(180deg, #04213E 0%, #062A4F 55%, #083862 100%) !important;
             border-right: 1px solid rgba(255,255,255,.08);
-            box-shadow: 12px 0 34px rgba(3, 27, 52, .18);
+            box-shadow: 10px 0 24px rgba(3,27,52,.15);
         }
 
         section[data-testid="stSidebar"] * {
@@ -2253,167 +2246,120 @@ def css_menu_institucional():
 
         section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
         section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span {
-            color: rgba(255,255,255,.78) !important;
-        }
-
-        section[data-testid="stSidebar"] .stButton > button {
-            background: rgba(255,255,255,.055) !important;
-            color: #FFFFFF !important;
-            border: 1px solid rgba(255,255,255,.14) !important;
-            border-radius: 14px !important;
-            min-height: 42px;
-            font-weight: 750;
-            text-align: left;
-            justify-content: flex-start;
-            transition: all .18s ease;
-            box-shadow: none !important;
-        }
-
-        section[data-testid="stSidebar"] .stButton > button:hover {
-            background: rgba(31, 117, 201, .42) !important;
-            border-color: rgba(125, 184, 240, .58) !important;
-            transform: translateX(2px);
-        }
-
-        section[data-testid="stSidebar"] [data-testid="stExpander"] {
-            border: 1px solid rgba(255,255,255,.12) !important;
-            border-radius: 14px !important;
-            background: rgba(255,255,255,.045) !important;
-        }
-
-        section[data-testid="stSidebar"] hr {
-            border-color: rgba(255,255,255,.16) !important;
+            color: rgba(255,255,255,.72) !important;
         }
 
         .siga-sidebar-title {
-            font-size: 28px;
+            font-size: 26px;
             font-weight: 950;
             color: #FFFFFF !important;
-            letter-spacing: .6px;
-            margin: 10px 0 4px 0;
+            letter-spacing: .8px;
+            margin: 12px 0 4px 0;
         }
 
         .siga-sidebar-sub {
-            font-size: 12.5px;
+            font-size: 12px;
             color: rgba(255,255,255,.70) !important;
             line-height: 1.45;
             margin-bottom: 22px;
         }
 
-        .main-header {
-            background: rgba(255,255,255,.86);
-            border: 1px solid var(--siga-line);
-            border-radius: 22px;
-            box-shadow: var(--siga-shadow-soft);
-            padding: 18px 22px;
-            margin-bottom: 26px;
-            position: relative;
-            overflow: hidden;
+        section[data-testid="stSidebar"] .stButton > button {
+            background: transparent !important;
+            color: rgba(255,255,255,.92) !important;
+            border: 1px solid transparent !important;
+            border-radius: 13px !important;
+            min-height: 42px;
+            font-weight: 760;
+            text-align: left;
+            justify-content: flex-start;
+            box-shadow: none !important;
+            transition: all .16s ease;
         }
 
-        .main-header::before {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 7px;
-            height: 100%;
-            background: linear-gradient(180deg, #0E63B6, #22C55E);
+        section[data-testid="stSidebar"] .stButton > button:hover {
+            background: rgba(20, 102, 185, .66) !important;
+            border-color: rgba(125,184,240,.28) !important;
+            transform: translateX(2px);
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stExpander"] {
+            background: rgba(255,255,255,.045) !important;
+            border: 1px solid rgba(255,255,255,.14) !important;
+            border-radius: 13px !important;
+        }
+
+        section[data-testid="stSidebar"] hr {
+            border-color: rgba(255,255,255,.14) !important;
+        }
+
+        .main-header {
+            background: #FFFFFF;
+            border: 1px solid var(--siga-line);
+            border-radius: 16px;
+            box-shadow: var(--siga-shadow);
+            padding: 14px 18px;
+            margin-bottom: 18px;
+            position: relative;
         }
 
         .main-header .logo-box {
-            background: linear-gradient(135deg, #EFF6FF, #FFFFFF);
-            border: 1px solid #D8E7F7;
-            border-radius: 18px;
-            padding: 10px;
-            min-width: 300px;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,.85);
+            background: #FFFFFF;
+            border: 1px solid #D9E6F5;
+            border-radius: 14px;
+            padding: 8px 12px;
+            width: 360px;
+            height: 74px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
         }
 
         .main-header .logo-box img {
-            max-height: 82px !important;
+            max-height: 58px !important;
+            max-width: 330px !important;
             width: auto !important;
             object-fit: contain;
         }
 
         .main-header h1 {
-            font-size: 27px !important;
-            line-height: 1.16 !important;
+            font-size: 22px !important;
+            line-height: 1.18 !important;
             color: #082A52 !important;
-            margin: 0 0 8px 0 !important;
+            margin: 0 0 5px 0 !important;
             font-weight: 950 !important;
             letter-spacing: -.35px;
         }
 
         .main-header p {
             margin: 2px 0 !important;
-            color: #55708C !important;
-            font-size: 13px !important;
-            font-weight: 650;
+            color: #5C728D !important;
+            font-size: 12.5px !important;
+            font-weight: 720;
         }
 
         .siga-home-hero {
-            background:
-                radial-gradient(circle at 78% 25%, rgba(124,183,232,.55), transparent 26%),
-                linear-gradient(135deg, #05294E 0%, #0B4A8B 52%, #61A5D8 100%);
-            padding: 31px 34px;
-            border-radius: 26px;
-            color: white;
-            margin-bottom: 28px;
-            box-shadow: 0 24px 56px rgba(8, 42, 82, 0.22);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .siga-home-hero::after {
-            content: "";
-            position: absolute;
-            right: -80px;
-            top: -90px;
-            width: 260px;
-            height: 260px;
-            border-radius: 50%;
-            background: rgba(255,255,255,.14);
-            filter: blur(1px);
-        }
-
-        .siga-home-title {
-            font-size: 38px;
-            font-weight: 950;
-            letter-spacing: .6px;
-            margin-bottom: 6px;
-        }
-
-        .siga-home-subtitle {
-            font-size: 18px;
-            font-weight: 650;
-            opacity: .97;
-        }
-
-        .siga-home-credit {
-            font-size: 12.8px;
-            margin-top: 14px;
-            opacity: .88;
+            display:none !important;
         }
 
         .siga-section-label {
             color: #082A52;
-            font-size: 21px;
+            font-size: 18px;
             font-weight: 950;
-            margin: 20px 0 12px 0;
+            margin: 8px 0 14px 0;
             letter-spacing: -.2px;
         }
 
         .siga-card-nav {
-            min-height: 168px;
-            border: 1px solid var(--siga-line);
-            border-top: 4px solid #0E63B6;
-            border-radius: 22px;
-            background: var(--siga-card);
-            padding: 24px 24px 18px 24px;
-            box-shadow: var(--siga-shadow-soft);
-            transition: all .18s ease-in-out;
-            margin-bottom: 12px;
+            min-height: 156px;
+            border: 1px solid #DDE8F5;
+            border-top: 3px solid #0E63B6;
+            border-radius: 14px;
+            background: #FFFFFF;
+            padding: 20px 19px 16px 19px;
+            box-shadow: 0 8px 20px rgba(8, 42, 82, .065);
+            transition: all .16s ease-in-out;
+            margin-bottom: 10px;
             position: relative;
             overflow: hidden;
         }
@@ -2421,28 +2367,30 @@ def css_menu_institucional():
         .siga-card-nav::after {
             content: "";
             position: absolute;
-            right: -38px;
-            top: -42px;
-            width: 112px;
-            height: 112px;
+            right: -26px;
+            top: -26px;
+            width: 92px;
+            height: 92px;
             border-radius: 50%;
-            background: rgba(14, 99, 182, .08);
+            background: #EEF5FC;
         }
 
         .siga-card-nav:hover {
-            border-color: #A9CFF4;
-            box-shadow: 0 18px 42px rgba(8, 42, 82, 0.14);
-            transform: translateY(-3px);
+            border-color: #B8D7F4;
+            box-shadow: 0 14px 28px rgba(8, 42, 82, .11);
+            transform: translateY(-2px);
         }
 
         .siga-card-title {
             color: #082A52;
-            font-size: 18px;
+            font-size: 16.5px;
             font-weight: 920;
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
+            position: relative;
+            z-index: 1;
         }
 
         .siga-card-icon {
@@ -2452,119 +2400,127 @@ def css_menu_institucional():
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, #E7F1FF, #FFFFFF);
-            border: 1px solid #D7E8FB;
+            background: #F0F7FF;
+            border: 1px solid #D8EAFB;
             font-size: 21px;
             line-height: 1;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,.85);
+            flex: 0 0 auto;
         }
 
         .siga-card-desc {
             color: #4A6078;
-            font-size: 13.2px;
-            line-height: 1.55;
-            max-width: 92%;
+            font-size: 12.2px;
+            line-height: 1.48;
+            position: relative;
+            z-index: 1;
         }
 
         .stButton > button {
-            border-radius: 14px !important;
-            border: 1px solid #D7E3F2 !important;
-            background: linear-gradient(180deg, #FFFFFF 0%, #F3F7FC 100%) !important;
+            border-radius: 11px !important;
+            border: 1px solid #E0E8F2 !important;
+            background: #F5F8FC !important;
             color: #083763 !important;
-            font-weight: 800 !important;
-            min-height: 38px;
+            font-weight: 820 !important;
+            min-height: 34px;
+            box-shadow: none !important;
             transition: all .15s ease;
         }
 
         .stButton > button:hover {
-            border-color: #91BDEB !important;
+            border-color: #A8CDEC !important;
             color: #0B4A8B !important;
-            box-shadow: 0 8px 18px rgba(8, 42, 82, .10);
-            transform: translateY(-1px);
+            background: #EFF6FF !important;
         }
 
         .dash-section-title {
-            background: linear-gradient(90deg, #062A4F 0%, #0B4A8B 64%, #0E63B6 100%) !important;
-            color: white !important;
+            background: #FFFFFF !important;
+            color: #082A52 !important;
             font-weight: 950 !important;
             text-transform: uppercase;
             font-size: 14px !important;
-            letter-spacing: .35px;
-            padding: 13px 18px !important;
-            border-radius: 18px 18px 0 0 !important;
+            letter-spacing: .3px;
+            padding: 16px 18px !important;
+            border: 1px solid #DDE8F5 !important;
+            border-bottom: 0 !important;
+            border-radius: 16px 16px 0 0 !important;
             margin-top: 18px !important;
             margin-bottom: 0 !important;
-            box-shadow: var(--siga-shadow-soft);
-        }
-
-        .dash-row-grid,
-        .dash-table-wrap {
-            background: rgba(255,255,255,.96) !important;
-            border: 1px solid var(--siga-line) !important;
-            border-top: none !important;
-            border-radius: 0 0 18px 18px !important;
-            box-shadow: var(--siga-shadow-soft);
+            box-shadow: 0 8px 20px rgba(8,42,82,.055);
         }
 
         .dash-metric-card {
-            background: rgba(255,255,255,.98) !important;
-            border: 1px solid #DDE8F5 !important;
-            border-top: 4px solid #0E63B6 !important;
-            border-radius: 18px !important;
-            padding: 18px 12px 18px 12px !important;
+            background: #FFFFFF !important;
+            border: 1px solid #E0E8F2 !important;
+            border-top: 0 !important;
+            border-radius: 0 !important;
+            padding: 18px 10px !important;
             min-height: 112px !important;
             text-align: center;
-            box-shadow: 0 12px 28px rgba(8,42,82,.08);
+            box-shadow: none !important;
             position: relative;
-            overflow: hidden;
         }
 
         .dash-metric-card::before {
             content: "";
             position: absolute;
             left: 50%;
-            top: 12px;
-            width: 42px;
-            height: 42px;
+            top: 14px;
+            width: 40px;
+            height: 40px;
             transform: translateX(-50%);
             border-radius: 50%;
-            background: rgba(14,99,182,.09);
+            background: rgba(14,99,182,.10);
         }
 
         .dash-metric-card .label {
             color: #52677F !important;
-            font-size: 13px !important;
-            font-weight: 820 !important;
-            margin-top: 42px !important;
-            margin-bottom: 8px !important;
+            font-size: 12px !important;
+            font-weight: 800 !important;
+            margin-top: 43px !important;
+            margin-bottom: 6px !important;
         }
 
         .dash-metric-card .value {
-            font-size: 30px !important;
+            font-size: 26px !important;
             font-weight: 950 !important;
             color: #082A52 !important;
             line-height: 1.1 !important;
-            letter-spacing: -.4px;
+            letter-spacing: -.3px;
         }
 
         .dash-table-title {
             color: #082A52 !important;
-            font-size: 14px !important;
+            font-size: 13px !important;
             font-weight: 950 !important;
             letter-spacing: .25px;
-            padding: 14px 16px !important;
-            border-bottom: 1px solid #E2EAF5 !important;
-            background: linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%) !important;
-            border-radius: 18px 18px 0 0;
+            padding: 13px 15px !important;
+            border: 1px solid #DDE8F5 !important;
+            border-bottom: none !important;
+            background: #FFFFFF !important;
+            border-radius: 16px 16px 0 0;
+            margin-top: 16px;
         }
 
-        table {
-            border-collapse: separate !important;
-            border-spacing: 0 !important;
+        .dashboard-subinfo {
+            background: #FFFFFF;
+            border: 1px solid #DDE8F5;
+            border-radius: 13px;
+            color: #52677F;
+            padding: 10px 14px;
+            font-weight: 720;
+            box-shadow: 0 8px 18px rgba(8,42,82,.055);
+            margin-bottom: 8px;
+        }
+
+        [data-testid="stDataFrame"] {
+            border-radius: 0 0 14px 14px !important;
+            overflow: hidden;
+            border: 1px solid #DDE8F5;
+            box-shadow: 0 8px 18px rgba(8,42,82,.055);
         }
 
         th {
-            background: #F3F7FC !important;
+            background: #F4F8FC !important;
             color: #123A60 !important;
             font-weight: 900 !important;
             border-bottom: 1px solid #D7E3F2 !important;
@@ -2575,29 +2531,11 @@ def css_menu_institucional():
             border-bottom: 1px solid #EDF2F8 !important;
         }
 
-        [data-testid="stDataFrame"] {
-            border-radius: 18px !important;
-            overflow: hidden;
-            box-shadow: var(--siga-shadow-soft);
-        }
-
-        .dashboard-subinfo {
-            background: #FFFFFF;
-            border: 1px solid var(--siga-line);
-            border-left: 5px solid #0E63B6;
-            border-radius: 16px;
-            color: #52677F;
-            padding: 12px 16px;
-            font-weight: 700;
-            box-shadow: var(--siga-shadow-soft);
-            margin-bottom: 10px;
-        }
-
         div[data-testid="stForm"] {
-            border: 1px solid var(--siga-line) !important;
-            border-radius: 22px !important;
-            background: rgba(255,255,255,.94) !important;
-            box-shadow: var(--siga-shadow-soft);
+            border: 1px solid #DDE8F5 !important;
+            border-radius: 16px !important;
+            background: #FFFFFF !important;
+            box-shadow: 0 8px 18px rgba(8,42,82,.055);
             padding: 18px !important;
         }
 
@@ -2605,22 +2543,18 @@ def css_menu_institucional():
         .stTextArea textarea,
         .stSelectbox div[data-baseweb="select"],
         .stDateInput input {
-            border-radius: 13px !important;
+            border-radius: 11px !important;
             border-color: #D7E3F2 !important;
             background: #F8FBFF !important;
         }
 
-        @media (max-width: 1100px) {
-            .block-container {
-                padding-left: 1rem !important;
-                padding-right: 1rem !important;
-            }
+        @media (max-width: 1200px) {
             .main-header {
-                display: block !important;
+                display:block !important;
             }
             .main-header .logo-box {
-                min-width: unset;
-                margin-bottom: 12px;
+                width: 100%;
+                margin-bottom: 10px;
             }
         }
         </style>
@@ -2646,17 +2580,6 @@ def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key):
 
 def tela_menu_principal():
     css_menu_institucional()
-
-    st.markdown(
-        """
-        <div class="siga-home-hero">
-            <div class="siga-home-title">SIGA-COR</div>
-            <div class="siga-home-subtitle">Gestão inteligente de atendimentos, orientações, governança e memória institucional da Corregedoria.</div>
-            <div class="siga-home-credit">Protótipo funcional desenvolvido por Vítor Marcelo Pinto Soares no âmbito da SEPRO/CRE-BA.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     st.markdown('<div class="siga-section-label">Início</div>', unsafe_allow_html=True)
 
