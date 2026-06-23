@@ -6292,6 +6292,217 @@ def checklist_owasp_siga_cor():
     ]
 
 
+
+
+def matriz_seguranca_informacao_siga_cor():
+    return [
+        {
+            "Tema": "Gestão de segurança da informação",
+            "Aplicação no SIGA-COR": "Organizar controles mínimos de confidencialidade, integridade, disponibilidade e rastreabilidade.",
+            "Recurso/controle sugerido": "Política de perfis, auditoria, backup, controle de acesso e relatório de governança.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Gestão de continuidade do negócio",
+            "Aplicação no SIGA-COR": "Prever recuperação do serviço e preservação dos registros de atendimento.",
+            "Recurso/controle sugerido": "Backup, restauração, exportações, plano de contingência e rotina de verificação.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Gestão de identidade e acesso",
+            "Aplicação no SIGA-COR": "Controlar quem acessa, com quais permissões e em qual seção.",
+            "Recurso/controle sugerido": "Perfis, validação de usuário, segregação por seção, revisão periódica de usuários ativos.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Gestão de riscos de segurança",
+            "Aplicação no SIGA-COR": "Classificar riscos por impacto e probabilidade, priorizando controles críticos.",
+            "Recurso/controle sugerido": "Matriz de riscos, trilha de auditoria e relatório de segurança.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Zero Trust",
+            "Aplicação no SIGA-COR": "Não confiar implicitamente em usuário, sessão ou rede; verificar acesso continuamente.",
+            "Recurso/controle sugerido": "Menor privilégio, validação de sessão, RLS granular, revisão de permissões e MFA/SSO futuro.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Monitoramento de comportamento",
+            "Aplicação no SIGA-COR": "Acompanhar uso atípico, acessos, alterações e padrões anormais.",
+            "Recurso/controle sugerido": "Registro de sessões, auditoria de alterações, relatório de eventos e integração futura com SIEM.",
+            "Prioridade": "Média",
+        },
+        {
+            "Tema": "CIS Controls v8",
+            "Aplicação no SIGA-COR": "Usar controles essenciais como referência de maturidade.",
+            "Recurso/controle sugerido": "Inventário lógico, controle de acesso, proteção de dados, logs, backup e gestão de vulnerabilidades.",
+            "Prioridade": "Média",
+        },
+        {
+            "Tema": "Logs e correlação de eventos",
+            "Aplicação no SIGA-COR": "Registrar eventos relevantes para investigação e prestação de contas.",
+            "Recurso/controle sugerido": "Auditoria, histórico do atendimento, sessões, uso da base de conhecimento e exportação de logs.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Vulnerabilidades",
+            "Aplicação no SIGA-COR": "Criar rotina de identificação, análise, correção e validação de falhas.",
+            "Recurso/controle sugerido": "Checklist técnico, backlog de correções, revisão de dependências e testes de segurança.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Ataques em redes e aplicações",
+            "Aplicação no SIGA-COR": "Reduzir exposição a ataques comuns em aplicações web.",
+            "Recurso/controle sugerido": "Validação de entrada, controle de sessão, proteção de secrets, RLS e revisão OWASP.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Segurança de endpoints",
+            "Aplicação no SIGA-COR": "Reconhecer que o acesso ao sistema depende também da segurança da estação do usuário.",
+            "Recurso/controle sugerido": "Orientação administrativa: dispositivos institucionais, atualização, antivírus/EDR e bloqueio de sessão.",
+            "Prioridade": "Média",
+        },
+        {
+            "Tema": "DLP",
+            "Aplicação no SIGA-COR": "Prevenir vazamento de dados sensíveis em relatórios, anexos e exportações.",
+            "Recurso/controle sugerido": "Perfis de acesso, revisão de exportações, classificação da informação e política de compartilhamento.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Testes de segurança",
+            "Aplicação no SIGA-COR": "Avaliar autenticação, autorização, manipulação de parâmetros e exposição indevida.",
+            "Recurso/controle sugerido": "Checklist de testes, validação de perfis, teste de RLS e revisão de logs.",
+            "Prioridade": "Média",
+        },
+        {
+            "Tema": "ICP-Brasil e certificação digital",
+            "Aplicação no SIGA-COR": "Prever evolução para assinatura/validação institucional quando houver atos formais.",
+            "Recurso/controle sugerido": "Integração futura com autenticação institucional, assinatura digital ou validação documental.",
+            "Prioridade": "Baixa",
+        },
+        {
+            "Tema": "Incidentes de segurança",
+            "Aplicação no SIGA-COR": "Definir fluxo de identificação, contenção, comunicação, erradicação, recuperação e lições aprendidas.",
+            "Recurso/controle sugerido": "Plano de resposta, registro de incidente, responsáveis e evidências.",
+            "Prioridade": "Alta",
+        },
+        {
+            "Tema": "Normas GSI/DSIC",
+            "Aplicação no SIGA-COR": "Usar como referência de governança quando aplicável à política institucional.",
+            "Recurso/controle sugerido": "Matriz de aderência normativa e validação pela área competente de segurança da informação.",
+            "Prioridade": "Média",
+        },
+    ]
+
+
+def matriz_riscos_seguranca_siga_cor():
+    return [
+        {
+            "Risco": "Acesso indevido por usuário sem necessidade funcional",
+            "Impacto": "Alto",
+            "Probabilidade": "Média",
+            "Controle atual": "Perfis e segregação por seção.",
+            "Tratamento recomendado": "Revisão periódica de usuários, menor privilégio, RLS granular e MFA/SSO futuro.",
+        },
+        {
+            "Risco": "Exposição de chaves, senhas ou secrets",
+            "Impacto": "Alto",
+            "Probabilidade": "Média",
+            "Controle atual": "Uso de Streamlit Secrets.",
+            "Tratamento recomendado": "Rotação periódica, proibição de secrets no GitHub e revisão de logs.",
+        },
+        {
+            "Risco": "Perda de dados operacionais",
+            "Impacto": "Alto",
+            "Probabilidade": "Baixa/Média",
+            "Controle atual": "Backup e exportações.",
+            "Tratamento recomendado": "Rotina formal de backup, teste de restauração e definição de RPO/RTO.",
+        },
+        {
+            "Risco": "Uso indevido de relatórios exportados",
+            "Impacto": "Médio/Alto",
+            "Probabilidade": "Média",
+            "Controle atual": "Exportação restrita pelo acesso ao sistema.",
+            "Tratamento recomendado": "Classificação da informação, orientação de DLP e revisão de perfis.",
+        },
+        {
+            "Risco": "Falha de controle de sessão",
+            "Impacto": "Médio",
+            "Probabilidade": "Média",
+            "Controle atual": "Registro de sessões e presença.",
+            "Tratamento recomendado": "Expiração mais rígida, logout automático e autenticação institucional.",
+        },
+        {
+            "Risco": "Vulnerabilidade em dependência ou componente",
+            "Impacto": "Médio/Alto",
+            "Probabilidade": "Média",
+            "Controle atual": "Evolução manual do protótipo.",
+            "Tratamento recomendado": "Monitoramento de dependências, revisão periódica e pipeline de segurança.",
+        },
+    ]
+
+
+def plano_incidentes_siga_cor():
+    return [
+        {
+            "Etapa": "Identificação",
+            "Ação": "Detectar acesso indevido, erro crítico, vazamento, alteração suspeita ou indisponibilidade.",
+            "Evidência no SIGA-COR": "Histórico, auditoria, sessões, logs do Streamlit/Supabase.",
+        },
+        {
+            "Etapa": "Contenção",
+            "Ação": "Desativar usuário, revogar secret, bloquear acesso ou suspender funcionalidade afetada.",
+            "Evidência no SIGA-COR": "Administração de usuários e controle de secrets.",
+        },
+        {
+            "Etapa": "Análise",
+            "Ação": "Avaliar causa, alcance, dados envolvidos e impactos.",
+            "Evidência no SIGA-COR": "Auditoria de atendimentos, exportações e uso da base de conhecimento.",
+        },
+        {
+            "Etapa": "Erradicação",
+            "Ação": "Corrigir código, política, permissão, senha ou configuração vulnerável.",
+            "Evidência no SIGA-COR": "Correção versionada e nova publicação.",
+        },
+        {
+            "Etapa": "Recuperação",
+            "Ação": "Restaurar serviço, validar integridade e acompanhar comportamento pós-incidente.",
+            "Evidência no SIGA-COR": "Backup/restauração, testes de retorno e monitoramento.",
+        },
+        {
+            "Etapa": "Lições aprendidas",
+            "Ação": "Atualizar controles, orientar usuários e registrar melhoria.",
+            "Evidência no SIGA-COR": "Relatório de governança e backlog técnico.",
+        },
+    ]
+
+
+def controles_cis_v8_siga_cor():
+    return [
+        {"Controle CIS v8": "Inventário e controle de ativos", "Aplicação": "Inventariar app, banco, secrets, integrações e responsáveis.", "Situação": "Planejado"},
+        {"Controle CIS v8": "Proteção de dados", "Aplicação": "Classificação de dados, controle de exportação e DLP.", "Situação": "Parcial"},
+        {"Controle CIS v8": "Configuração segura", "Aplicação": "Revisar Supabase, RLS, secrets e permissões.", "Situação": "Parcial"},
+        {"Controle CIS v8": "Gestão de contas", "Aplicação": "Usuários ativos, validação, perfis e revisão periódica.", "Situação": "Parcial"},
+        {"Controle CIS v8": "Controle de acesso", "Aplicação": "Menor privilégio e segregação SEPRO/SEOCE.", "Situação": "Parcial"},
+        {"Controle CIS v8": "Gestão de vulnerabilidades", "Aplicação": "Revisão de dependências e testes.", "Situação": "Planejado"},
+        {"Controle CIS v8": "Logs de auditoria", "Aplicação": "Histórico, auditoria, sessões e registros de uso.", "Situação": "Parcial"},
+        {"Controle CIS v8": "Proteção de e-mail/navegador", "Aplicação": "Orientações para acesso seguro e links anexos.", "Situação": "Planejado"},
+        {"Controle CIS v8": "Resposta a incidentes", "Aplicação": "Plano de identificação, contenção e recuperação.", "Situação": "Planejado"},
+    ]
+
+
+def testes_seguranca_siga_cor():
+    return [
+        {"Teste": "Autenticação", "Verificação": "Usuário inválido, senha inválida, usuário inativo e usuário não validado.", "Resultado esperado": "Bloqueio do acesso."},
+        {"Teste": "Autorização por perfil", "Verificação": "Operador tenta acessar dados de seção diversa.", "Resultado esperado": "Acesso negado ou dados filtrados."},
+        {"Teste": "RLS e API REST", "Verificação": "Consulta direta a tabelas críticas sem permissão adequada.", "Resultado esperado": "Bloqueio ou política restritiva em produção."},
+        {"Teste": "Entrada de dados", "Verificação": "Campos longos, caracteres especiais, URLs e e-mails inválidos.", "Resultado esperado": "Validação, normalização ou recusa."},
+        {"Teste": "Exportação", "Verificação": "Relatórios sensíveis disponíveis apenas a perfis autorizados.", "Resultado esperado": "Controle por perfil e rastreabilidade."},
+        {"Teste": "Sessão", "Verificação": "Inatividade, logout e troca de usuário.", "Resultado esperado": "Sessão encerrada e cache limpo."},
+        {"Teste": "Backup/restauração", "Verificação": "Gerar backup e validar restauração controlada.", "Resultado esperado": "Retorno íntegro dos dados."},
+    ]
+
+
 def gerar_relatorio_pdf_governanca():
     buffer_pdf = BytesIO()
 
@@ -6362,6 +6573,15 @@ def gerar_relatorio_pdf_governanca():
         PageBreak(),
         Paragraph("3. Segurança e controles OWASP", h2),
         tabela_pdf(pd.DataFrame(checklist_owasp_siga_cor()), [5.0 * cm, 8.0 * cm, 10.0 * cm, 3.0 * cm]),
+        PageBreak(),
+        Paragraph("4. Governança de segurança da informação", h2),
+        tabela_pdf(pd.DataFrame(matriz_seguranca_informacao_siga_cor()), [4.5 * cm, 8.0 * cm, 10.0 * cm, 3.0 * cm]),
+        PageBreak(),
+        Paragraph("5. Riscos de segurança", h2),
+        tabela_pdf(pd.DataFrame(matriz_riscos_seguranca_siga_cor()), [5.0 * cm, 2.5 * cm, 3.0 * cm, 7.5 * cm, 9.0 * cm]),
+        PageBreak(),
+        Paragraph("6. Resposta a incidentes", h2),
+        tabela_pdf(pd.DataFrame(plano_incidentes_siga_cor()), [4.0 * cm, 11.0 * cm, 12.0 * cm]),
     ]
 
     doc.build(elementos, onFirstPage=cabecalho_relatorio, onLaterPages=cabecalho_relatorio)
@@ -6371,7 +6591,7 @@ def gerar_relatorio_pdf_governanca():
 
 def tela_governanca_tecnica():
     st.subheader("Governança técnica e modelagem do SIGA-COR")
-    st.caption("Adequação do sistema a práticas de BPM, arquitetura, ciclo de vida, qualidade, integração, versionamento e segurança.")
+    st.caption("Adequação do sistema a práticas de BPM, arquitetura, ciclo de vida, qualidade, integração, versionamento, segurança da informação, continuidade e gestão de riscos.")
 
     abas = st.tabs([
         "Processo AS-IS/TO-BE",
@@ -6379,6 +6599,9 @@ def tela_governanca_tecnica():
         "Indicadores e qualidade",
         "Arquitetura e integração",
         "Segurança OWASP",
+        "Segurança da informação",
+        "Riscos e continuidade",
+        "Incidentes e testes",
         "Relatório",
     ])
 
@@ -6452,12 +6675,41 @@ def tela_governanca_tecnica():
         )
 
     with abas[5]:
+        st.markdown("### Governança de segurança da informação")
+        st.caption("Controles aplicáveis a identidade, continuidade, riscos, Zero Trust, logs, DLP, endpoints, vulnerabilidades e normas de segurança.")
+        st.dataframe(pd.DataFrame(matriz_seguranca_informacao_siga_cor()), use_container_width=True, hide_index=True)
+
+        st.markdown("### Controles CIS v8 — aderência inicial")
+        st.dataframe(pd.DataFrame(controles_cis_v8_siga_cor()), use_container_width=True, hide_index=True)
+
+    with abas[6]:
+        st.markdown("### Matriz de riscos de segurança")
+        st.dataframe(pd.DataFrame(matriz_riscos_seguranca_siga_cor()), use_container_width=True, hide_index=True)
+
+        st.markdown("### Continuidade do negócio")
+        continuidade = pd.DataFrame([
+            {"Elemento": "RPO", "Aplicação ao SIGA-COR": "Definir perda máxima aceitável de dados em caso de falha.", "Recomendação": "Validar com a gestão e área técnica institucional."},
+            {"Elemento": "RTO", "Aplicação ao SIGA-COR": "Definir prazo máximo aceitável para restabelecimento.", "Recomendação": "Criar procedimento de restauração e teste periódico."},
+            {"Elemento": "Backup", "Aplicação ao SIGA-COR": "Preservar registros, usuários, base de conhecimento e relatórios.", "Recomendação": "Executar e testar backup de forma periódica."},
+            {"Elemento": "Contingência", "Aplicação ao SIGA-COR": "Prever operação mínima em caso de indisponibilidade.", "Recomendação": "Manter exportação recente e procedimento manual temporário."},
+            {"Elemento": "Retomada", "Aplicação ao SIGA-COR": "Restaurar operação e validar integridade.", "Recomendação": "Checklist de retorno e auditoria pós-evento."},
+        ])
+        st.dataframe(continuidade, use_container_width=True, hide_index=True)
+
+    with abas[7]:
+        st.markdown("### Resposta a incidentes de segurança")
+        st.dataframe(pd.DataFrame(plano_incidentes_siga_cor()), use_container_width=True, hide_index=True)
+
+        st.markdown("### Técnicas de testes de segurança aplicáveis")
+        st.dataframe(pd.DataFrame(testes_seguranca_siga_cor()), use_container_width=True, hide_index=True)
+
+    with abas[8]:
         st.markdown("### Relatório apresentável de governança")
         pdf = gerar_relatorio_pdf_governanca()
         st.download_button(
-            "Gerar relatório PDF de governança técnica",
+            "Gerar relatório PDF de governança técnica e segurança",
             data=pdf,
-            file_name=f"relatorio_governanca_tecnica_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
+            file_name=f"relatorio_governanca_tecnica_seguranca_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf",
             type="primary",
         )
@@ -6467,12 +6719,17 @@ def tela_governanca_tecnica():
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             pd.DataFrame(processo_as_is_to_be()).to_excel(writer, index=False, sheet_name="AS-IS TO-BE")
             matriz.to_excel(writer, index=False, sheet_name="Aderencia tecnica")
-            pd.DataFrame(checklist_owasp_siga_cor()).to_excel(writer, index=False, sheet_name="Seguranca OWASP")
+            pd.DataFrame(checklist_owasp_siga_cor()).to_excel(writer, index=False, sheet_name="OWASP")
+            pd.DataFrame(matriz_seguranca_informacao_siga_cor()).to_excel(writer, index=False, sheet_name="Seguranca info")
+            pd.DataFrame(matriz_riscos_seguranca_siga_cor()).to_excel(writer, index=False, sheet_name="Riscos")
+            pd.DataFrame(controles_cis_v8_siga_cor()).to_excel(writer, index=False, sheet_name="CIS v8")
+            pd.DataFrame(plano_incidentes_siga_cor()).to_excel(writer, index=False, sheet_name="Incidentes")
+            pd.DataFrame(testes_seguranca_siga_cor()).to_excel(writer, index=False, sheet_name="Testes seguranca")
 
         st.download_button(
-            "Baixar matriz de governança em Excel",
+            "Baixar matriz de governança e segurança em Excel",
             data=buffer.getvalue(),
-            file_name=f"matriz_governanca_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.xlsx",
+            file_name=f"matriz_governanca_seguranca_siga_cor_{agora_brasilia().strftime('%Y%m%d_%H%M')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
