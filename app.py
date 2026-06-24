@@ -2159,25 +2159,9 @@ def ui_icon(nome):
 
 
 def cabecalho():
-    u = usuario_logado() or {}
-    nome = html.escape(str(u.get("nome", "") or "Usuário"))
-    perfil = html.escape(str(u.get("perfil", "") or ""))
+    """Cabeçalho desativado para evitar perda de área útil na tela."""
+    return
 
-    st.markdown(
-        f"""
-        <div class="main-header" style="display:grid;grid-template-columns:1fr 270px;align-items:center;gap:22px;">
-            <div></div>
-            <div style="text-align:right;">
-                <div style="font-weight:950;color:#082A52;font-size:14px;">{nome}</div>
-                <div style="font-weight:760;color:#64748B;font-size:12px;margin-top:4px;">{perfil}</div>
-                <div style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;background:#ECFDF5;color:#047857;border:1px solid #BBF7D0;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:950;">
-                    ● Online
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
 
 
 
@@ -2253,9 +2237,9 @@ def css_menu_institucional():
 
         .block-container {
             max-width: 1530px !important;
-            padding-top: .55rem !important;
-            padding-left: 1.65rem !important;
-            padding-right: 1.65rem !important;
+            padding-top: .35rem !important;
+            padding-left: 1.55rem !important;
+            padding-right: 1.55rem !important;
             padding-bottom: 2rem !important;
         }
 
@@ -2327,14 +2311,14 @@ def css_menu_institucional():
             border-color: rgba(255,255,255,.14) !important;
         }
         .main-header {
-            background: #FFFFFF;
-            border: 1px solid var(--siga-line);
-            border-radius: 16px;
-            box-shadow: var(--siga-shadow);
-            padding: 14px 18px;
-            margin-bottom: 22px;
-            position: relative;
-            min-height: 84px;
+            display: none !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            overflow: hidden !important;
         }
 
 .je-logo-box::after {
@@ -2366,16 +2350,15 @@ def css_menu_institucional():
         .siga-home-hero {
             display:none !important;
         }
-
         .siga-section-label {
             color: #082A52;
             font-size: 18px;
             font-weight: 950;
-            margin: 4px 0 14px 0;
+            margin: 0 0 14px 0;
             letter-spacing: -.2px;
         }
 
-        .siga-card-nav {
+.siga-card-nav {
             min-height: 156px;
             border: 1px solid #DDE8F5;
             border-top: 4px solid #0E63B6;
