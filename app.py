@@ -2157,7 +2157,6 @@ def ui_icon(nome):
 
 
 
-JUSTICA_ELEITORAL_SVG_BASE64 = """PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI3MjAiIGhlaWdodD0iMjYwIiB2aWV3Qm94PSIwIDAgNzIwIDI2MCI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeDI9IjEiIHkxPSIwIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzAwNkY3QSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwQjVGNjUiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9InNoaW5lIiB4MT0iMCIgeDI9IjEiIHkxPSIwIiB5Mj0iMCI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwLjEwIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwLjAwIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGZpbHRlciBpZD0ic29mdFNoYWRvdyIgeD0iLTIwJSIgeT0iLTIwJSIgd2lkdGg9IjE0MCUiIGhlaWdodD0iMTQwJSI+CiAgICAgIDxmZURyb3BTaGFkb3cgZHg9IjAiIGR5PSI0IiBzdGREZXZpYXRpb249IjQiIGZsb29kLWNvbG9yPSIjMDAwMDAwIiBmbG9vZC1vcGFjaXR5PSIwLjIyIi8+CiAgICA8L2ZpbHRlcj4KICA8L2RlZnM+CgogIDxyZWN0IHdpZHRoPSI3MjAiIGhlaWdodD0iMjYwIiByeD0iMjQiIGZpbGw9InVybCgjYmcpIi8+CiAgPHBhdGggZD0iTTAgMGg3MjB2MjYwSDB6IiBmaWxsPSJ1cmwoI3NoaW5lKSIvPgogIDxwYXRoIGQ9Ik0wIDAgTDIxMCAyNjAgSDAgWiIgZmlsbD0iIzAwNUQ2OCIgb3BhY2l0eT0iMC4yMiIvPgogIDxjaXJjbGUgY3g9IjYyNSIgY3k9IjQyIiByPSI5NCIgZmlsbD0iI2ZmZmZmZiIgb3BhY2l0eT0iMC4wOCIvPgoKICA8IS0tIEVtYmxlbWEgZ2VvbcOpdHJpY28gaW5zcGlyYWRvIG5hIEp1c3Rpw6dhIEVsZWl0b3JhbCAtLT4KICA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgxMjggMjYpIiBmaWx0ZXI9InVybCgjc29mdFNoYWRvdykiPgogICAgPHJlY3QgeD0iMTE4IiB5PSIxMiIgd2lkdGg9IjEyNiIgaGVpZ2h0PSIxNTIiIGZpbGw9IiNmZmZmZmYiLz4KICAgIDxwYXRoIGQ9Ik0xMzIgMjYgSDIzMCBWMTUwIEgxMzIgWiIgZmlsbD0iI0Y0QzUwMCIvPgogICAgPHBhdGggZD0iTTEzMiAxNTAgTDIzMCA4OCBWMTUwIFoiIGZpbGw9IiM2QjgwN0MiLz4KICAgIDxwYXRoIGQ9Ik0xMjQgMjAgSDIzOCBWMTU4IEgxMjQgWiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjgiLz4KCiAgICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSI1OCIgcj0iODYiIGZpbGw9IiM2MTc1OUEiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSI4Ii8+CgogICAgPCEtLSBlc3RyZWxhcyAtLT4KICAgIDxnIGZpbGw9IiNmZmZmZmYiIG9wYWNpdHk9IjAuOTYiPgogICAgICA8dGV4dCB4PSI1NCIgeT0iNDgiIGZvbnQtc2l6ZT0iMTYiIGZvbnQtZmFtaWx5PSJBcmlhbCI+4pymPC90ZXh0PgogICAgICA8dGV4dCB4PSI5MiIgeT0iMzQiIGZvbnQtc2l6ZT0iMTEiIGZvbnQtZmFtaWx5PSJBcmlhbCI+4pymPC90ZXh0PgogICAgICA8dGV4dCB4PSIxMjgiIHk9IjQ0IiBmb250LXNpemU9IjE0IiBmb250LWZhbWlseT0iQXJpYWwiPuKcpjwvdGV4dD4KICAgICAgPHRleHQgeD0iNzAiIHk9IjgyIiBmb250LXNpemU9IjExIiBmb250LWZhbWlseT0iQXJpYWwiPuKcpjwvdGV4dD4KICAgICAgPHRleHQgeD0iMTEwIiB5PSI3NCIgZm9udC1zaXplPSIxMCIgZm9udC1mYW1pbHk9IkFyaWFsIj7inKY8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjE0NSIgeT0iNzgiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtZmFtaWx5PSJBcmlhbCI+4pymPC90ZXh0PgogICAgICA8dGV4dCB4PSI0OCIgeT0iMTA2IiBmb250LXNpemU9IjEwIiBmb250LWZhbWlseT0iQXJpYWwiPuKcpjwvdGV4dD4KICAgICAgPHRleHQgeD0iODUiIHk9IjExMiIgZm9udC1zaXplPSIxMiIgZm9udC1mYW1pbHk9IkFyaWFsIj7inKY8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjEyMiIgeT0iMTA0IiBmb250LXNpemU9IjEwIiBmb250LWZhbWlseT0iQXJpYWwiPuKcpjwvdGV4dD4KICAgICAgPHRleHQgeD0iMTU0IiB5PSIxMTIiIGZvbnQtc2l6ZT0iMTMiIGZvbnQtZmFtaWx5PSJBcmlhbCI+4pymPC90ZXh0PgogICAgICA8dGV4dCB4PSI2OCIgeT0iMTM1IiBmb250LXNpemU9IjkiIGZvbnQtZmFtaWx5PSJBcmlhbCI+4pymPC90ZXh0PgogICAgICA8dGV4dCB4PSIxMDAiIHk9IjEzOCIgZm9udC1zaXplPSIxMCIgZm9udC1mYW1pbHk9IkFyaWFsIj7inKY8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjEzNiIgeT0iMTM0IiBmb250LXNpemU9IjkiIGZvbnQtZmFtaWx5PSJBcmlhbCI+4pymPC90ZXh0PgogICAgPC9nPgogIDwvZz4KCiAgPHRleHQgeD0iMjcyIiB5PSIxMTgiIGZpbGw9IiNmZmZmZmYiIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIgogICAgICAgIGZvbnQtc2l6ZT0iNTgiIGZvbnQtd2VpZ2h0PSI3MDAiIGxldHRlci1zcGFjaW5nPSItMiI+SnVzdGnDp2E8L3RleHQ+CiAgPHRleHQgeD0iMjcyIiB5PSIxODQiIGZpbGw9IiNmZmZmZmYiIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIgogICAgICAgIGZvbnQtc2l6ZT0iNTgiIGZvbnQtd2VpZ2h0PSI3MDAiIGxldHRlci1zcGFjaW5nPSItMiI+RWxlaXRvcmFsPC90ZXh0Pgo8L3N2Zz4="""
 
 def cabecalho():
     u = usuario_logado() or {}
@@ -2166,10 +2165,7 @@ def cabecalho():
 
     st.markdown(
         f"""
-        <div class="main-header" style="display:grid;grid-template-columns:340px 1fr 270px;align-items:center;gap:22px;min-height:128px;">
-            <div class="je-logo-box">
-                <img src="data:image/svg+xml;base64,{JUSTICA_ELEITORAL_SVG_BASE64}" alt="Justiça Eleitoral">
-            </div>
+        <div class="main-header" style="display:grid;grid-template-columns:1fr 270px;align-items:center;gap:22px;">
             <div></div>
             <div style="text-align:right;">
                 <div style="font-weight:950;color:#082A52;font-size:14px;">{nome}</div>
@@ -2330,34 +2326,18 @@ def css_menu_institucional():
         section[data-testid="stSidebar"] hr {
             border-color: rgba(255,255,255,.14) !important;
         }
-
         .main-header {
             background: #FFFFFF;
             border: 1px solid var(--siga-line);
             border-radius: 16px;
             box-shadow: var(--siga-shadow);
-            padding: 10px 18px;
+            padding: 14px 18px;
             margin-bottom: 22px;
             position: relative;
+            min-height: 84px;
         }
 
-        .je-logo-box {
-            background: linear-gradient(135deg, #00747E 0%, #00656D 100%);
-            border: 1px solid #D9E6F5;
-            border-radius: 14px;
-            width: 360px;
-            height: 86px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            gap: 16px;
-            color: #FFFFFF;
-            overflow:hidden;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
-            position: relative;
-        }
-
-        .je-logo-box::after {
+.je-logo-box::after {
             content: "";
             position:absolute;
             right:-42px;
@@ -2367,31 +2347,7 @@ def css_menu_institucional():
             border-radius: 50%;
             background: rgba(255,255,255,.08);
         }
-
-
-        .je-logo-box {
-            background: transparent;
-            border: none;
-            border-radius: 14px;
-            width: 320px;
-            height: 116px;
-            display:flex;
-            align-items:center;
-            justify-content:flex-start;
-            overflow:visible;
-            box-shadow: none;
-        }
-
-        .je-logo-box img {
-            width: 320px;
-            height: 116px;
-            object-fit: contain;
-            object-position: left center;
-            display:block;
-            border-radius: 14px;
-        }
-
-        .main-header h1 {
+.main-header h1 {
             font-size: 21px !important;
             line-height: 1.16 !important;
             color: #082A52 !important;
@@ -2672,11 +2628,7 @@ def css_menu_institucional():
             .main-header {
                 display:block !important;
             }
-            .je-logo-box {
-                width: 100%;
-                margin-bottom: 10px;
-            }
-        }
+}
         </style>
         """,
         unsafe_allow_html=True,
