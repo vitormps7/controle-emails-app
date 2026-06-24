@@ -2164,7 +2164,7 @@ def cabecalho():
 
     st.markdown(
         f"""
-        <div class="main-header" style="display:grid;grid-template-columns:380px 1fr 270px;align-items:center;gap:22px;">
+        <div class="main-header" style="display:grid;grid-template-columns:320px 1fr 270px;align-items:center;gap:22px;min-height:118px;">
             <div class="je-logo-box"><img src="data:image/png;base64,{JUSTICA_ELEITORAL_BASE64}" alt="Justiça Eleitoral"></div>
             <div></div>
             <div style="text-align:right;">
@@ -2286,7 +2286,7 @@ def css_menu_institucional():
             font-size: 12px;
             color: rgba(255,255,255,.70) !important;
             line-height: 1.45;
-            margin-bottom: 22px;
+            margin-bottom: 16px;
         }
 
         section[data-testid="stSidebar"] .stButton > button {
@@ -2388,7 +2388,7 @@ def css_menu_institucional():
             color: #082A52;
             font-size: 18px;
             font-weight: 950;
-            margin: 6px 0 14px 0;
+            margin: 4px 0 14px 0;
             letter-spacing: -.2px;
         }
 
