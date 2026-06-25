@@ -3534,7 +3534,6 @@ def dataframe_evolucao_mensal_por_secao(lista):
 
     temp["Mês"] = temp["Data_dt"].dt.strftime("%m/%Y")
     resumo = temp.groupby(["Mês", "Seção"]).size().reset_index(name="Total")
-    resumo["Total"] = resumo["Total"].map(numero_br)
     return resumo.sort_values(["Mês", "Seção"], ascending=[False, True])
 
 
@@ -4452,6 +4451,63 @@ def bloco_grafico_pizza_dashboard(titulo, df, coluna_rotulo, coluna_valor, altur
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+
+
+def bloco_grafico_linha_dashboard(titulo, df, coluna_x, coluna_y, coluna_grupo=None, altura=3.8):
+    st.markdown(f"<div class='table-box'><div class='table-box-title'>{titulo}</div>", unsafe_allow_html=True)
+
+    if df is None or df.empty or coluna_x not in df.columns or coluna_y not in df.columns:
+        st.info("Sem dados para exibir.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    dados = df.copy()
+    dados[coluna_y] = pd.to_numeric(dados[coluna_y], errors="coerce").fillna(0)
+    dados = dados[dados[coluna_y] > 0]
+
+    if dados.empty:
+        st.info("Sem dados para exibir.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    if not MATPLOTLIB_DISPONIVEL:
+        st.dataframe(dados, use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    try:
+        dados["_ordem_mes"] = pd.to_datetime("01/" + dados[coluna_x].astype(str), format="%d/%m/%Y", errors="coerce")
+        dados = dados.sort_values("_ordem_mes")
+    except Exception:
+        dados = dados.sort_values(coluna_x)
+
+    fig, ax = plt.subplots(figsize=(7.4, altura))
+
+    if coluna_grupo and coluna_grupo in dados.columns:
+        for grupo, sub in dados.groupby(coluna_grupo):
+            sub = sub.sort_values("_ordem_mes") if "_ordem_mes" in sub.columns else sub.sort_values(coluna_x)
+            ax.plot(sub[coluna_x].astype(str), sub[coluna_y], marker="o", linewidth=2.6, label=str(grupo))
+            for x, y in zip(sub[coluna_x].astype(str), sub[coluna_y]):
+                ax.annotate(str(int(y)), (x, y), textcoords="offset points", xytext=(0, 7), ha="center", fontsize=8)
+        ax.legend(loc="best", frameon=False, fontsize=9)
+    else:
+        ax.plot(dados[coluna_x].astype(str), dados[coluna_y], marker="o", linewidth=2.6)
+        for x, y in zip(dados[coluna_x].astype(str), dados[coluna_y]):
+            ax.annotate(str(int(y)), (x, y), textcoords="offset points", xytext=(0, 7), ha="center", fontsize=8)
+
+    ax.set_xlabel("")
+    ax.set_ylabel("Total")
+    ax.set_title(titulo, fontsize=11, fontweight="bold", pad=14)
+    ax.grid(True, axis="y", alpha=0.25)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(axis="x", labelrotation=0)
+    fig.tight_layout()
+
+    st.pyplot(fig, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def render_dashboard_secao(lista, secao):
     """Renderiza o bloco gerencial completo de uma seção."""
     m = metricas_secao(lista, secao)
@@ -4571,7 +4627,18 @@ def tela_dashboard():
         bloco_tabela_dashboard("Qualidade cadastral geral", qualidade_geral)
     with c2:
         bloco_tabela_dashboard("Alertas gerenciais gerais", alertas_gerais.head(10))
-        bloco_tabela_dashboard("Evolução mensal por seção", evolucao_secao.head(12))
+        bloco_grafico_linha_dashboard(
+            "Evolução mensal por seção",
+            evolucao_secao.head(12),
+            "Mês",
+            "Total",
+            "Seção",
+        )
+        with st.expander("Ver tabela de apoio - evolução mensal por seção", expanded=False):
+            evolucao_secao_tabela = evolucao_secao.head(12).copy()
+            if "Total" in evolucao_secao_tabela.columns:
+                evolucao_secao_tabela["Total"] = evolucao_secao_tabela["Total"].map(numero_br)
+            bloco_tabela_dashboard("Evolução mensal por seção", evolucao_secao_tabela)
 
     st.markdown(
         "<div class='mini-note'><b>Leitura gerencial:</b> a visão consolidada apresenta apenas o panorama geral. A análise operacional deve ser feita nos painéis segregados de SEPRO e SEOCE abaixo.</div>",
