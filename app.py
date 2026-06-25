@@ -2666,7 +2666,7 @@ def tela_menu_principal():
 
     st.markdown('<div class="siga-section-label">Início</div>', unsafe_allow_html=True)
 
-    linha1 = st.columns(5)
+    linha1 = st.columns(6)
     with linha1[0]:
         render_card_navegacao(
             "plus",
@@ -2696,6 +2696,15 @@ def tela_menu_principal():
         )
     with linha1[3]:
         render_card_navegacao(
+            "workflow",
+            "Inteligência gerencial",
+            "Analisar recorrências, competências COORZE/SEOCE/SEPRO, gargalos, riscos e oportunidades de orientação.",
+            "Abrir inteligência",
+            "Inteligência gerencial",
+            "card_inteligencia_gerencial",
+        )
+    with linha1[4]:
+        render_card_navegacao(
             "compass",
             "Orientações às Zonas",
             "Consultar modelos de resposta, base de conhecimento e fundamentos por assunto.",
@@ -2703,7 +2712,7 @@ def tela_menu_principal():
             "Orientações às Zonas",
             "card_orientacoes_zonas",
         )
-    with linha1[4]:
+    with linha1[5]:
         render_card_navegacao(
             "file",
             "Relatórios",
@@ -3536,6 +3545,172 @@ def dataframe_evolucao_mensal_por_secao(lista):
     resumo = temp.groupby(["Mês", "Seção"]).size().reset_index(name="Total")
     return resumo.sort_values(["Mês", "Seção"], ascending=[False, True])
 
+
+
+
+
+def normalizar_nome_gerencial(valor):
+    """Normaliza nomes para consolidar rankings sem duplicidades por caixa/acentuação básica."""
+    txt = str(valor or "").strip()
+    if not txt:
+        return "Não informado"
+
+    txt = " ".join(txt.split())
+    # Normaliza caixa preservando conectores comuns.
+    partes_minusculas = {"da", "de", "do", "das", "dos", "e"}
+    partes = []
+    for p in txt.lower().split():
+        if p in partes_minusculas:
+            partes.append(p)
+        else:
+            partes.append(p[:1].upper() + p[1:])
+    return " ".join(partes)
+
+
+def normalizar_assunto_gerencial(valor):
+    txt = str(valor or "").strip()
+    if not txt:
+        return "Não informado"
+    return " ".join(txt.split())
+
+
+def dataframe_top_servidores_normalizado(lista, limite=10):
+    df = atendimentos_df(lista)
+    if df.empty:
+        return pd.DataFrame(columns=["Servidor(a)", "Qtd."])
+
+    col = "Servidor(a)" if "Servidor(a)" in df.columns else None
+    if not col:
+        return pd.DataFrame(columns=["Servidor(a)", "Qtd."])
+
+    temp = df.copy()
+    temp["Servidor(a)"] = temp[col].apply(normalizar_nome_gerencial)
+    resumo = temp["Servidor(a)"].value_counts().head(limite).reset_index()
+    resumo.columns = ["Servidor(a)", "Qtd."]
+    return resumo
+
+
+def dataframe_top_assuntos_gerencial(lista, limite=10):
+    df = atendimentos_df(lista)
+    if df.empty or "Assunto" not in df.columns:
+        return pd.DataFrame(columns=["Assunto", "Qtd."])
+
+    temp = df.copy()
+    temp["Assunto"] = temp["Assunto"].apply(normalizar_assunto_gerencial)
+    resumo = temp["Assunto"].value_counts().head(limite).reset_index()
+    resumo.columns = ["Assunto", "Qtd."]
+    return resumo
+
+
+def dataframe_top_zonas_gerencial(lista, limite=10):
+    df = atendimentos_df(lista)
+    if df.empty or "Zona eleitoral" not in df.columns:
+        return pd.DataFrame(columns=["Zona eleitoral", "Qtd."])
+
+    temp = df.copy()
+    temp["Zona eleitoral"] = temp["Zona eleitoral"].fillna("Não informado").replace("", "Não informado")
+    resumo = temp["Zona eleitoral"].value_counts().head(limite).reset_index()
+    resumo.columns = ["Zona eleitoral", "Qtd."]
+    return resumo
+
+
+def dataframe_prazos_gerencial(lista):
+    total = len(lista or [])
+    vencidos = len([a for a in (lista or []) if prazo_vencido(a)])
+    urgentes = len([
+        a for a in (lista or [])
+        if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente"
+    ])
+    sem_responsavel = len([
+        a for a in (lista or [])
+        if atendimento_aberto(a) and not str(a.get("servidor") or "").strip()
+    ])
+    pendentes_validacao = len([
+        a for a in (lista or [])
+        if str(a.get("situacao_validacao") or "") == "Pendente de validação"
+    ])
+
+    return pd.DataFrame([
+        {"Indicador": "Total de registros", "Qtd.": total},
+        {"Indicador": "Prazos vencidos", "Qtd.": vencidos},
+        {"Indicador": "Urgentes abertas", "Qtd.": urgentes},
+        {"Indicador": "Sem responsável", "Qtd.": sem_responsavel},
+        {"Indicador": "Validação pendente", "Qtd.": pendentes_validacao},
+    ])
+
+
+def gerar_leitura_executiva(lista):
+    total = len(lista or [])
+    if total == 0:
+        return "Não há registros suficientes para leitura executiva."
+
+    realizados = len([a for a in lista if a.get("status") == STATUS_REALIZADO])
+    pendentes = total - realizados
+    taxa = (realizados / total * 100) if total else 0
+
+    top_ass = dataframe_top_assuntos_gerencial(lista, 1)
+    assunto = top_ass.iloc[0]["Assunto"] if not top_ass.empty else "não identificado"
+
+    top_srv = dataframe_top_servidores_normalizado(lista, 1)
+    servidor = top_srv.iloc[0]["Servidor(a)"] if not top_srv.empty else "não identificado"
+
+    vencidos = len([a for a in lista if prazo_vencido(a)])
+    urgentes = len([
+        a for a in lista
+        if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente"
+    ])
+
+    partes = []
+    partes.append(
+        f"O acervo analisado possui {numero_br(total)} registros, com {numero_br(realizados)} realizados "
+        f"e {numero_br(pendentes)} pendentes. A taxa de realização está em {taxa:.2f}%."
+    )
+
+    partes.append(
+        f"O assunto mais recorrente é '{assunto}', e o maior volume de registros está associado a {servidor}."
+    )
+
+    if vencidos or urgentes:
+        partes.append(
+            f"Atenção gerencial: há {numero_br(vencidos)} prazo(s) vencido(s) e {numero_br(urgentes)} demanda(s) urgente(s) aberta(s)."
+        )
+    else:
+        partes.append("Não há alertas críticos de prazo vencido ou demandas urgentes abertas no recorte atual.")
+
+    return " ".join(partes)
+
+
+def bloco_leitura_executiva(texto):
+    st.markdown(
+        f"""
+        <div style="
+            background:#FFFFFF;
+            border:1px solid #DDE8F5;
+            border-left:6px solid #0E63B6;
+            border-radius:16px;
+            padding:18px 20px;
+            box-shadow:0 8px 18px rgba(8,42,82,.055);
+            margin:12px 0 18px 0;
+            color:#173A5E;
+            line-height:1.55;
+            font-weight:650;
+        ">
+            <div style="font-size:14px;font-weight:950;color:#082A52;margin-bottom:6px;">Leitura executiva automática</div>
+            {html.escape(str(texto))}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def dataframe_para_tabela_br(df):
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        if pd.api.types.is_numeric_dtype(out[col]):
+            out[col] = out[col].map(numero_br)
+    return out
 
 
 def filtros_base(lista):
@@ -4562,6 +4737,307 @@ def render_dashboard_secao(lista, secao):
 
 
 
+
+
+
+
+def classificar_eixo_competencia(assunto, descricao=""):
+    """
+    Classificação gerencial não vinculante para apoiar a leitura das atribuições
+    da COORZE, SEOCE e SEPRO, sem criar novas colunas no banco.
+    """
+    texto = f"{assunto or ''} {descricao or ''}".casefold()
+
+    if any(t in texto for t in [
+        "cadastro", "alistamento", "título", "titulo", "eleitor", "eleitoral", "biometria",
+        "elo", "infodip", "ase", "revisão", "revisao", "atendimento ao eleitor"
+    ]):
+        return "Cadastro eleitoral e atendimento ao eleitor"
+
+    if any(t in texto for t in [
+        "pje", "processo", "sentença", "sentenca", "cumprimento", "classe processual",
+        "petição", "peticao", "tramitação", "tramitacao", "depósito judicial",
+        "deposito judicial", "sisbajud", "renajud", "sniper", "bnmp", "alvará", "alvara",
+        "prestação de contas", "prestacao de contas", "partidária", "partidaria"
+    ]):
+        return "Orientação processual e processos originários"
+
+    if any(t in texto for t in [
+        "sistema", "portal", "intranet", "internet", "conteúdo", "conteudo",
+        "publicação", "publicacao", "página", "pagina", "web"
+    ]):
+        return "Portal, sistemas e conteúdos institucionais"
+
+    if any(t in texto for t in [
+        "capacitação", "capacitacao", "treinamento", "curso", "oficina", "webinário",
+        "webinario", "boas práticas", "boas praticas"
+    ]):
+        return "Capacitação e disseminação de conhecimento"
+
+    if any(t in texto for t in [
+        "resolução", "resolucao", "provimento", "portaria", "normativo", "norma",
+        "recomendação", "recomendacao", "orientação", "orientacao", "manual", "cartilha",
+        "roteiro", "modelo"
+    ]):
+        return "Atos normativos, orientações e instrumentos de apoio"
+
+    if any(t in texto for t in [
+        "diagnóstico", "diagnostico", "levantamento", "indicador", "relatório", "relatorio",
+        "monitoramento", "acompanhamento", "projeto", "programa"
+    ]):
+        return "Diagnóstico, monitoramento e desenvolvimento das zonas"
+
+    return "Demais demandas de orientação"
+
+
+def unidade_sugerida_por_eixo(eixo):
+    if eixo == "Cadastro eleitoral e atendimento ao eleitor":
+        return "SEOCE"
+    if eixo == "Orientação processual e processos originários":
+        return "SEPRO"
+    if eixo in [
+        "Portal, sistemas e conteúdos institucionais",
+        "Capacitação e disseminação de conhecimento",
+        "Atos normativos, orientações e instrumentos de apoio",
+        "Diagnóstico, monitoramento e desenvolvimento das zonas",
+    ]:
+        return "COORZE / unidade técnica"
+    return "COORZE"
+
+
+def dataframe_eixos_competencia(lista):
+    linhas = []
+    for a in lista or []:
+        assunto = a.get("assunto") or a.get("Assunto") or "Não informado"
+        descricao = a.get("descricao") or a.get("Descrição") or a.get("observacoes") or ""
+        eixo = classificar_eixo_competencia(assunto, descricao)
+        linhas.append({
+            "Eixo de competência": eixo,
+            "Unidade sugerida": unidade_sugerida_por_eixo(eixo),
+            "Qtd.": 1,
+        })
+
+    if not linhas:
+        return pd.DataFrame(columns=["Eixo de competência", "Unidade sugerida", "Qtd."])
+
+    df = pd.DataFrame(linhas)
+    resumo = df.groupby(["Eixo de competência", "Unidade sugerida"]).size().reset_index(name="Qtd.")
+    return resumo.sort_values("Qtd.", ascending=False)
+
+
+def dataframe_recomendacoes_gerenciais(lista):
+    """
+    Gera recomendações automáticas a partir da concentração de demandas,
+    sem substituir análise da chefia.
+    """
+    linhas = []
+
+    top_assuntos = dataframe_top_assuntos_gerencial(lista, 8)
+    if not top_assuntos.empty:
+        total = len(lista or [])
+        for _, row in top_assuntos.iterrows():
+            assunto = row.get("Assunto", "Não informado")
+            qtd = int(row.get("Qtd.", 0) or 0)
+            proporcao = (qtd / total * 100) if total else 0
+            eixo = classificar_eixo_competencia(assunto)
+
+            if qtd >= 10 or proporcao >= 8:
+                providencia = "Avaliar elaboração ou atualização de orientação, modelo de resposta ou item da base de conhecimento."
+                if eixo == "Cadastro eleitoral e atendimento ao eleitor":
+                    providencia = "Avaliar orientação SEOCE, roteiro operacional ou comunicado sobre cadastro/atendimento ao eleitor."
+                elif eixo == "Orientação processual e processos originários":
+                    providencia = "Avaliar orientação SEPRO, fluxo processual, modelo de despacho ou guia operacional."
+                elif eixo == "Capacitação e disseminação de conhecimento":
+                    providencia = "Avaliar ação de capacitação, oficina ou material de boas práticas."
+                elif eixo == "Portal, sistemas e conteúdos institucionais":
+                    providencia = "Avaliar atualização do portal da Corregedoria, intranet ou página de apoio às zonas."
+
+                linhas.append({
+                    "Prioridade": "Alta" if qtd >= 20 or proporcao >= 15 else "Média",
+                    "Achado": f"Recorrência do assunto: {assunto}",
+                    "Eixo": eixo,
+                    "Unidade": unidade_sugerida_por_eixo(eixo),
+                    "Providência sugerida": providencia,
+                    "Qtd.": qtd,
+                })
+
+    vencidos = len([a for a in lista or [] if prazo_vencido(a)])
+    if vencidos:
+        linhas.append({
+            "Prioridade": "Alta",
+            "Achado": "Existem demandas com prazo vencido",
+            "Eixo": "Diagnóstico, monitoramento e desenvolvimento das zonas",
+            "Unidade": "COORZE",
+            "Providência sugerida": "Avaliar redistribuição, reforço de acompanhamento e definição de plano de saneamento.",
+            "Qtd.": vencidos,
+        })
+
+    sem_resp = len([
+        a for a in lista or []
+        if atendimento_aberto(a) and not str(a.get("servidor") or "").strip()
+    ])
+    if sem_resp:
+        linhas.append({
+            "Prioridade": "Alta",
+            "Achado": "Demandas abertas sem responsável",
+            "Eixo": "Planejamento, coordenação e supervisão",
+            "Unidade": "COORZE",
+            "Providência sugerida": "Promover triagem imediata e designação de responsável.",
+            "Qtd.": sem_resp,
+        })
+
+    if not linhas:
+        linhas.append({
+            "Prioridade": "Informativa",
+            "Achado": "Não foram identificados alertas críticos no recorte atual",
+            "Eixo": "Gestão",
+            "Unidade": "COORZE",
+            "Providência sugerida": "Manter acompanhamento periódico dos indicadores.",
+            "Qtd.": 0,
+        })
+
+    return pd.DataFrame(linhas)
+
+
+def dataframe_matriz_competencias():
+    return pd.DataFrame([
+        {
+            "Unidade": "COORZE",
+            "Foco": "Planejamento, coordenação, supervisão, uniformização, diagnóstico, capacitação e portal",
+            "Como o SIGA-COR apoia": "Painel consolidado, inteligência gerencial, leitura executiva, alertas e relatórios de acompanhamento."
+        },
+        {
+            "Unidade": "SEOCE",
+            "Foco": "Cadastro Eleitoral, atendimento ao eleitor, rotinas cartorárias e cronogramas operacionais",
+            "Como o SIGA-COR apoia": "Classificação de demandas de cadastro, recorrências, dúvidas das zonas e indicação de necessidade de orientação."
+        },
+        {
+            "Unidade": "SEPRO",
+            "Foco": "Legislação eleitoral e partidária, prática processual, processos originários e procedimentos administrativos",
+            "Como o SIGA-COR apoia": "Base de conhecimento, modelos de resposta, histórico de orientações, assuntos processuais recorrentes e relatórios técnicos."
+        },
+    ])
+
+
+def bloco_competencias_coorze():
+    st.markdown(
+        """
+        <div style="
+            background:#FFFFFF;
+            border:1px solid #DDE8F5;
+            border-left:6px solid #0E63B6;
+            border-radius:16px;
+            padding:16px 18px;
+            box-shadow:0 8px 18px rgba(8,42,82,.055);
+            margin:12px 0 18px 0;
+            color:#173A5E;
+            line-height:1.55;
+        ">
+            <div style="font-size:14px;font-weight:950;color:#082A52;margin-bottom:6px;">
+                Enquadramento institucional da leitura gerencial
+            </div>
+            A inteligência abaixo cruza os registros do SIGA-COR com os eixos de atuação da COORZE, SEOCE e SEPRO,
+            apoiando a identificação de demandas recorrentes, necessidades de orientação, capacitação, atualização de
+            conteúdos, aperfeiçoamento de rotinas e acompanhamento das zonas eleitorais.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def tela_inteligencia_gerencial():
+    st.title("Inteligência Gerencial")
+    st.caption("Leitura estratégica dos atendimentos, recorrências, gargalos, riscos operacionais e aderência às atribuições da COORZE, SEOCE e SEPRO.")
+
+    lista = filtros_base(atendimentos())
+
+    bloco_competencias_coorze()
+    bloco_leitura_executiva(gerar_leitura_executiva(lista))
+
+    total = len(lista or [])
+    realizados = len([a for a in lista if a.get("status") == STATUS_REALIZADO])
+    pendentes = total - realizados
+    taxa = (realizados / total * 100) if total else 0
+    vencidos = len([a for a in lista if prazo_vencido(a)])
+    urgentes = len([
+        a for a in lista
+        if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente"
+    ])
+
+    st.markdown("<div class='dash-section-title'>Indicadores estratégicos</div>", unsafe_allow_html=True)
+    k1, k2, k3, k4, k5 = st.columns(5)
+    with k1:
+        render_metric_card("Total", numero_br(total), "#174A7C")
+    with k2:
+        render_metric_card("Realizados", numero_br(realizados), "#2E7D32")
+    with k3:
+        render_metric_card("Pendentes", numero_br(pendentes), "#F2994A")
+    with k4:
+        render_metric_card("% realizado", percentual_br(taxa), "#6F42C1")
+    with k5:
+        render_metric_card("Prazo vencido", numero_br(vencidos), "#B00020" if vencidos else "#174A7C")
+
+    st.markdown("<div class='dash-section-title'>Recorrências e concentração de demanda</div>", unsafe_allow_html=True)
+
+    top_assuntos_raw = dataframe_top_assuntos_gerencial(lista, 8)
+    top_servidores_raw = dataframe_top_servidores_normalizado(lista, 8)
+    top_zonas_raw = dataframe_top_zonas_gerencial(lista, 8)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        bloco_grafico_pizza_dashboard("Assuntos mais recorrentes", top_assuntos_raw, "Assunto", "Qtd.")
+    with c2:
+        bloco_grafico_pizza_dashboard("Distribuição por servidor(a)", top_servidores_raw, "Servidor(a)", "Qtd.")
+
+    c3, c4 = st.columns([1.35, 1])
+    with c3:
+        bloco_grafico_linha_dashboard(
+            "Evolução mensal por seção",
+            dataframe_evolucao_mensal_por_secao(lista).head(12),
+            "Mês",
+            "Total",
+            "Seção",
+        )
+    with c4:
+        bloco_tabela_dashboard(
+            "Riscos e alertas operacionais",
+            dataframe_para_tabela_br(dataframe_prazos_gerencial(lista)),
+        )
+
+    st.markdown("<div class='dash-section-title'>Zonas e assuntos críticos</div>", unsafe_allow_html=True)
+    z1, z2 = st.columns(2)
+    with z1:
+        bloco_grafico_pizza_dashboard("Zonas mais demandantes", top_zonas_raw, "Zona eleitoral", "Qtd.")
+    with z2:
+        alertas = dataframe_alertas_gerenciais(lista)
+        bloco_tabela_dashboard("Demandas que exigem atenção", alertas.head(10) if not alertas.empty else alertas)
+
+
+    st.markdown("<div class='dash-section-title'>Aderência às competências COORZE / SEOCE / SEPRO</div>", unsafe_allow_html=True)
+
+    eixos = dataframe_eixos_competencia(lista)
+    recomendacoes = dataframe_recomendacoes_gerenciais(lista)
+
+    ec1, ec2 = st.columns([1.15, 1])
+    with ec1:
+        bloco_grafico_pizza_dashboard("Demandas por eixo de competência", eixos, "Eixo de competência", "Qtd.")
+    with ec2:
+        bloco_tabela_dashboard("Recomendações automáticas de gestão", dataframe_para_tabela_br(recomendacoes.head(8)))
+
+    with st.expander("Matriz institucional de competências", expanded=False):
+        bloco_tabela_dashboard("COORZE, SEOCE e SEPRO - matriz de atuação", dataframe_matriz_competencias())
+
+    with st.expander("Tabelas de apoio da inteligência gerencial", expanded=False):
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            bloco_tabela_dashboard("Top assuntos", dataframe_para_tabela_br(top_assuntos_raw))
+        with a2:
+            bloco_tabela_dashboard("Top servidores", dataframe_para_tabela_br(top_servidores_raw))
+        with a3:
+            bloco_tabela_dashboard("Top zonas", dataframe_para_tabela_br(top_zonas_raw))
+
+
+
 def tela_dashboard():
     st.subheader("Dashboard")
 
@@ -4680,7 +5156,8 @@ def tela_dashboard():
         fonte_tbl.columns = ["Fonte", "Qtd."]
         fonte_tbl["Qtd."] = fonte_tbl["Qtd."].map(numero_br)
 
-        top_servidores_raw = df["Servidor(a)"].fillna("Não informado").replace("", "Não informado").value_counts().head(8).reset_index()
+        temp_servidores = df["Servidor(a)"].fillna("Não informado").replace("", "Não informado").apply(normalizar_nome_gerencial)
+        top_servidores_raw = temp_servidores.value_counts().head(8).reset_index()
         top_servidores_raw.columns = ["Servidor(a)", "Qtd."]
         top_servidores = top_servidores_raw.copy()
         top_servidores["Qtd."] = top_servidores["Qtd."].map(numero_br)
