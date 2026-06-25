@@ -1629,7 +1629,7 @@ def salvar_assuntos(lista):
 def registrar_usuario_logado(usuario):
     """
     Registra ou atualiza a sessão ativa do usuário.
-    Este registro funciona como 'presença' no sistema.
+    Usa apenas colunas básicas da tabela sessoes para compatibilidade com o banco atual.
     """
     if not usuario:
         return
@@ -1644,17 +1644,22 @@ def registrar_usuario_logado(usuario):
         "perfil": usuario.get("perfil", "Usuário"),
         "ativo": True,
         "ultimo_login": agora_iso(),
-        "ultimo_ping": agora_iso(),
         "ultimo_logout": None,
     }
 
-    supabase_upsert("sessoes", row, "email")
+    try:
+        supabase_upsert("sessoes", row, "email")
+        cache_sessao_limpar("usuarios_logados")
+    except Exception:
+        # Não impede o login se o registro de presença falhar.
+        pass
+
 
 
 def atualizar_presenca_usuario_logado():
     """
     Atualiza o horário da sessão do usuário atualmente logado.
-    Assim, o Dashboard conta apenas quem acessou/interagiu recentemente.
+    Usa apenas colunas básicas da tabela sessoes para evitar erro 400 por coluna inexistente.
     """
     usuario = usuario_logado()
     if not usuario:
@@ -1673,7 +1678,6 @@ def atualizar_presenca_usuario_logado():
                 "perfil": usuario.get("perfil", "Usuário"),
                 "ativo": True,
                 "ultimo_login": agora_iso(),
-                "ultimo_ping": agora_iso(),
                 "ultimo_logout": None,
             },
             "email"
@@ -1681,7 +1685,9 @@ def atualizar_presenca_usuario_logado():
         cache_sessao_limpar("usuarios_logados")
     except Exception:
         # Não interrompe o sistema se a atualização de presença falhar.
+        # O painel ainda contará o usuário atual pela sessão local.
         pass
+
 
 
 def remover_usuario_logado():
@@ -1693,22 +1699,23 @@ def remover_usuario_logado():
     if not email:
         return
 
-    supabase_update("sessoes", {"ativo": False, "ultimo_logout": agora_iso()}, "email", email)
-    cache_sessao_limpar("usuarios_logados")
+    try:
+        supabase_update("sessoes", {"ativo": False, "ultimo_logout": agora_iso()}, "email", email)
+        cache_sessao_limpar("usuarios_logados")
+    except Exception:
+        pass
+
 
 
 def sessao_esta_ativa(row):
     """
     Considera ativo apenas quem teve atualização de presença dentro da janela definida.
-    Prioriza ultimo_ping e usa ultimo_login como contingência.
-    Isso evita contar como logado quem fechou o navegador sem sair do sistema.
+    Usa ultimo_login, pois a tabela sessoes pode não possuir a coluna ultimo_ping.
     """
     if not row or not row.get("ativo", False):
         return False
 
-    ultimo_ping = obter_data_hora_atendimento(row.get("ultimo_ping"))
-    ultimo_login = obter_data_hora_atendimento(row.get("ultimo_login"))
-    ultimo = ultimo_ping or ultimo_login
+    ultimo = obter_data_hora_atendimento(row.get("ultimo_login"))
     if not ultimo:
         return False
 
@@ -1720,8 +1727,8 @@ def sessao_esta_ativa(row):
 def usuarios_logados():
     """
     Retorna usuários ativos sem fazer limpeza automática no banco.
-    A limpeza por PATCH em cada sessão antiga deixava o painel lento.
-    Garante também a inclusão do usuário da sessão atual.
+    Não depende da coluna ultimo_ping.
+    Garante também a inclusão do usuário da sessão atual para não exibir zero indevidamente.
     """
     cached = cache_sessao_get("usuarios_logados", ttl_segundos=30)
     if cached is not None:
@@ -1729,7 +1736,7 @@ def usuarios_logados():
 
     rows = supabase_get_silencioso(
         "sessoes",
-        {"select": "email,nome,ultimo_login,ultimo_ping,ativo", "ativo": "eq.true", "order": "ultimo_login.desc"}
+        {"select": "email,nome,ultimo_login,ativo", "ativo": "eq.true", "order": "ultimo_login.desc"}
     ) or []
 
     ativos = [row for row in rows if sessao_esta_ativa(row)]
@@ -1741,11 +1748,11 @@ def usuarios_logados():
             "email": email_atual,
             "nome": atual.get("nome", email_atual),
             "ultimo_login": agora_iso(),
-            "ultimo_ping": agora_iso(),
             "ativo": True,
         })
 
     return cache_sessao_set("usuarios_logados", ativos)
+
 
 
 def email_institucional(email):
