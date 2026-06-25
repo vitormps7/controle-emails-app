@@ -1644,6 +1644,7 @@ def registrar_usuario_logado(usuario):
         "perfil": usuario.get("perfil", "Usuário"),
         "ativo": True,
         "ultimo_login": agora_iso(),
+        "ultimo_ping": agora_iso(),
         "ultimo_logout": None,
     }
 
@@ -1672,10 +1673,12 @@ def atualizar_presenca_usuario_logado():
                 "perfil": usuario.get("perfil", "Usuário"),
                 "ativo": True,
                 "ultimo_login": agora_iso(),
+                "ultimo_ping": agora_iso(),
                 "ultimo_logout": None,
             },
             "email"
         )
+        cache_sessao_limpar("usuarios_logados")
     except Exception:
         # Não interrompe o sistema se a atualização de presença falhar.
         pass
@@ -1691,17 +1694,21 @@ def remover_usuario_logado():
         return
 
     supabase_update("sessoes", {"ativo": False, "ultimo_logout": agora_iso()}, "email", email)
+    cache_sessao_limpar("usuarios_logados")
 
 
 def sessao_esta_ativa(row):
     """
     Considera ativo apenas quem teve atualização de presença dentro da janela definida.
+    Prioriza ultimo_ping e usa ultimo_login como contingência.
     Isso evita contar como logado quem fechou o navegador sem sair do sistema.
     """
     if not row or not row.get("ativo", False):
         return False
 
-    ultimo = obter_data_hora_atendimento(row.get("ultimo_login"))
+    ultimo_ping = obter_data_hora_atendimento(row.get("ultimo_ping"))
+    ultimo_login = obter_data_hora_atendimento(row.get("ultimo_login"))
+    ultimo = ultimo_ping or ultimo_login
     if not ultimo:
         return False
 
@@ -1714,8 +1721,9 @@ def usuarios_logados():
     """
     Retorna usuários ativos sem fazer limpeza automática no banco.
     A limpeza por PATCH em cada sessão antiga deixava o painel lento.
+    Garante também a inclusão do usuário da sessão atual.
     """
-    cached = cache_sessao_get("usuarios_logados", ttl_segundos=90)
+    cached = cache_sessao_get("usuarios_logados", ttl_segundos=30)
     if cached is not None:
         return cached
 
@@ -1725,6 +1733,18 @@ def usuarios_logados():
     ) or []
 
     ativos = [row for row in rows if sessao_esta_ativa(row)]
+
+    atual = usuario_logado() or {}
+    email_atual = normalizar_email(atual.get("email"))
+    if email_atual and not any(normalizar_email(r.get("email")) == email_atual for r in ativos):
+        ativos.insert(0, {
+            "email": email_atual,
+            "nome": atual.get("nome", email_atual),
+            "ultimo_login": agora_iso(),
+            "ultimo_ping": agora_iso(),
+            "ativo": True,
+        })
+
     return cache_sessao_set("usuarios_logados", ativos)
 
 
@@ -4370,6 +4390,61 @@ def metricas_secao(lista, secao):
 
 
 
+
+def bloco_grafico_pizza_dashboard(titulo, df, coluna_rotulo, coluna_valor, altura=3.6):
+    st.markdown(f"<div class='table-box'><div class='table-box-title'>{titulo}</div>", unsafe_allow_html=True)
+
+    if df is None or df.empty or coluna_rotulo not in df.columns or coluna_valor not in df.columns:
+        st.info("Sem dados para exibir.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    dados = df.copy()[[coluna_rotulo, coluna_valor]].dropna()
+    if dados.empty:
+        st.info("Sem dados para exibir.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    dados[coluna_rotulo] = dados[coluna_rotulo].astype(str)
+    dados[coluna_valor] = pd.to_numeric(dados[coluna_valor], errors="coerce").fillna(0)
+    dados = dados[dados[coluna_valor] > 0]
+
+    if dados.empty:
+        st.info("Sem dados para exibir.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    if not MATPLOTLIB_DISPONIVEL:
+        st.dataframe(dados, use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    fig, ax = plt.subplots(figsize=(6.0, altura))
+    wedges, _, _ = ax.pie(
+        dados[coluna_valor],
+        startangle=90,
+        labels=None,
+        autopct=lambda p: f"{p:.1f}%" if p >= 4 else "",
+        pctdistance=0.76,
+        wedgeprops={"linewidth": 1.0, "edgecolor": "white"},
+        textprops={"fontsize": 9},
+    )
+    ax.axis("equal")
+    ax.legend(
+        wedges,
+        [f"{rot} ({int(val)})" for rot, val in zip(dados[coluna_rotulo], dados[coluna_valor])],
+        title=coluna_rotulo,
+        loc="center left",
+        bbox_to_anchor=(1.0, 0.5),
+        fontsize=9,
+        title_fontsize=10,
+        frameon=False,
+    )
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def render_dashboard_secao(lista, secao):
     """Renderiza o bloco gerencial completo de uma seção."""
     m = metricas_secao(lista, secao)
@@ -4512,7 +4587,9 @@ def tela_dashboard():
     situacao = pd.DataFrame(columns=["Situação", "Qtd."])
     fonte_tbl = pd.DataFrame(columns=["Fonte", "Qtd."])
     top_servidores = pd.DataFrame(columns=["Servidor(a)", "Qtd."])
+    top_servidores_raw = pd.DataFrame(columns=["Servidor(a)", "Qtd."])
     top_assuntos = pd.DataFrame(columns=["Assunto", "Qtd."])
+    top_assuntos_raw = pd.DataFrame(columns=["Assunto", "Qtd."])
     top_zonas = pd.DataFrame(columns=["Zona eleitoral", "Qtd."])
     meses_maior = pd.DataFrame(columns=["Mês", "Total"])
     ultimos_meses = pd.DataFrame(columns=["Mês", "Total"])
@@ -4529,12 +4606,14 @@ def tela_dashboard():
         fonte_tbl.columns = ["Fonte", "Qtd."]
         fonte_tbl["Qtd."] = fonte_tbl["Qtd."].map(numero_br)
 
-        top_servidores = df["Servidor(a)"].fillna("Não informado").replace("", "Não informado").value_counts().head(8).reset_index()
-        top_servidores.columns = ["Servidor(a)", "Qtd."]
+        top_servidores_raw = df["Servidor(a)"].fillna("Não informado").replace("", "Não informado").value_counts().head(8).reset_index()
+        top_servidores_raw.columns = ["Servidor(a)", "Qtd."]
+        top_servidores = top_servidores_raw.copy()
         top_servidores["Qtd."] = top_servidores["Qtd."].map(numero_br)
 
-        top_assuntos = df["Assunto"].fillna("Não informado").replace("", "Não informado").value_counts().head(8).reset_index()
-        top_assuntos.columns = ["Assunto", "Qtd."]
+        top_assuntos_raw = df["Assunto"].fillna("Não informado").replace("", "Não informado").value_counts().head(8).reset_index()
+        top_assuntos_raw.columns = ["Assunto", "Qtd."]
+        top_assuntos = top_assuntos_raw.copy()
         top_assuntos["Qtd."] = top_assuntos["Qtd."].map(numero_br)
 
         if "Zona eleitoral" in df.columns:
@@ -4591,9 +4670,13 @@ def tela_dashboard():
 
     area4, area5, area6 = st.columns([2.2, 2.2, 0.9])
     with area4:
-        bloco_tabela_dashboard("Top servidores - geral", top_servidores)
+        bloco_grafico_pizza_dashboard("Top servidores - geral", top_servidores_raw, "Servidor(a)", "Qtd.")
+        with st.expander("Ver tabela de apoio", expanded=False):
+            bloco_tabela_dashboard("Top servidores - geral", top_servidores)
     with area5:
-        bloco_tabela_dashboard("Top assuntos - geral", top_assuntos)
+        bloco_grafico_pizza_dashboard("Top assuntos - geral", top_assuntos_raw, "Assunto", "Qtd.")
+        with st.expander("Ver tabela de apoio", expanded=False):
+            bloco_tabela_dashboard("Top assuntos - geral", top_assuntos)
     with area6:
         bloco_tabela_dashboard("Últimos meses - geral", ultimos_meses)
 
