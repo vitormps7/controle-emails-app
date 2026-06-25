@@ -2797,6 +2797,7 @@ def sidebar_menu():
         ("Novo atendimento  ›", "Novo atendimento"),
         ("Validação da chefia  ›", "Validação da chefia"),
         ("Painel gerencial  ›", "Dashboard"),
+        ("Inteligência gerencial  ›", "Inteligência gerencial"),
         ("Orientações às Zonas  ›", "Orientações às Zonas"),
         ("Relatórios  ›", "Relatórios e exportação"),
     ]
@@ -4948,6 +4949,7 @@ def bloco_competencias_coorze():
 def tela_inteligencia_gerencial():
     st.title("Inteligência Gerencial")
     st.caption("Leitura estratégica dos atendimentos, recorrências, gargalos, riscos operacionais e aderência às atribuições da COORZE, SEOCE e SEPRO.")
+    st.info("Painel estratégico da COORZE: leitura automática, recorrências, eixos de competência, riscos, zonas demandantes e recomendações gerenciais.")
 
     lista = filtros_base(atendimentos())
 
@@ -7750,6 +7752,9 @@ def main():
 
     elif escolha == "Dashboard":
         tela_dashboard()
+
+    elif escolha == "Inteligência gerencial":
+        tela_inteligencia_gerencial()
 
     elif escolha == "Meus atendimentos":
         tela_meus_atendimentos()
