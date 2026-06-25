@@ -954,19 +954,70 @@ def criar_item_base_conhecimento(atendimento):
         "criado_por_email": usuario.get("email", ""),
         "criado_por_nome": usuario.get("nome", ""),
         "ativo": True,
+        "versao": 1,
+        "superada": False,
+        "motivo_superacao": "",
         "criado_em": agora_iso(),
         "atualizado_em": agora_iso(),
     }
-    supabase_insert_silencioso("base_conhecimento", [row])
+    criado = supabase_insert_silencioso("base_conhecimento", [row])
+    if criado and isinstance(criado, list) and criado[0].get("id"):
+        codigo = codigo_base_conhecimento(criado[0])
+        try:
+            supabase_update_silencioso(
+                "base_conhecimento",
+                {"codigo_cadastro": codigo, "atualizado_em": agora_iso()},
+                "id",
+                criado[0].get("id")
+            )
+        except Exception:
+            pass
+        registrar_historico_memoria("base_conhecimento", criado[0].get("id"), codigo, "Criação", "Item gerado a partir de atendimento.")
     registrar_auditoria_atendimento(atendimento.get("id"), "base_conhecimento", "gerar_precedente", "", "Item gerado")
 
 
 
 def codigo_base_conhecimento(valor):
+    """
+    Retorna o código institucional da base.
+    Aceita tanto o id quanto a linha completa do banco.
+    """
+    if isinstance(valor, dict):
+        codigo = str(valor.get("codigo_cadastro") or "").strip()
+        if codigo:
+            return codigo
+        valor = valor.get("id")
+
     try:
         return f"BC-{int(valor):06d}"
     except Exception:
         return "BC-000000"
+
+
+
+
+def registrar_historico_memoria(tipo_registro, registro_id, codigo, acao, descricao=""):
+    usuario = usuario_logado() or {}
+    row = {
+        "tipo_registro": tipo_registro,
+        "registro_id": registro_id,
+        "codigo": codigo,
+        "acao": acao,
+        "descricao": descricao,
+        "usuario_email": usuario.get("email", ""),
+        "usuario_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+    }
+    supabase_insert_silencioso("historico_memoria_institucional", [row])
+
+
+def historico_memoria_rows(tipo_registro=None, registro_id=None):
+    params = {"select": "*", "order": "criado_em.desc"}
+    if tipo_registro:
+        params["tipo_registro"] = f"eq.{tipo_registro}"
+    if registro_id:
+        params["registro_id"] = f"eq.{registro_id}"
+    return supabase_get_silencioso("historico_memoria_institucional", params)
 
 
 def usos_base_conhecimento_atendimento(atendimento_id):
@@ -976,9 +1027,9 @@ def usos_base_conhecimento_atendimento(atendimento_id):
     )
 
 
-def registrar_uso_base_conhecimento(atendimento, base_item, forma_uso="Resposta"):
+def registrar_uso_base_conhecimento(atendimento, base_item, forma_uso="Resposta", trecho_utilizado="", observacao=""):
     usuario = usuario_logado() or {}
-    codigo = codigo_base_conhecimento(base_item.get("id"))
+    codigo = codigo_base_conhecimento(base_item)
 
     row = {
         "atendimento_id": atendimento.get("id"),
@@ -986,6 +1037,8 @@ def registrar_uso_base_conhecimento(atendimento, base_item, forma_uso="Resposta"
         "codigo_base": codigo,
         "assunto": base_item.get("assunto") or atendimento.get("assunto") or "Não informado",
         "forma_uso": forma_uso,
+        "trecho_utilizado": trecho_utilizado or base_item.get("orientacao_adotada") or "",
+        "observacao": observacao or "",
         "usado_por_email": usuario.get("email", ""),
         "usado_por_nome": usuario.get("nome", ""),
         "criado_em": agora_iso(),
@@ -995,11 +1048,12 @@ def registrar_uso_base_conhecimento(atendimento, base_item, forma_uso="Resposta"
 
     descricao = f"Usada a base de conhecimento {codigo} para resposta do atendimento."
     registrar_historico_atendimento(atendimento.get("id"), "Base de conhecimento", descricao, base_item.get("orientacao_adotada", ""))
+    registrar_historico_memoria("base_conhecimento", base_item.get("id"), codigo, "Uso em atendimento", f"Usada no atendimento nº {atendimento.get('id')}.")
     registrar_auditoria_atendimento(atendimento.get("id"), "base_conhecimento", "uso_base", "", descricao)
 
 
 def bases_por_assunto_e_secao(assunto=None, secao=None):
-    rows = base_conhecimento_rows()
+    rows = base_conhecimento_rows(incluir_superadas=False)
     assunto_norm = str(assunto or "").strip().casefold()
     secao_norm = normalizar_secao(secao) if secao else None
 
@@ -1217,8 +1271,11 @@ def gerar_relatorio_pdf_base_conhecimento(df, filtros_aplicados):
 
 
 
-def base_conhecimento_rows():
-    return supabase_get_silencioso("base_conhecimento", {"select": "*", "ativo": "eq.true", "order": "criado_em.desc"})
+def base_conhecimento_rows(incluir_superadas=True):
+    rows = supabase_get_silencioso("base_conhecimento", {"select": "*", "ativo": "eq.true", "order": "criado_em.desc"}) or []
+    if not incluir_superadas:
+        rows = [r for r in rows if not r.get("superada", False)]
+    return rows
 
 
 def auditoria_atendimento(atendimento_id):
@@ -4046,7 +4103,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
 
                         atendimento_atualizado["atualizado_em"] = agora_iso()
                         salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "uso de base de conhecimento")
-                        registrar_uso_base_conhecimento(atendimento_atualizado, base_item, "Resposta")
+                        registrar_uso_base_conhecimento(atendimento_atualizado, base_item, "Resposta", texto_base)
                         st.success(f"Base {codigo} registrada e adicionada à providência adotada.")
                         st.rerun()
 
@@ -6624,7 +6681,7 @@ def tela_modelos_resposta():
         colunas_exibir = [
             "id", "secao", "assunto", "titulo", "fundamento_normativo",
             "criado_por_nome", "criado_por_email", "criado_em",
-            "superada", "data_superacao", "superada_por_nome", "motivo_superacao"
+            "versao", "superada", "data_superacao", "superada_por_nome", "motivo_superacao", "modelo_substituto_id"
         ]
         colunas_exibir = [c for c in colunas_exibir if c in df_exibir.columns]
         st.dataframe(df_exibir[colunas_exibir], use_container_width=True, hide_index=True)
@@ -6666,6 +6723,7 @@ def tela_modelos_resposta():
                         "criado_por_email": usuario.get("email", ""),
                         "criado_por_nome": usuario.get("nome", ""),
                         "ativo": True,
+                        "versao": 1,
                         "superada": False,
                         "data_superacao": None,
                         "motivo_superacao": "",
@@ -6719,6 +6777,13 @@ def tela_modelos_resposta():
                 titulo_edit = st.text_input("Título", value=modelo.get("titulo", ""), key=f"modelo_titulo_edit_{modelo_id}")
             with col2:
                 fundamento_edit = st.text_area("Fundamento normativo", value=modelo.get("fundamento_normativo", ""), key=f"modelo_fund_edit_{modelo_id}")
+                versao_modelo_edit = st.number_input(
+                    "Versão",
+                    min_value=1,
+                    step=1,
+                    value=int(modelo.get("versao") or 1),
+                    key=f"modelo_versao_edit_{modelo_id}"
+                )
                 st.caption(f"Data do modelo: {formatar_data_hora_brasilia(modelo.get('criado_em')) if modelo.get('criado_em') else 'Não registrada'}")
                 st.caption(f"Última atualização: {formatar_data_hora_brasilia(modelo.get('atualizado_em')) if modelo.get('atualizado_em') else 'Não registrada'}")
 
@@ -6749,6 +6814,10 @@ def tela_modelos_resposta():
                 "titulo": titulo_edit.strip(),
                 "texto_modelo": texto_edit.strip(),
                 "fundamento_normativo": fundamento_edit.strip(),
+                "versao": int(versao_modelo_edit),
+                "data_revisao": agora_iso(),
+                "revisado_por_email": usuario.get("email", ""),
+                "revisado_por_nome": usuario.get("nome", ""),
                 "superada": bool(superada_edit),
                 "motivo_superacao": motivo_superacao.strip(),
                 "atualizado_em": agora_iso(),
@@ -6879,7 +6948,7 @@ def tela_base_conhecimento():
     st.subheader("Base de conhecimento")
     st.caption("Repositório de orientações extraídas dos atendimentos concluídos.")
 
-    rows = base_conhecimento_rows()
+    rows = base_conhecimento_rows(incluir_superadas=True)
     df = pd.DataFrame(rows)
 
     st.markdown("### Consulta e relatório gerencial da base")
@@ -6887,6 +6956,7 @@ def tela_base_conhecimento():
     colf1, colf2 = st.columns(2)
     with colf1:
         busca = st.text_input("Pesquisar na base de conhecimento", key="bc_busca")
+        incluir_superadas = st.checkbox("Exibir orientações superadas", value=True, key="bc_incluir_superadas")
         secao_filtro = st.multiselect("Seção", secoes_atendimento(), key="bc_secao")
         assuntos_disponiveis = sorted(df["assunto"].dropna().astype(str).unique()) if not df.empty and "assunto" in df.columns else []
         assunto_filtro = st.multiselect("Assunto", assuntos_disponiveis, key="bc_assunto")
@@ -6909,6 +6979,9 @@ def tela_base_conhecimento():
         if busca:
             termo = busca.casefold()
             df = df[df.astype(str).apply(lambda linha: linha.str.casefold().str.contains(termo, na=False).any(), axis=1)]
+
+        if not incluir_superadas and "superada" in df.columns:
+            df = df[~df["superada"].fillna(False).astype(bool)]
 
         if secao_filtro and "secao" in df.columns:
             df = df[df["secao"].isin(secao_filtro)]
@@ -6934,9 +7007,10 @@ def tela_base_conhecimento():
 
     if not df.empty:
         colunas_prioritarias = [
-            "Código", "secao", "assunto", "categoria", "resumo_duvida",
-            "orientacao_adotada", "fundamento_normativo", "criado_por_nome",
-            "criado_por_email", "criado_em", "atualizado_em"
+            "Código", "codigo_cadastro", "secao", "assunto", "categoria", "resumo_duvida",
+            "orientacao_adotada", "fundamento_normativo", "versao", "superada",
+            "data_superacao", "motivo_superacao", "substituida_por_base_id",
+            "criado_por_nome", "criado_por_email", "criado_em", "atualizado_em"
         ]
         colunas_exibir = [c for c in colunas_prioritarias if c in df.columns]
         demais = [c for c in df.columns if c not in colunas_exibir]
@@ -6949,6 +7023,7 @@ def tela_base_conhecimento():
     filtros_pdf = {
         "Quantidade de registros": numero_br(len(df)),
         "Seção": secao_filtro,
+        "Exibir superadas": "Sim" if incluir_superadas else "Não",
         "Assunto": assunto_filtro,
         "Quem cadastrou": cadastrador_filtro,
         "Data inicial": data_inicio.strftime("%d/%m/%Y") if data_inicio else "",
@@ -7025,15 +7100,175 @@ def tela_base_conhecimento():
                 "criado_por_email": usuario.get("email", ""),
                 "criado_por_nome": usuario.get("nome", ""),
                 "ativo": True,
+                "versao": 1,
+                "superada": False,
+                "motivo_superacao": "",
                 "criado_em": agora_iso(),
                 "atualizado_em": agora_iso(),
             }
             criado = supabase_insert_silencioso("base_conhecimento", [row])
             if criado and isinstance(criado, list) and criado[0].get("id"):
-                st.success(f"Orientação cadastrada sob o nº {codigo_base_conhecimento(criado[0].get('id'))}.")
+                codigo = codigo_base_conhecimento(criado[0])
+                try:
+                    supabase_update_silencioso(
+                        "base_conhecimento",
+                        {"codigo_cadastro": codigo, "atualizado_em": agora_iso()},
+                        "id",
+                        criado[0].get("id")
+                    )
+                except Exception:
+                    pass
+                registrar_historico_memoria("base_conhecimento", criado[0].get("id"), codigo, "Criação", "Orientação cadastrada manualmente.")
+                st.success(f"Orientação cadastrada sob o nº {codigo}.")
             else:
                 st.success("Orientação cadastrada. O número BC será exibido na consulta da base.")
             st.rerun()
+
+
+
+    if eh_admin():
+        st.divider()
+        st.markdown("### Revisar, editar ou marcar orientação como superada")
+
+        todos_bc = base_conhecimento_rows(incluir_superadas=True)
+        if not todos_bc:
+            st.info("Nenhuma orientação disponível para revisão.")
+        else:
+            opcoes_bc = [
+                f"{codigo_base_conhecimento(b)} - {b.get('secao', '')} - {b.get('assunto', '')} - {str(b.get('resumo_duvida') or b.get('orientacao_adotada') or '')[:80]}"
+                for b in todos_bc
+            ]
+            escolha_bc = st.selectbox("Selecione a orientação", opcoes_bc, key="bc_editar_select")
+            codigo_escolhido = escolha_bc.split(" - ")[0]
+            base_sel = next((b for b in todos_bc if codigo_base_conhecimento(b) == codigo_escolhido), None)
+
+            if base_sel:
+                base_id = base_sel.get("id")
+                with st.form(f"form_editar_bc_{base_id}"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        secao_edit = st.selectbox(
+                            "Seção",
+                            secoes_atendimento(),
+                            index=secoes_atendimento().index(normalizar_secao(base_sel.get("secao"))) if normalizar_secao(base_sel.get("secao")) in secoes_atendimento() else 0,
+                            key=f"bc_secao_edit_{base_id}"
+                        )
+                        lista_assuntos_edit = assuntos(secao_edit)
+                        assunto_atual = base_sel.get("assunto") or "Não informado"
+                        if assunto_atual not in lista_assuntos_edit:
+                            lista_assuntos_edit = [assunto_atual] + [a for a in lista_assuntos_edit if a != assunto_atual]
+                        assunto_edit = st.selectbox(
+                            "Assunto",
+                            lista_assuntos_edit,
+                            index=lista_assuntos_edit.index(assunto_atual) if assunto_atual in lista_assuntos_edit else 0,
+                            key=f"bc_assunto_edit_{base_id}"
+                        )
+                        categoria_edit = st.text_input("Categoria", value=base_sel.get("categoria", ""), key=f"bc_categoria_edit_{base_id}")
+                    with col2:
+                        fundamento_edit = st.text_area("Fundamento normativo", value=base_sel.get("fundamento_normativo", ""), key=f"bc_fundamento_edit_{base_id}")
+                        versao_edit = st.number_input("Versão", min_value=1, step=1, value=int(base_sel.get("versao") or 1), key=f"bc_versao_edit_{base_id}")
+                        st.caption(f"Código: {codigo_base_conhecimento(base_sel)}")
+                        st.caption(f"Criada em: {formatar_data_hora_brasilia(base_sel.get('criado_em')) if base_sel.get('criado_em') else 'Não registrada'}")
+
+                    resumo_edit = st.text_area("Resumo da dúvida", value=base_sel.get("resumo_duvida", ""), key=f"bc_resumo_edit_{base_id}")
+                    orientacao_edit = st.text_area("Orientação adotada", value=base_sel.get("orientacao_adotada", ""), height=180, key=f"bc_orientacao_edit_{base_id}")
+
+                    superada_edit = st.checkbox(
+                        "Marcar como orientação superada",
+                        value=bool(base_sel.get("superada", False)),
+                        key=f"bc_superada_edit_{base_id}"
+                    )
+                    motivo_superacao_edit = st.text_area(
+                        "Motivo da superação / memória institucional",
+                        value=base_sel.get("motivo_superacao", ""),
+                        key=f"bc_motivo_superada_{base_id}"
+                    )
+
+                    substitutas = [b for b in todos_bc if b.get("id") != base_id and not b.get("superada", False)]
+                    opcoes_sub = ["Não informar"] + [
+                        f"{codigo_base_conhecimento(b)} - {b.get('assunto', '')} - {str(b.get('resumo_duvida') or b.get('orientacao_adotada') or '')[:70]}"
+                        for b in substitutas
+                    ]
+                    substituta_atual = "Não informar"
+                    if base_sel.get("substituida_por_base_id"):
+                        substituta_atual_item = next((b for b in substitutas if int(b.get("id")) == int(base_sel.get("substituida_por_base_id"))), None)
+                        if substituta_atual_item:
+                            substituta_atual = f"{codigo_base_conhecimento(substituta_atual_item)} - {substituta_atual_item.get('assunto', '')} - {str(substituta_atual_item.get('resumo_duvida') or substituta_atual_item.get('orientacao_adotada') or '')[:70]}"
+
+                    substituta_sel = st.selectbox(
+                        "Orientação substituta, se houver",
+                        opcoes_sub,
+                        index=opcoes_sub.index(substituta_atual) if substituta_atual in opcoes_sub else 0,
+                        key=f"bc_substituta_{base_id}"
+                    )
+
+                    colb1, colb2 = st.columns(2)
+                    with colb1:
+                        salvar_bc = st.form_submit_button("Salvar revisão", type="primary")
+                    with colb2:
+                        excluir_bc = st.form_submit_button("Excluir da lista ativa")
+
+                if salvar_bc:
+                    usuario = usuario_logado() or {}
+                    substituta_id = None
+                    if substituta_sel != "Não informar":
+                        codigo_sub = substituta_sel.split(" - ")[0]
+                        substituta_item = next((b for b in substitutas if codigo_base_conhecimento(b) == codigo_sub), None)
+                        substituta_id = substituta_item.get("id") if substituta_item else None
+
+                    dados = {
+                        "secao": secao_edit,
+                        "assunto": assunto_edit,
+                        "categoria": categoria_edit.strip() or assunto_edit or "Não informado",
+                        "resumo_duvida": resumo_edit.strip(),
+                        "orientacao_adotada": orientacao_edit.strip(),
+                        "fundamento_normativo": fundamento_edit.strip(),
+                        "versao": int(versao_edit),
+                        "superada": bool(superada_edit),
+                        "motivo_superacao": motivo_superacao_edit.strip(),
+                        "substituida_por_base_id": substituta_id,
+                        "data_revisao": agora_iso(),
+                        "revisado_por_email": usuario.get("email", ""),
+                        "revisado_por_nome": usuario.get("nome", ""),
+                        "atualizado_em": agora_iso(),
+                    }
+
+                    if bool(superada_edit) and not base_sel.get("superada", False):
+                        dados["data_superacao"] = agora_iso()
+                        dados["superada_por_email"] = usuario.get("email", "")
+                        dados["superada_por_nome"] = usuario.get("nome", "")
+                    elif not bool(superada_edit):
+                        dados["data_superacao"] = None
+                        dados["superada_por_email"] = ""
+                        dados["superada_por_nome"] = ""
+                        dados["motivo_superacao"] = ""
+
+                    supabase_update_silencioso("base_conhecimento", dados, "id", base_id)
+                    registrar_historico_memoria(
+                        "base_conhecimento",
+                        base_id,
+                        codigo_base_conhecimento(base_sel),
+                        "Revisão / superação" if superada_edit else "Revisão",
+                        motivo_superacao_edit.strip() or "Registro revisado."
+                    )
+                    st.success("Orientação revisada.")
+                    st.rerun()
+
+                if excluir_bc:
+                    supabase_update_silencioso(
+                        "base_conhecimento",
+                        {"ativo": False, "atualizado_em": agora_iso()},
+                        "id",
+                        base_id
+                    )
+                    registrar_historico_memoria("base_conhecimento", base_id, codigo_base_conhecimento(base_sel), "Exclusão lógica", "Registro removido da lista ativa.")
+                    st.success("Orientação removida da lista ativa. O histórico permanece preservado.")
+                    st.rerun()
+
+        hist_mem = pd.DataFrame(historico_memoria_rows("base_conhecimento"))
+        if not hist_mem.empty:
+            with st.expander("Histórico de memória institucional da base", expanded=False):
+                st.dataframe(hist_mem, use_container_width=True, hide_index=True)
 
 
 
