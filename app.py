@@ -2722,65 +2722,37 @@ def tela_menu_principal():
     css_menu_institucional()
 
     st.markdown('<div class="siga-section-label">Início</div>', unsafe_allow_html=True)
+    aviso_modo_visualizacao()
 
-    linha1 = st.columns(6)
-    with linha1[0]:
-        render_card_navegacao(
-            "plus",
-            "Novo atendimento",
-            "Registrar nova demanda, definir seção responsável, assunto, prioridade e prazo.",
-            "Criar atendimento",
-            "Novo atendimento",
-            "card_novo_atendimento",
-        )
-    with linha1[1]:
-        render_card_navegacao(
-            "shield",
-            "Validação da chefia",
-            "Revisar orientações preparadas pela equipe e validar ou devolver para ajuste.",
-            "Validar orientações",
-            "Validação da chefia",
-            "card_validacao_chefia",
-        )
-    with linha1[2]:
-        render_card_navegacao(
-            "chart",
-            "Painel gerencial",
-            "Acompanhar indicadores, alertas, produtividade, seções, zonas e evolução dos atendimentos.",
-            "Abrir painel",
-            "Dashboard",
-            "card_painel_gerencial",
-        )
-    with linha1[3]:
-        render_card_navegacao(
-            "workflow",
-            "Inteligência gerencial",
-            "Analisar recorrências, competências COORZE/SEOCE/SEPRO, gargalos, riscos e oportunidades de orientação.",
-            "Abrir inteligência",
-            "Inteligência gerencial",
-            "card_inteligencia_gerencial",
-        )
-    with linha1[4]:
-        render_card_navegacao(
-            "compass",
-            "Orientações às Zonas",
-            "Consultar modelos de resposta, base de conhecimento e fundamentos por assunto.",
-            "Abrir orientações",
-            "Orientações às Zonas",
-            "card_orientacoes_zonas",
-        )
-    with linha1[5]:
-        render_card_navegacao(
-            "file",
-            "Relatórios",
-            "Emitir relatórios para gestão, auditoria e acompanhamento pela Corregedoria.",
-            "Emitir relatório",
-            "Relatórios e exportação",
-            "card_relatorios",
-        )
+    cards = [
+        ("plus", "Novo atendimento", "Registrar nova demanda, assunto, origem, prioridade e responsável.", "Criar atendimento", "Novo atendimento", "card_novo_atendimento"),
+        ("chart", "Painel gerencial", "Acompanhar indicadores essenciais e a situação dos atendimentos.", "Abrir painel", "Dashboard", "card_painel_gerencial"),
+        ("compass", "Orientações às Zonas", "Consultar modelos de resposta e base de conhecimento por assunto.", "Abrir orientações", "Orientações às Zonas", "card_orientacoes_zonas"),
+    ]
+
+    if usuario_eh_gestor():
+        cards.insert(1, ("shield", "Validação da chefia", "Validar orientações preparadas pela equipe ou devolver para ajuste.", "Validar orientações", "Validação da chefia", "card_validacao_chefia"))
+        cards.append(("file", "Relatórios", "Emitir relatórios gerenciais, auditoria e memória institucional.", "Emitir relatório", "Relatórios e exportação", "card_relatorios"))
+
+    if usuario_pode_ver_inteligencia():
+        cards.insert(3, ("workflow", "Inteligência gerencial", "Analisar recorrências, competências, riscos e oportunidades de orientação.", "Abrir inteligência", "Inteligência gerencial", "card_inteligencia_gerencial"))
+
+    colunas = st.columns(min(len(cards), 6))
+    for idx, card in enumerate(cards):
+        with colunas[idx % len(colunas)]:
+            render_card_navegacao(*card)
 
     st.divider()
-    render_visao_executiva(filtrar_lista_por_perfil(atendimentos()), "Resumo executivo")
+
+    if usuario_pode_ver_inteligencia():
+        render_visao_executiva(filtrar_lista_por_perfil(atendimentos()), "Resumo executivo")
+    else:
+        st.markdown("### Meus atendimentos pendentes")
+        meus = [
+            a for a in filtrar_lista_por_perfil(atendimentos())
+            if atendimento_eh_meu(a) and atendimento_aberto(a)
+        ]
+        render_visao_executiva(meus, "Resumo operacional")
 
 
 def tela_validacao_chefia():
@@ -2848,16 +2820,24 @@ def sidebar_menu():
     )
 
     st.sidebar.markdown("### Navegação")
+    st.sidebar.caption(f"Perfil: {perfil_atual() or 'não identificado'}")
+    st.sidebar.caption(f"Modo: {modo_visualizacao_atual()}")
 
     itens_principais = [
         ("Início  ›", "Início"),
         ("Novo atendimento  ›", "Novo atendimento"),
-        ("Validação da chefia  ›", "Validação da chefia"),
         ("Painel gerencial  ›", "Dashboard"),
-        ("Inteligência gerencial  ›", "Inteligência gerencial"),
         ("Orientações às Zonas  ›", "Orientações às Zonas"),
-        ("Relatórios  ›", "Relatórios e exportação"),
     ]
+
+    if usuario_eh_gestor():
+        itens_principais.insert(2, ("Validação da chefia  ›", "Validação da chefia"))
+
+    if usuario_pode_ver_inteligencia():
+        itens_principais.insert(4, ("Inteligência gerencial  ›", "Inteligência gerencial"))
+
+    if usuario_eh_gestor():
+        itens_principais.append(("Relatórios  ›", "Relatórios e exportação"))
 
     for label, destino in itens_principais:
         if st.sidebar.button(label, key=f"side_nav_{destino}", use_container_width=True):
@@ -2873,11 +2853,15 @@ def sidebar_menu():
             ("Base geral", "Base geral"),
             ("Base de conhecimento", "Base de conhecimento"),
             ("Modelos de resposta", "Modelos de resposta"),
-            ("Governança técnica", "Governança técnica"),
-            ("Backup e restauração", "Backup e restauração"),
         ]
 
-        if eh_admin():
+        if usuario_pode_ver_governanca():
+            outros += [
+                ("Governança técnica", "Governança técnica"),
+                ("Backup e restauração", "Backup e restauração"),
+            ]
+
+        if usuario_pode_ver_parametros():
             outros += [
                 ("Assuntos", "Assuntos"),
                 ("Usuários", "Usuários"),
@@ -2908,7 +2892,6 @@ def sidebar_menu():
         st.rerun()
 
     return st.session_state.get("pagina_atual", "Início")
-
 
 
 
@@ -3057,6 +3040,85 @@ def fluxos_validacao_rows(atendimento_id):
         "fluxos_validacao",
         {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
     )
+
+
+
+
+def perfil_atual():
+    usuario = usuario_logado() or {}
+    return perfil_normalizado(usuario.get("perfil"))
+
+
+def usuario_eh_gestor():
+    perfil = perfil_atual()
+    return perfil in (
+        "Administrador geral",
+        "Administrador",
+        "Chefia SEPRO",
+        "Chefia SEOCE",
+        "Chefia SEORZE",
+    )
+
+
+def usuario_eh_admin_ou_coorze():
+    perfil = perfil_atual()
+    return perfil in ("Administrador geral", "Administrador")
+
+
+def usuario_eh_operador():
+    perfil = perfil_atual()
+    return perfil in ("Operador SEPRO", "Operador SEOCE", "Operador SEORZE", "Usuário")
+
+
+def usuario_eh_consulta():
+    return perfil_atual() == "Consulta"
+
+
+def usuario_pode_editar_atendimentos():
+    return not usuario_eh_consulta()
+
+
+def usuario_pode_ver_inteligencia():
+    return usuario_eh_gestor() or usuario_eh_admin_ou_coorze()
+
+
+def usuario_pode_ver_governanca():
+    return usuario_eh_admin_ou_coorze() or perfil_atual().startswith("Chefia")
+
+
+def usuario_pode_ver_memoria_avancada():
+    return usuario_eh_gestor() or usuario_eh_admin_ou_coorze()
+
+
+def usuario_pode_ver_parametros():
+    return usuario_eh_admin_ou_coorze()
+
+
+def modo_visualizacao_atual():
+    perfil = perfil_atual()
+    if usuario_eh_admin_ou_coorze():
+        return "Visão completa"
+    if perfil.startswith("Chefia"):
+        return "Visão de chefia"
+    if usuario_eh_consulta():
+        return "Consulta"
+    return "Operação"
+
+
+def aviso_modo_visualizacao():
+    modo = modo_visualizacao_atual()
+    texto = {
+        "Visão completa": "Visualização completa: governança, inteligência, memória institucional e parametrização.",
+        "Visão de chefia": "Visualização de chefia: validação, indicadores e acompanhamento gerencial.",
+        "Consulta": "Visualização de consulta: sem edição de registros.",
+        "Operação": "Visualização operacional: foco nos atendimentos e campos essenciais.",
+    }.get(modo, "Visualização ajustada ao seu perfil.")
+    st.caption(f"Modo de visualização: **{modo}** — {texto}")
+
+
+def expander_avancado_rotulo(rotulo):
+    return f"{rotulo} — campos avançados"
+
 
 
 def usuario_pode_validar(atendimento):
@@ -3866,11 +3928,13 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         with col2:
             st.markdown(f"**Assunto:** {atendimento.get('assunto', '')}")
             st.markdown(f"**Seção:** {normalizar_secao(atendimento.get('secao'))}")
-            st.markdown(f"**Tribunal/UF:** {atendimento.get('tribunal', TRIBUNAL_PADRAO)} / {atendimento.get('uf', UF_PADRAO)}")
-            st.markdown(f"**Unidade:** {atendimento.get('unidade_responsavel', UNIDADE_CORREGEDORIA_PADRAO)}")
             st.markdown(f"**Origem:** {atendimento.get('origem', '')}")
             st.markdown(f"**Zona:** {atendimento.get('zona_eleitoral', '')}")
             st.markdown(f"**Descrição:** {atendimento.get('descricao', '')}")
+            if usuario_eh_gestor():
+                with st.expander(expander_avancado_rotulo("Identificação institucional"), expanded=False):
+                    st.markdown(f"**Tribunal/UF:** {atendimento.get('tribunal', TRIBUNAL_PADRAO)} / {atendimento.get('uf', UF_PADRAO)}")
+                    st.markdown(f"**Unidade:** {atendimento.get('unidade_responsavel', UNIDADE_CORREGEDORIA_PADRAO)}")
 
         with col3:
             st.markdown(f"**Servidor(a):** {atendimento.get('servidor', '')}")
@@ -3888,7 +3952,9 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         if atendimento.get("conclusao"):
             st.markdown(f"**Conclusão:** {atendimento.get('conclusao')}")
 
-        if not permitir_edicao:
+        if not permitir_edicao or not usuario_pode_editar_atendimentos():
+            if usuario_eh_consulta():
+                st.info("Seu perfil permite consulta, sem edição do atendimento.")
             return
 
         st.divider()
@@ -4059,7 +4125,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             st.success("Alterações salvas.")
                             st.rerun()
 
-        with st.expander("Histórico, comunicações, anexos e reabertura"):
+        with st.expander("Base de conhecimento, histórico e validação" if usuario_eh_gestor() else "Base de conhecimento e comentários"):
             st.markdown("##### Base de conhecimento para resposta")
             bases_disponiveis = bases_por_assunto_e_secao(atendimento.get("assunto"), atendimento.get("secao"))
 
@@ -4137,7 +4203,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
 
             col_val1, col_val2, col_val3 = st.columns(3)
             with col_val1:
-                if st.button("Solicitar validação", key=f"{chave_prefixo}_solicitar_validacao_{atendimento.get('id')}"):
+                if usuario_eh_gestor() and st.button("Solicitar validação", key=f"{chave_prefixo}_solicitar_validacao_{atendimento.get('id')}"):
                     atendimento_atualizado = atendimento.copy()
                     atendimento_atualizado["requer_validacao"] = True
                     atendimento_atualizado["situacao_validacao"] = "Pendente de validação"
@@ -5004,6 +5070,7 @@ def bloco_competencias_coorze():
 
 
 def tela_inteligencia_gerencial():
+    aviso_modo_visualizacao()
     st.title("Inteligência Gerencial")
     st.caption("Leitura estratégica dos atendimentos, recorrências, gargalos, riscos operacionais e aderência às atribuições da COORZE, SEOCE e SEPRO.")
     st.info("Painel estratégico da COORZE: leitura automática, recorrências, eixos de competência, riscos, zonas demandantes e recomendações gerenciais.")
@@ -5098,6 +5165,7 @@ def tela_inteligencia_gerencial():
 
 
 def tela_dashboard():
+    aviso_modo_visualizacao()
     st.subheader("Dashboard")
 
     lista = filtros_base(atendimentos())
@@ -6659,6 +6727,7 @@ def tela_usuarios():
 
 
 def tela_modelos_resposta():
+    aviso_modo_visualizacao()
     st.subheader("Modelos de resposta")
     st.caption("Modelos institucionais de orientação vinculados por seção e assunto.")
 
@@ -6688,7 +6757,7 @@ def tela_modelos_resposta():
     else:
         st.info("Nenhum modelo cadastrado.")
 
-    if eh_admin():
+    if usuario_pode_ver_memoria_avancada():
         st.divider()
         st.markdown("### Cadastrar novo modelo")
 
@@ -6945,6 +7014,7 @@ def tela_parametros_nacionais():
 
 
 def tela_base_conhecimento():
+    aviso_modo_visualizacao()
     st.subheader("Base de conhecimento")
     st.caption("Repositório de orientações extraídas dos atendimentos concluídos.")
 
@@ -7126,7 +7196,7 @@ def tela_base_conhecimento():
 
 
 
-    if eh_admin():
+    if usuario_pode_ver_memoria_avancada():
         st.divider()
         st.markdown("### Revisar, editar ou marcar orientação como superada")
 
@@ -7989,7 +8059,10 @@ def main():
         tela_dashboard()
 
     elif escolha == "Inteligência gerencial":
-        tela_inteligencia_gerencial()
+        if usuario_pode_ver_inteligencia():
+            tela_inteligencia_gerencial()
+        else:
+            st.warning("Inteligência gerencial está disponível apenas para chefia e administradores.")
 
     elif escolha == "Meus atendimentos":
         tela_meus_atendimentos()
@@ -8028,7 +8101,10 @@ def main():
         tela_base_geral()
 
     elif escolha == "Relatórios e exportação":
-        tela_relatorios_exportacao()
+        if usuario_eh_gestor():
+            tela_relatorios_exportacao()
+        else:
+            st.warning("Relatórios gerenciais estão disponíveis apenas para chefia e administradores.")
 
     elif escolha == "Base de conhecimento":
         tela_base_conhecimento()
@@ -8037,18 +8113,24 @@ def main():
         tela_modelos_resposta()
 
     elif escolha == "Governança técnica":
-        tela_governanca_tecnica()
+        if usuario_pode_ver_governanca():
+            tela_governanca_tecnica()
+        else:
+            st.warning("Governança técnica está disponível apenas para chefia e administradores.")
 
     elif escolha == "Backup e restauração":
-        tela_backup_restauracao()
+        if usuario_pode_ver_governanca():
+            tela_backup_restauracao()
+        else:
+            st.warning("Backup e restauração estão disponíveis apenas para chefia e administradores.")
 
-    elif escolha == "Assuntos" and eh_admin():
+    elif escolha == "Assuntos" and usuario_pode_ver_parametros():
         tela_assuntos()
 
-    elif escolha == "Usuários" and eh_admin():
+    elif escolha == "Usuários" and usuario_pode_ver_parametros():
         tela_usuarios()
 
-    elif escolha == "Parâmetros nacionais" and eh_admin():
+    elif escolha == "Parâmetros nacionais" and usuario_pode_ver_parametros():
         tela_parametros_nacionais()
 
     else:
