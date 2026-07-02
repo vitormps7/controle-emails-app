@@ -7594,8 +7594,7 @@ def tela_qualidade_registros():
         "Sem assunto": atendimento_sem_assunto,
         "Sem zona eleitoral": atendimento_sem_zona,
         "Aberto sem responsável": atendimento_sem_responsavel,
-        "Concluído sem providência": atendimento_concluido_sem_providencia,
-        "Concluído sem conclusão": atendimento_concluido_sem_conclusao,
+        "Concluído sem registro final": atendimento_concluido_sem_registro_final,
         "Prazo vencido": prazo_vencido,
         "Uniformização alta/crítica sem produto sugerido": atendimento_uniformizacao_sem_plano,
     }
@@ -7701,12 +7700,17 @@ def atendimento_sem_responsavel(a):
     )
 
 
-def atendimento_concluido_sem_providencia(a):
-    return a.get("status") == STATUS_REALIZADO and not str(a.get("providencia_adotada") or "").strip()
-
-
-def atendimento_concluido_sem_conclusao(a):
-    return a.get("status") == STATUS_REALIZADO and not str(a.get("conclusao") or "").strip()
+def atendimento_concluido_sem_registro_final(a):
+    """
+    Para fins de qualidade cadastral, considera suficiente que o atendimento realizado
+    possua providência adotada ou conclusão/resultado. A inconsistência só é apontada
+    quando ambos os campos estiverem vazios.
+    """
+    return (
+        a.get("status") == STATUS_REALIZADO
+        and not str(a.get("providencia_adotada") or "").strip()
+        and not str(a.get("conclusao") or "").strip()
+    )
 
 
 def atendimento_uniformizacao_sem_plano(a):
@@ -7721,8 +7725,7 @@ def qualidade_registros_rows(lista):
         ("Sem assunto", atendimento_sem_assunto, "Preencher assunto para estatísticas confiáveis."),
         ("Sem zona eleitoral", atendimento_sem_zona, "Informar a zona eleitoral ou padronizar como não aplicável."),
         ("Aberto sem responsável", atendimento_sem_responsavel, "Realizar triagem e designar responsável."),
-        ("Concluído sem providência", atendimento_concluido_sem_providencia, "Registrar a providência adotada."),
-        ("Concluído sem conclusão", atendimento_concluido_sem_conclusao, "Registrar a conclusão ou resultado."),
+        ("Concluído sem registro final", atendimento_concluido_sem_registro_final, "Registrar a providência adotada ou a conclusão/resultado final."),
         ("Prazo vencido", prazo_vencido, "Reavaliar prioridade, redistribuição ou plano de saneamento."),
         ("Uniformização alta/crítica sem produto sugerido", atendimento_uniformizacao_sem_plano, "Indicar orientação, fluxo, capacitação ou produto institucional."),
     ]
