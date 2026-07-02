@@ -1345,6 +1345,16 @@ def atendimento_db_para_app(row):
         "data_realizacao": data_app(row.get("data_realizacao")),
         "triado_por": row.get("triado_por") or "",
         "triado_em": formatar_data_hora_brasilia(row.get("triado_em")) if row.get("triado_em") else "",
+        "natureza_demanda": row.get("natureza_demanda") or "Orientação procedimental ordinária",
+        "eixo_competencia": row.get("eixo_competencia") or "",
+        "unidade_sugerida": row.get("unidade_sugerida") or "",
+        "exige_validacao_tecnica": row.get("exige_validacao_tecnica", False),
+        "unidade_tecnica_validadora": row.get("unidade_tecnica_validadora") or "Não necessária",
+        "status_validacao_tecnica": row.get("status_validacao_tecnica") or "Não necessária",
+        "exige_coajuc": row.get("exige_coajuc", False),
+        "motivo_escalonamento": row.get("motivo_escalonamento") or "",
+        "potencial_uniformizacao": row.get("potencial_uniformizacao") or "Baixo",
+        "produto_institucional_sugerido": row.get("produto_institucional_sugerido") or "Não sugerido",
     }
 
 
@@ -1380,6 +1390,16 @@ def atendimento_app_para_db(a):
         "data_realizacao": data_db(a.get("data_realizacao")),
         "triado_por": a.get("triado_por") or None,
         "triado_em": data_hora_db(a.get("triado_em")) if a.get("triado_em") else None,
+        "natureza_demanda": a.get("natureza_demanda") or "Orientação procedimental ordinária",
+        "eixo_competencia": a.get("eixo_competencia") or None,
+        "unidade_sugerida": a.get("unidade_sugerida") or None,
+        "exige_validacao_tecnica": bool(a.get("exige_validacao_tecnica", False)),
+        "unidade_tecnica_validadora": a.get("unidade_tecnica_validadora") or "Não necessária",
+        "status_validacao_tecnica": a.get("status_validacao_tecnica") or "Não necessária",
+        "exige_coajuc": bool(a.get("exige_coajuc", False)),
+        "motivo_escalonamento": a.get("motivo_escalonamento") or None,
+        "potencial_uniformizacao": a.get("potencial_uniformizacao") or "Baixo",
+        "produto_institucional_sugerido": a.get("produto_institucional_sugerido") or "Não sugerido",
     }
 
     if dados.get("id") in ("", None):
@@ -2857,6 +2877,11 @@ def sidebar_menu():
 
         if usuario_pode_ver_governanca():
             outros += [
+                ("Demandas a escalar", "Demandas a escalar"),
+                ("Instrumentos de orientação", "Instrumentos de orientação"),
+                ("Curadoria do Portal", "Curadoria do Portal"),
+                ("Plano de ação COORZE", "Plano de ação COORZE"),
+                ("Diagnóstico das Zonas", "Diagnóstico das Zonas"),
                 ("Governança técnica", "Governança técnica"),
                 ("Backup e restauração", "Backup e restauração"),
             ]
@@ -3041,6 +3066,96 @@ def fluxos_validacao_rows(atendimento_id):
         {"select": "*", "atendimento_id": f"eq.{atendimento_id}", "order": "criado_em.desc"}
     )
 
+
+
+
+
+NATUREZAS_DEMANDA = [
+    "Orientação procedimental ordinária",
+    "Orientação cadastral",
+    "Orientação processual",
+    "Dúvida recorrente",
+    "Necessidade de ato normativo",
+    "Necessidade de capacitação",
+    "Necessidade de atualização do portal",
+    "Matéria controvertida",
+    "Matéria correcional",
+    "Matéria disciplinar",
+    "Processo originário",
+    "Demanda a submeter à COAJUC",
+    "Demanda a submeter à COSCAD/SERSE/SEDIP",
+    "Outra",
+]
+
+UNIDADES_TECNICAS_VALIDACAO = [
+    "Não necessária",
+    "COAJUC",
+    "COSCAD",
+    "SERSE",
+    "SEDIP",
+    "Gabinete",
+    "EJE",
+    "Unidade gestora de sistema",
+    "Outra unidade técnica",
+]
+
+STATUS_VALIDACAO_TECNICA = [
+    "Não necessária",
+    "Pendente de validação técnica",
+    "Enviada à unidade técnica",
+    "Validada",
+    "Devolvida para ajuste",
+    "Convertida em orientação institucional",
+]
+
+POTENCIAIS_UNIFORMIZACAO = ["Baixo", "Médio", "Alto", "Crítico"]
+
+PRODUTOS_INSTITUCIONAIS = [
+    "Não sugerido",
+    "Orientação técnica",
+    "Cartilha",
+    "Manual",
+    "Roteiro",
+    "Fluxo",
+    "Modelo de resposta",
+    "Checklist",
+    "Comunicado",
+    "Capacitação",
+    "Proposta normativa",
+]
+
+STATUS_ARTICULACAO = ["Pendente", "Enviada", "Respondida", "Validada", "Devolvida", "Cancelada"]
+STATUS_INSTRUMENTO = ["Em elaboração", "Aguardando validação", "Vigente", "Em revisão", "Superado", "Arquivado"]
+STATUS_PORTAL = ["A revisar", "Aguardando validação", "Atualizado", "Em revisão", "Superado", "Remover"]
+STATUS_PLANO_ACAO = ["Aberto", "Em andamento", "Concluído", "Suspenso", "Cancelado"]
+
+def status_prazo_plano(prazo, status):
+    if str(status or "") == "Concluído":
+        return "Concluído"
+    data = parse_data_opcional(prazo)
+    if not data:
+        return "Sem prazo"
+    hoje = agora_brasilia().date()
+    if data < hoje:
+        return "Vencido"
+    if (data - hoje).days <= 7:
+        return "Vence em até 7 dias"
+    return "No prazo"
+
+
+def rows_tabela_simples(tabela, order="criado_em.desc", ativo=True):
+    params = {"select": "*", "order": order}
+    if ativo:
+        params["ativo"] = "eq.true"
+    return supabase_get_silencioso(tabela, params) or []
+
+
+def inserir_tabela_simples(tabela, row):
+    return supabase_insert_silencioso(tabela, [row])
+
+
+def atualizar_tabela_simples(tabela, dados, item_id):
+    return supabase_update_silencioso(tabela, dados, "id", item_id)
 
 
 
@@ -5456,6 +5571,30 @@ def tela_novo_atendimento():
         observacoes = st.text_area("Observações internas")
         requer_validacao = st.checkbox("Exigir validação da chefia antes do encerramento", value=False)
 
+        natureza_demanda = "Orientação procedimental ordinária"
+        exige_validacao_tecnica = False
+        unidade_tecnica_validadora = "Não necessária"
+        status_validacao_tecnica = "Não necessária"
+        exige_coajuc = False
+        motivo_escalonamento = ""
+        potencial_uniformizacao = "Baixo"
+        produto_institucional_sugerido = "Não sugerido"
+
+        if usuario_eh_gestor():
+            with st.expander("Governança COORZE — campos avançados", expanded=False):
+                colg1, colg2, colg3 = st.columns(3)
+                with colg1:
+                    natureza_demanda = st.selectbox("Natureza da demanda", NATUREZAS_DEMANDA, index=0)
+                    potencial_uniformizacao = st.selectbox("Potencial de uniformização", POTENCIAIS_UNIFORMIZACAO, index=0)
+                with colg2:
+                    exige_validacao_tecnica = st.checkbox("Exige validação técnica", value=False)
+                    unidade_tecnica_validadora = st.selectbox("Unidade técnica validadora", UNIDADES_TECNICAS_VALIDACAO, index=0)
+                    status_validacao_tecnica = st.selectbox("Status da validação técnica", STATUS_VALIDACAO_TECNICA, index=0)
+                with colg3:
+                    exige_coajuc = st.checkbox("Exige articulação com COAJUC", value=False)
+                    produto_institucional_sugerido = st.selectbox("Produto institucional sugerido", PRODUTOS_INSTITUCIONAIS, index=0)
+                motivo_escalonamento = st.text_area("Motivo do escalonamento/observação de governança")
+
         enviar = st.form_submit_button("Cadastrar atendimento", type="primary")
 
         if enviar:
@@ -5496,6 +5635,16 @@ def tela_novo_atendimento():
                 "tempo_total_horas": None,
                 "triado_por": "",
                 "triado_em": "",
+                "natureza_demanda": natureza_demanda,
+                "eixo_competencia": classificar_eixo_competencia(assunto, descricao),
+                "unidade_sugerida": unidade_sugerida_por_eixo(classificar_eixo_competencia(assunto, descricao)),
+                "exige_validacao_tecnica": exige_validacao_tecnica,
+                "unidade_tecnica_validadora": unidade_tecnica_validadora,
+                "status_validacao_tecnica": status_validacao_tecnica,
+                "exige_coajuc": exige_coajuc,
+                "motivo_escalonamento": motivo_escalonamento.strip(),
+                "potencial_uniformizacao": potencial_uniformizacao,
+                "produto_institucional_sugerido": produto_institucional_sugerido,
             }
             lista.append(novo)
             salvar_atendimentos(lista)
@@ -7342,6 +7491,331 @@ def tela_base_conhecimento():
 
 
 
+
+def tela_demandas_a_escalar():
+    st.subheader("Demandas a escalar / validar")
+    aviso_modo_visualizacao()
+    st.caption("Demandas que exigem validação técnica, articulação com COAJUC ou potencial de uniformização.")
+
+    if not usuario_pode_ver_governanca():
+        st.warning("Esta página é destinada à chefia e administradores.")
+        return
+
+    lista = filtros_base(atendimentos())
+    demandas = [
+        a for a in lista
+        if a.get("exige_validacao_tecnica")
+        or a.get("exige_coajuc")
+        or a.get("status_validacao_tecnica") not in ("", "Não necessária")
+        or a.get("potencial_uniformizacao") in ("Alto", "Crítico")
+    ]
+
+    st.metric("Demandas a escalar / validar", len(demandas))
+
+    if not demandas:
+        st.info("Nenhuma demanda com necessidade de escalonamento no recorte atual.")
+    else:
+        df = pd.DataFrame(demandas)
+        colunas = [
+            "id", "data", "secao", "assunto", "zona_eleitoral", "natureza_demanda",
+            "unidade_tecnica_validadora", "status_validacao_tecnica",
+            "exige_coajuc", "potencial_uniformizacao", "produto_institucional_sugerido",
+            "motivo_escalonamento", "status"
+        ]
+        colunas = [c for c in colunas if c in df.columns]
+        st.dataframe(df[colunas], use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("### Registrar articulação técnica")
+
+    with st.form("form_articulacao_tecnica"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            atendimento_id = st.number_input("ID do atendimento", min_value=0, step=1)
+            unidade_destino = st.selectbox("Unidade destino", [u for u in UNIDADES_TECNICAS_VALIDACAO if u != "Não necessária"])
+        with col2:
+            tipo_articulacao = st.selectbox("Tipo", ["Validação técnica", "Consulta técnica", "Definição institucional", "Apoio à capacitação", "Curadoria de conteúdo"])
+            status_art = st.selectbox("Status", STATUS_ARTICULACAO)
+        with col3:
+            assunto = st.text_input("Assunto")
+        descricao = st.text_area("Descrição da articulação")
+        enviar = st.form_submit_button("Registrar articulação", type="primary")
+
+        if enviar:
+            usuario = usuario_logado() or {}
+            row = {
+                "atendimento_id": int(atendimento_id) if atendimento_id else None,
+                "unidade_destino": unidade_destino,
+                "tipo_articulacao": tipo_articulacao,
+                "assunto": assunto.strip(),
+                "descricao": descricao.strip(),
+                "status": status_art,
+                "solicitado_por_email": usuario.get("email", ""),
+                "solicitado_por_nome": usuario.get("nome", ""),
+                "solicitado_em": agora_iso(),
+                "ativo": True,
+                "criado_em": agora_iso(),
+                "atualizado_em": agora_iso(),
+            }
+            inserir_tabela_simples("articulacoes_tecnicas", row)
+            st.success("Articulação técnica registrada.")
+            st.rerun()
+
+    rows = rows_tabela_simples("articulacoes_tecnicas")
+    if rows:
+        st.markdown("### Articulações registradas")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def tela_instrumentos_orientacao():
+    st.subheader("Instrumentos de orientação")
+    aviso_modo_visualizacao()
+    st.caption("Cartilhas, manuais, fluxos, roteiros, modelos, checklists, comunicados e propostas normativas.")
+
+    if not usuario_pode_ver_governanca():
+        st.warning("Esta página é destinada à chefia e administradores.")
+        return
+
+    rows = rows_tabela_simples("instrumentos_orientacao")
+    df = pd.DataFrame(rows)
+
+    if not df.empty:
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum instrumento cadastrado.")
+
+    st.divider()
+    st.markdown("### Cadastrar instrumento")
+
+    with st.form("form_instrumento_orientacao"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            tipo = st.selectbox("Tipo", [p for p in PRODUTOS_INSTITUCIONAIS if p != "Não sugerido"])
+            titulo = st.text_input("Título")
+            secao = st.selectbox("Seção", secoes_atendimento())
+        with col2:
+            assunto = st.text_input("Assunto")
+            unidade_validadora = st.selectbox("Unidade validadora", UNIDADES_TECNICAS_VALIDACAO)
+            status = st.selectbox("Status", STATUS_INSTRUMENTO)
+        with col3:
+            versao = st.number_input("Versão", min_value=1, step=1, value=1)
+            data_publicacao = st.date_input("Data de publicação", value=None, format="DD/MM/YYYY")
+            prazo_revisao = st.date_input("Prazo para próxima revisão", value=None, format="DD/MM/YYYY")
+
+        fundamento = st.text_area("Fundamento normativo")
+        link = st.text_input("Link de publicação")
+        origem = st.text_input("Origem: atendimento, demanda recorrente, projeto, determinação etc.")
+        observacoes = st.text_area("Observações")
+
+        enviar = st.form_submit_button("Salvar instrumento", type="primary")
+        if enviar:
+            if not titulo.strip():
+                st.warning("Informe o título.")
+            else:
+                usuario = usuario_logado() or {}
+                row = {
+                    "tipo": tipo,
+                    "titulo": titulo.strip(),
+                    "secao": secao,
+                    "assunto": assunto.strip(),
+                    "eixo_competencia": classificar_eixo_competencia(assunto, observacoes),
+                    "unidade_autora": secao,
+                    "unidade_validadora": unidade_validadora,
+                    "status": status,
+                    "versao": int(versao),
+                    "fundamento_normativo": fundamento.strip(),
+                    "link_publicacao": link.strip(),
+                    "origem": origem.strip(),
+                    "data_publicacao": data_publicacao.isoformat() if data_publicacao else None,
+                    "prazo_proxima_revisao": prazo_revisao.isoformat() if prazo_revisao else None,
+                    "observacoes": observacoes.strip(),
+                    "ativo": True,
+                    "criado_por_email": usuario.get("email", ""),
+                    "criado_por_nome": usuario.get("nome", ""),
+                    "criado_em": agora_iso(),
+                    "atualizado_em": agora_iso(),
+                }
+                criado = inserir_tabela_simples("instrumentos_orientacao", row)
+                if criado and isinstance(criado, list) and criado[0].get("id"):
+                    codigo = f"INST-{int(criado[0].get('id')):06d}"
+                    atualizar_tabela_simples("instrumentos_orientacao", {"codigo": codigo, "atualizado_em": agora_iso()}, criado[0].get("id"))
+                st.success("Instrumento cadastrado.")
+                st.rerun()
+
+
+def tela_curadoria_portal():
+    st.subheader("Curadoria do Portal da Corregedoria")
+    aviso_modo_visualizacao()
+    st.caption("Controle de conteúdos de orientação e apoio às zonas eleitorais.")
+
+    if not usuario_pode_ver_governanca():
+        st.warning("Esta página é destinada à chefia e administradores.")
+        return
+
+    rows = rows_tabela_simples("curadoria_portal")
+    df = pd.DataFrame(rows)
+
+    if not df.empty:
+        if "prazo_proxima_revisao" in df.columns:
+            df["Situação do prazo"] = df.apply(lambda r: status_prazo_plano(r.get("prazo_proxima_revisao"), r.get("status")), axis=1)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum conteúdo cadastrado para curadoria.")
+
+    st.divider()
+    st.markdown("### Cadastrar conteúdo do portal")
+
+    with st.form("form_curadoria_portal"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            titulo = st.text_input("Título do conteúdo")
+            tipo_conteudo = st.selectbox("Tipo de conteúdo", [p for p in PRODUTOS_INSTITUCIONAIS if p != "Não sugerido"])
+        with col2:
+            assunto = st.text_input("Assunto")
+            unidade_responsavel = st.selectbox("Unidade responsável", ["COORZE", "SEOCE", "SEPRO", "COAJUC", "COSCAD", "Gabinete", "Outra"])
+        with col3:
+            unidade_validadora = st.selectbox("Unidade validadora", UNIDADES_TECNICAS_VALIDACAO)
+            status = st.selectbox("Status", STATUS_PORTAL)
+
+        link = st.text_input("Link no portal")
+        origem = st.text_input("Origem")
+        data_revisao = st.date_input("Data da última revisão", value=None, format="DD/MM/YYYY")
+        prazo_revisao = st.date_input("Prazo para próxima revisão", value=None, format="DD/MM/YYYY")
+        observacoes = st.text_area("Observações")
+
+        enviar = st.form_submit_button("Salvar conteúdo", type="primary")
+        if enviar:
+            if not titulo.strip():
+                st.warning("Informe o título.")
+            else:
+                usuario = usuario_logado() or {}
+                row = {
+                    "titulo": titulo.strip(),
+                    "tipo_conteudo": tipo_conteudo,
+                    "assunto": assunto.strip(),
+                    "unidade_responsavel": unidade_responsavel,
+                    "unidade_validadora": unidade_validadora,
+                    "status": status,
+                    "link_portal": link.strip(),
+                    "origem": origem.strip(),
+                    "data_ultima_revisao": data_revisao.isoformat() if data_revisao else None,
+                    "prazo_proxima_revisao": prazo_revisao.isoformat() if prazo_revisao else None,
+                    "observacoes": observacoes.strip(),
+                    "ativo": True,
+                    "criado_por_email": usuario.get("email", ""),
+                    "criado_por_nome": usuario.get("nome", ""),
+                    "criado_em": agora_iso(),
+                    "atualizado_em": agora_iso(),
+                }
+                inserir_tabela_simples("curadoria_portal", row)
+                st.success("Conteúdo cadastrado na curadoria.")
+                st.rerun()
+
+
+def tela_plano_acao_coorze():
+    st.subheader("Plano de ação COORZE")
+    aviso_modo_visualizacao()
+    st.caption("Acompanhamento de achados, providências, responsáveis, prazos e evidências.")
+
+    if not usuario_pode_ver_governanca():
+        st.warning("Esta página é destinada à chefia e administradores.")
+        return
+
+    rows = rows_tabela_simples("planos_acao_coorze")
+    df = pd.DataFrame(rows)
+
+    if not df.empty:
+        if "prazo" in df.columns:
+            df["Situação do prazo"] = df.apply(lambda r: status_prazo_plano(r.get("prazo"), r.get("status")), axis=1)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum plano de ação cadastrado.")
+
+    st.divider()
+    st.markdown("### Criar plano de ação")
+
+    with st.form("form_plano_acao_coorze"):
+        achado = st.text_area("Achado")
+        providencia = st.text_area("Providência")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            unidade = st.selectbox("Unidade responsável", ["COORZE", "SEOCE", "SEPRO", "COAJUC", "COSCAD", "Gabinete", "Outra"])
+        with col2:
+            responsavel = st.text_input("Responsável")
+        with col3:
+            prazo = st.date_input("Prazo", value=None, format="DD/MM/YYYY")
+        with col4:
+            status = st.selectbox("Status", STATUS_PLANO_ACAO)
+            prioridade = st.selectbox("Prioridade", ["Baixa", "Normal", "Alta", "Urgente"], index=1)
+
+        origem = st.text_input("Origem do achado")
+        evidencia = st.text_area("Evidência")
+        conclusao = st.text_area("Conclusão, se houver")
+
+        enviar = st.form_submit_button("Salvar plano de ação", type="primary")
+        if enviar:
+            if not achado.strip() or not providencia.strip():
+                st.warning("Informe o achado e a providência.")
+            else:
+                usuario = usuario_logado() or {}
+                row = {
+                    "achado": achado.strip(),
+                    "providencia": providencia.strip(),
+                    "unidade_responsavel": unidade,
+                    "responsavel": responsavel.strip(),
+                    "prazo": prazo.isoformat() if prazo else None,
+                    "status": status,
+                    "prioridade": prioridade,
+                    "origem": origem.strip(),
+                    "evidencia": evidencia.strip(),
+                    "conclusao": conclusao.strip(),
+                    "ativo": True,
+                    "criado_por_email": usuario.get("email", ""),
+                    "criado_por_nome": usuario.get("nome", ""),
+                    "criado_em": agora_iso(),
+                    "atualizado_em": agora_iso(),
+                }
+                inserir_tabela_simples("planos_acao_coorze", row)
+                st.success("Plano de ação cadastrado.")
+                st.rerun()
+
+
+def tela_diagnostico_zonas():
+    st.subheader("Diagnóstico das Zonas Eleitorais")
+    aviso_modo_visualizacao()
+    st.caption("Leitura por zona eleitoral, recorrência de dúvidas, riscos e oportunidades de capacitação.")
+
+    if not usuario_pode_ver_inteligencia():
+        st.warning("Esta página é destinada à chefia e administradores.")
+        return
+
+    lista = filtros_base(atendimentos())
+    df = pd.DataFrame(lista)
+
+    if df.empty or "zona_eleitoral" not in df.columns:
+        st.info("Sem dados suficientes para diagnóstico.")
+        return
+
+    temp = df.copy()
+    temp["zona_eleitoral"] = temp["zona_eleitoral"].fillna("Não informado").replace("", "Não informado")
+    resumo = temp.groupby("zona_eleitoral").agg(
+        Total=("id", "count"),
+        Urgentes=("prioridade", lambda s: int((s.astype(str).str.casefold() == "urgente").sum())),
+        Abertas=("status", lambda s: int((s != STATUS_REALIZADO).sum())),
+    ).reset_index().sort_values("Total", ascending=False)
+
+    st.markdown("### Ranking por zona")
+    st.dataframe(resumo, use_container_width=True, hide_index=True)
+
+    st.markdown("### Assuntos recorrentes por zona")
+    zona_sel = st.selectbox("Selecionar zona", resumo["zona_eleitoral"].tolist())
+    df_zona = temp[temp["zona_eleitoral"] == zona_sel]
+    if "assunto" in df_zona.columns:
+        top = df_zona["assunto"].fillna("Não informado").replace("", "Não informado").value_counts().head(10).reset_index()
+        top.columns = ["Assunto", "Qtd."]
+        bloco_tabela_dashboard(f"Top assuntos - {zona_sel}", top)
+
+
 def tela_backup_restauracao():
     st.subheader("Backup e restauração")
     st.warning(
@@ -8111,6 +8585,21 @@ def main():
 
     elif escolha == "Modelos de resposta":
         tela_modelos_resposta()
+
+    elif escolha == "Demandas a escalar":
+        tela_demandas_a_escalar()
+
+    elif escolha == "Instrumentos de orientação":
+        tela_instrumentos_orientacao()
+
+    elif escolha == "Curadoria do Portal":
+        tela_curadoria_portal()
+
+    elif escolha == "Plano de ação COORZE":
+        tela_plano_acao_coorze()
+
+    elif escolha == "Diagnóstico das Zonas":
+        tela_diagnostico_zonas()
 
     elif escolha == "Governança técnica":
         if usuario_pode_ver_governanca():
