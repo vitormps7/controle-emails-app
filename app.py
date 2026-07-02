@@ -2745,6 +2745,7 @@ def tela_menu_principal():
     aviso_modo_visualizacao()
 
     cards = [
+        ("workflow", "Minha área de trabalho", "Ver minhas pendências, urgências, prazos vencidos e devoluções.", "Abrir minha área", "Minha área de trabalho", "card_minha_area"),
         ("plus", "Novo atendimento", "Registrar nova demanda, assunto, origem, prioridade e responsável.", "Criar atendimento", "Novo atendimento", "card_novo_atendimento"),
         ("chart", "Painel gerencial", "Acompanhar indicadores essenciais e a situação dos atendimentos.", "Abrir painel", "Dashboard", "card_painel_gerencial"),
         ("compass", "Orientações às Zonas", "Consultar modelos de resposta e base de conhecimento por assunto.", "Abrir orientações", "Orientações às Zonas", "card_orientacoes_zonas"),
@@ -2845,6 +2846,7 @@ def sidebar_menu():
 
     itens_principais = [
         ("Início  ›", "Início"),
+        ("Minha área de trabalho  ›", "Minha área de trabalho"),
         ("Novo atendimento  ›", "Novo atendimento"),
         ("Painel gerencial  ›", "Dashboard"),
         ("Orientações às Zonas  ›", "Orientações às Zonas"),
@@ -2878,6 +2880,9 @@ def sidebar_menu():
         if usuario_pode_ver_governanca():
             outros += [
                 ("Demandas a escalar", "Demandas a escalar"),
+                ("Qualidade dos Registros", "Qualidade dos Registros"),
+                ("Linha do tempo", "Linha do tempo"),
+                ("Relatório Governança COORZE", "Relatório Governança COORZE"),
                 ("Instrumentos de orientação", "Instrumentos de orientação"),
                 ("Curadoria do Portal", "Curadoria do Portal"),
                 ("Plano de ação COORZE", "Plano de ação COORZE"),
@@ -4293,6 +4298,12 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 st.markdown("##### Bases já utilizadas neste atendimento")
                 st.dataframe(usos_df, use_container_width=True, hide_index=True)
 
+            if usuario_eh_gestor():
+                st.divider()
+                st.markdown("##### Linha do tempo simplificada")
+                timeline_df = eventos_linha_tempo_atendimento(atendimento)
+                st.dataframe(timeline_df, use_container_width=True, hide_index=True)
+
             st.divider()
             st.markdown("##### Comentários internos")
             comentario = st.text_area(
@@ -5267,6 +5278,30 @@ def tela_inteligencia_gerencial():
 
     with st.expander("Matriz institucional de competências", expanded=False):
         bloco_tabela_dashboard("COORZE, SEOCE e SEPRO - matriz de atuação", dataframe_matriz_competencias())
+
+    if usuario_pode_ver_governanca():
+        st.markdown("### Converter recomendação em plano de ação")
+        recomendacoes_plano = dataframe_recomendacoes_gerenciais(lista)
+        if recomendacoes_plano.empty:
+            st.info("Não há recomendações para converter.")
+        else:
+            opcoes_rec = [
+                f"{idx} - {row.get('Prioridade')} - {row.get('Achado')}"
+                for idx, row in recomendacoes_plano.iterrows()
+            ]
+            escolha_rec = st.selectbox("Selecionar recomendação", opcoes_rec, key="converter_rec_plano")
+            idx_rec = int(str(escolha_rec).split(" - ")[0])
+            rec = recomendacoes_plano.loc[idx_rec]
+            if st.button("Criar plano de ação a partir da recomendação", key="btn_converter_rec_plano"):
+                criar_plano_acao_de_achado(
+                    rec.get("Achado", ""),
+                    rec.get("Providência sugerida", ""),
+                    rec.get("Unidade", "COORZE"),
+                    rec.get("Prioridade", "Normal"),
+                    "Inteligência gerencial"
+                )
+                st.success("Plano de ação criado.")
+                st.rerun()
 
     with st.expander("Tabelas de apoio da inteligência gerencial", expanded=False):
         a1, a2, a3 = st.columns(3)
@@ -7492,6 +7527,335 @@ def tela_base_conhecimento():
 
 
 
+
+def tela_minha_area_trabalho():
+    st.subheader("Minha área de trabalho")
+    aviso_modo_visualizacao()
+    st.caption("Painel operacional do usuário, com pendências, prazos, devoluções e atalhos.")
+    lista = filtrar_lista_por_perfil(atendimentos())
+    render_alertas_internos(lista)
+    usuario = usuario_logado() or {}
+    nome = usuario.get("nome") or ""
+    email = usuario.get("email") or ""
+    meus = [
+        a for a in lista
+        if atendimento_aberto(a)
+        and (
+            str(a.get("servidor") or "").strip().casefold() == str(nome).strip().casefold()
+            or str(a.get("servidor_email") or "").strip().casefold() == str(email).strip().casefold()
+        )
+    ]
+    devolvidos = [a for a in meus if str(a.get("situacao_validacao") or "") == "Devolvido para ajuste"]
+    urgentes = [a for a in meus if str(a.get("prioridade") or "").casefold() == "urgente"]
+    vencidos = [a for a in meus if prazo_vencido(a)]
+    aba1, aba2, aba3, aba4 = st.tabs(["Meus pendentes", "Urgentes", "Vencidos", "Devolvidos"])
+    with aba1:
+        if not meus:
+            st.info("Nenhum atendimento pendente atribuído a você.")
+        for item in sorted(meus, key=lambda x: int(x.get("id", 0)), reverse=True):
+            card_atendimento(item, f"minha_area_{item.get('id')}")
+    with aba2:
+        if not urgentes:
+            st.info("Nenhum atendimento urgente atribuído a você.")
+        for item in sorted(urgentes, key=lambda x: int(x.get("id", 0)), reverse=True):
+            card_atendimento(item, f"minha_area_urgente_{item.get('id')}")
+    with aba3:
+        if not vencidos:
+            st.info("Nenhum atendimento seu com prazo vencido.")
+        for item in sorted(vencidos, key=lambda x: int(x.get("id", 0)), reverse=True):
+            card_atendimento(item, f"minha_area_vencido_{item.get('id')}")
+    with aba4:
+        if not devolvidos:
+            st.info("Nenhum atendimento devolvido para ajuste.")
+        for item in sorted(devolvidos, key=lambda x: int(x.get("id", 0)), reverse=True):
+            card_atendimento(item, f"minha_area_devolvido_{item.get('id')}")
+
+
+def tela_qualidade_registros():
+    st.subheader("Qualidade dos Registros")
+    aviso_modo_visualizacao()
+    st.caption("Verificação de inconsistências que afetam indicadores, relatórios e memória institucional.")
+    if not usuario_pode_ver_governanca():
+        st.warning("Esta página é destinada à chefia e administradores.")
+        return
+    lista = filtros_base(atendimentos())
+    qualidade = qualidade_registros_rows(lista)
+    total_alertas = int(qualidade["Quantidade"].sum()) if not qualidade.empty else 0
+    st.metric("Inconsistências encontradas", numero_br(total_alertas))
+    st.dataframe(qualidade, use_container_width=True, hide_index=True)
+    st.divider()
+    st.markdown("### Registros com inconsistência")
+    criterios = qualidade[qualidade["Quantidade"] > 0]["Critério"].tolist() if not qualidade.empty else []
+    if not criterios:
+        st.success("Nenhum registro crítico encontrado.")
+        return
+    criterio = st.selectbox("Selecionar critério", criterios)
+    mapa = {
+        "Sem assunto": atendimento_sem_assunto,
+        "Sem zona eleitoral": atendimento_sem_zona,
+        "Aberto sem responsável": atendimento_sem_responsavel,
+        "Concluído sem providência": atendimento_concluido_sem_providencia,
+        "Concluído sem conclusão": atendimento_concluido_sem_conclusao,
+        "Prazo vencido": prazo_vencido,
+        "Uniformização alta/crítica sem produto sugerido": atendimento_uniformizacao_sem_plano,
+    }
+    selecionados = [a for a in lista if mapa.get(criterio, lambda x: False)(a)]
+    for item in sorted(selecionados, key=lambda x: int(x.get("id", 0)), reverse=True):
+        card_atendimento(item, f"qualidade_{criterio}_{item.get('id')}")
+
+
+def tela_linha_tempo_atendimento():
+    st.subheader("Linha do tempo do atendimento")
+    aviso_modo_visualizacao()
+    st.caption("Visualização simplificada dos principais eventos do atendimento.")
+    atendimento_id = st.number_input("ID do atendimento", min_value=1, step=1)
+    item = next((a for a in atendimentos() if int(a.get("id", 0)) == int(atendimento_id)), None)
+    if not item:
+        st.info("Informe um ID válido para visualizar a linha do tempo.")
+        return
+    st.markdown(f"### Atendimento nº {item.get('id')}")
+    st.caption(f"Assunto: {item.get('assunto', '')} | Seção: {normalizar_secao(item.get('secao'))} | Status: {item.get('status', '')}")
+    df = eventos_linha_tempo_atendimento(item)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    with st.expander("Ver atendimento completo", expanded=False):
+        card_atendimento(item, f"timeline_card_{item.get('id')}", permitir_edicao=False)
+
+
+def tela_relatorio_governanca_coorze():
+    st.subheader("Relatório de Governança COORZE")
+    aviso_modo_visualizacao()
+    st.caption("Resumo institucional para reunião, acompanhamento da Coordenadoria e prestação de contas interna.")
+    if not usuario_pode_ver_governanca():
+        st.warning("Esta página é destinada à chefia e administradores.")
+        return
+    lista = filtros_base(atendimentos())
+    qualidade = qualidade_registros_rows(lista)
+    articulacoes = pd.DataFrame(rows_tabela_simples("articulacoes_tecnicas"))
+    instrumentos = pd.DataFrame(rows_tabela_simples("instrumentos_orientacao"))
+    curadoria = pd.DataFrame(rows_tabela_simples("curadoria_portal"))
+    planos = pd.DataFrame(rows_tabela_simples("planos_acao_coorze"))
+    bloco_leitura_executiva(gerar_leitura_executiva(lista))
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        render_metric_card("Atendimentos", numero_br(len(lista)), "#174A7C")
+    with c2:
+        render_metric_card("Inconsistências", numero_br(int(qualidade["Quantidade"].sum()) if not qualidade.empty else 0), "#B00020")
+    with c3:
+        render_metric_card("Articulações", numero_br(len(articulacoes)), "#6F42C1")
+    with c4:
+        render_metric_card("Planos de ação", numero_br(len(planos)), "#2E7D32")
+    st.markdown("### Síntese de qualidade")
+    st.dataframe(qualidade, use_container_width=True, hide_index=True)
+    st.markdown("### Demandas a escalar")
+    demandas_escalar = [a for a in lista if a.get("exige_validacao_tecnica") or a.get("exige_coajuc") or a.get("potencial_uniformizacao") in ("Alto", "Crítico")]
+    if demandas_escalar:
+        df_esc = pd.DataFrame(demandas_escalar)
+        colunas = ["id", "secao", "assunto", "natureza_demanda", "unidade_tecnica_validadora", "exige_coajuc", "potencial_uniformizacao", "status"]
+        st.dataframe(df_esc[[c for c in colunas if c in df_esc.columns]], use_container_width=True, hide_index=True)
+    else:
+        st.info("Não há demandas a escalar no recorte atual.")
+    with st.expander("Articulações técnicas", expanded=False):
+        st.dataframe(articulacoes, use_container_width=True, hide_index=True) if not articulacoes.empty else st.info("Nenhuma articulação técnica registrada.")
+    with st.expander("Instrumentos de orientação", expanded=False):
+        st.dataframe(instrumentos, use_container_width=True, hide_index=True) if not instrumentos.empty else st.info("Nenhum instrumento registrado.")
+    with st.expander("Curadoria do portal", expanded=False):
+        st.dataframe(curadoria, use_container_width=True, hide_index=True) if not curadoria.empty else st.info("Nenhum conteúdo registrado.")
+    with st.expander("Planos de ação", expanded=False):
+        st.dataframe(planos, use_container_width=True, hide_index=True) if not planos.empty else st.info("Nenhum plano registrado.")
+    st.divider()
+    dados = {
+        "qualidade": qualidade.to_dict(orient="records"),
+        "demandas_escalar": demandas_escalar,
+        "articulacoes": articulacoes.to_dict(orient="records") if not articulacoes.empty else [],
+        "instrumentos": instrumentos.to_dict(orient="records") if not instrumentos.empty else [],
+        "curadoria": curadoria.to_dict(orient="records") if not curadoria.empty else [],
+        "planos": planos.to_dict(orient="records") if not planos.empty else [],
+        "emitido_em": agora_texto_brasilia(),
+    }
+    st.download_button(
+        "Baixar relatório de governança em JSON",
+        data=json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8"),
+        file_name=f"relatorio_governanca_coorze_{agora_brasilia().strftime('%Y%m%d_%H%M')}.json",
+        mime="application/json",
+        type="primary",
+    )
+
+
+
+# ============================================================
+# FASE 4 - AREA DE TRABALHO, QUALIDADE E AUTOMACAO
+# ============================================================
+
+def atendimento_sem_assunto(a):
+    return not str(a.get("assunto") or "").strip() or str(a.get("assunto") or "").strip() == "Não informado"
+
+
+def atendimento_sem_zona(a):
+    return not str(a.get("zona_eleitoral") or "").strip() or str(a.get("zona_eleitoral") or "").strip() == "Não informado"
+
+
+def atendimento_sem_responsavel(a):
+    return atendimento_aberto(a) and (
+        not str(a.get("servidor") or "").strip()
+        or str(a.get("servidor") or "").strip() == "Não informado"
+    )
+
+
+def atendimento_concluido_sem_providencia(a):
+    return a.get("status") == STATUS_REALIZADO and not str(a.get("providencia_adotada") or "").strip()
+
+
+def atendimento_concluido_sem_conclusao(a):
+    return a.get("status") == STATUS_REALIZADO and not str(a.get("conclusao") or "").strip()
+
+
+def atendimento_uniformizacao_sem_plano(a):
+    return str(a.get("potencial_uniformizacao") or "") in ("Alto", "Crítico") and (
+        not str(a.get("produto_institucional_sugerido") or "").strip()
+        or str(a.get("produto_institucional_sugerido") or "") == "Não sugerido"
+    )
+
+
+def qualidade_registros_rows(lista):
+    regras = [
+        ("Sem assunto", atendimento_sem_assunto, "Preencher assunto para estatísticas confiáveis."),
+        ("Sem zona eleitoral", atendimento_sem_zona, "Informar a zona eleitoral ou padronizar como não aplicável."),
+        ("Aberto sem responsável", atendimento_sem_responsavel, "Realizar triagem e designar responsável."),
+        ("Concluído sem providência", atendimento_concluido_sem_providencia, "Registrar a providência adotada."),
+        ("Concluído sem conclusão", atendimento_concluido_sem_conclusao, "Registrar a conclusão ou resultado."),
+        ("Prazo vencido", prazo_vencido, "Reavaliar prioridade, redistribuição ou plano de saneamento."),
+        ("Uniformização alta/crítica sem produto sugerido", atendimento_uniformizacao_sem_plano, "Indicar orientação, fluxo, capacitação ou produto institucional."),
+    ]
+    linhas = []
+    for nome, func, providencia in regras:
+        itens = [a for a in (lista or []) if func(a)]
+        linhas.append({
+            "Critério": nome,
+            "Quantidade": len(itens),
+            "Providência sugerida": providencia,
+            "IDs": ", ".join([str(a.get("id")) for a in itens[:20]])
+        })
+    return pd.DataFrame(linhas)
+
+
+def alertas_internos_usuario(lista):
+    usuario = usuario_logado() or {}
+    nome = usuario.get("nome") or ""
+    email = usuario.get("email") or ""
+    meus = [
+        a for a in (lista or [])
+        if atendimento_aberto(a)
+        and (
+            str(a.get("servidor") or "").strip().casefold() == str(nome).strip().casefold()
+            or str(a.get("servidor_email") or "").strip().casefold() == str(email).strip().casefold()
+        )
+    ]
+    devolvidos = [a for a in meus if str(a.get("situacao_validacao") or "") == "Devolvido para ajuste"]
+    vencidos = [a for a in meus if prazo_vencido(a)]
+    urgentes = [a for a in meus if str(a.get("prioridade") or "").casefold() == "urgente"]
+    sem_resp = [a for a in (lista or []) if atendimento_sem_responsavel(a)]
+    planos = rows_tabela_simples("planos_acao_coorze") if usuario_pode_ver_governanca() else []
+    planos_vencidos = [p for p in planos if status_prazo_plano(p.get("prazo"), p.get("status")) == "Vencido"]
+    curadoria = rows_tabela_simples("curadoria_portal") if usuario_pode_ver_governanca() else []
+    curadoria_vencida = [c for c in curadoria if status_prazo_plano(c.get("prazo_proxima_revisao"), c.get("status")) == "Vencido"]
+    return {
+        "meus": meus,
+        "devolvidos": devolvidos,
+        "vencidos": vencidos,
+        "urgentes": urgentes,
+        "sem_responsavel": sem_resp,
+        "planos_vencidos": planos_vencidos,
+        "curadoria_vencida": curadoria_vencida,
+    }
+
+
+def render_alertas_internos(lista):
+    alertas = alertas_internos_usuario(lista)
+    cards = [
+        ("Meus pendentes", len(alertas["meus"])),
+        ("Urgentes", len(alertas["urgentes"])),
+        ("Meus vencidos", len(alertas["vencidos"])),
+        ("Devolvidos", len(alertas["devolvidos"])),
+    ]
+    if usuario_pode_ver_governanca():
+        cards += [
+            ("Sem responsável", len(alertas["sem_responsavel"])),
+            ("Planos vencidos", len(alertas["planos_vencidos"])),
+            ("Portal vencido", len(alertas["curadoria_vencida"])),
+        ]
+    cols = st.columns(min(len(cards), 7))
+    for idx, (label, valor) in enumerate(cards):
+        with cols[idx % len(cols)]:
+            render_metric_card(label, numero_br(valor), "#B00020" if valor else "#174A7C")
+    mensagens = []
+    if alertas["devolvidos"]:
+        mensagens.append(f"Há {len(alertas['devolvidos'])} atendimento(s) devolvido(s) para ajuste.")
+    if alertas["vencidos"]:
+        mensagens.append(f"Há {len(alertas['vencidos'])} atendimento(s) com prazo vencido.")
+    if usuario_pode_ver_governanca() and alertas["planos_vencidos"]:
+        mensagens.append(f"Há {len(alertas['planos_vencidos'])} plano(s) de ação vencido(s).")
+    if usuario_pode_ver_governanca() and alertas["curadoria_vencida"]:
+        mensagens.append(f"Há {len(alertas['curadoria_vencida'])} conteúdo(s) do portal com revisão vencida.")
+    if mensagens:
+        st.warning(" ".join(mensagens))
+    else:
+        st.success("Não há alertas críticos para o seu perfil no momento.")
+
+
+def eventos_linha_tempo_atendimento(atendimento):
+    eventos = []
+    def add(data, tipo, descricao):
+        eventos.append({
+            "Data": formatar_data_hora_brasilia(data) if data else "",
+            "Evento": tipo,
+            "Descrição": descricao,
+        })
+    add(atendimento.get("criado_em"), "Atendimento cadastrado", f"Registro nº {atendimento.get('id')} criado.")
+    if atendimento.get("triado_em") or atendimento.get("triado_por"):
+        add(atendimento.get("triado_em"), "Triagem", f"Triado por {atendimento.get('triado_por') or 'não informado'}.")
+    if atendimento.get("data_inicio_atendimento"):
+        add(atendimento.get("data_inicio_atendimento"), "Início do atendimento", f"Responsável: {atendimento.get('servidor') or 'não informado'}.")
+    if atendimento.get("requer_validacao"):
+        add(atendimento.get("validado_em"), "Validação da chefia", atendimento.get("situacao_validacao") or "Validação requerida.")
+    if atendimento.get("data_conclusao") or atendimento.get("realizado_em"):
+        add(atendimento.get("data_conclusao") or atendimento.get("realizado_em"), "Conclusão", atendimento.get("conclusao") or "Atendimento concluído.")
+    try:
+        usos = usos_base_conhecimento_atendimento(atendimento.get("id"))
+        for u in usos:
+            add(u.get("criado_em"), "Base de conhecimento", f"Utilizada {u.get('codigo_base')} - {u.get('assunto') or ''}.")
+    except Exception:
+        pass
+    try:
+        arts = supabase_get_silencioso("articulacoes_tecnicas", {"select": "*", "atendimento_id": f"eq.{atendimento.get('id')}", "order": "criado_em.asc"}) or []
+        for art in arts:
+            add(art.get("criado_em"), "Articulação técnica", f"{art.get('unidade_destino')} - {art.get('status')} - {art.get('tipo_articulacao')}.")
+    except Exception:
+        pass
+    return pd.DataFrame(eventos)
+
+
+def criar_plano_acao_de_achado(achado, providencia, unidade="COORZE", prioridade="Normal", origem="Inteligência gerencial"):
+    usuario = usuario_logado() or {}
+    row = {
+        "achado": achado,
+        "providencia": providencia,
+        "unidade_responsavel": unidade,
+        "responsavel": "",
+        "prazo": None,
+        "status": "Aberto",
+        "prioridade": prioridade,
+        "origem": origem,
+        "evidencia": "",
+        "conclusao": "",
+        "ativo": True,
+        "criado_por_email": usuario.get("email", ""),
+        "criado_por_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+        "atualizado_em": agora_iso(),
+    }
+    return inserir_tabela_simples("planos_acao_coorze", row)
+
+
 def tela_demandas_a_escalar():
     st.subheader("Demandas a escalar / validar")
     aviso_modo_visualizacao()
@@ -8529,6 +8893,9 @@ def main():
         tela_menu_principal()
 
 
+    elif escolha == "Minha área de trabalho":
+        tela_minha_area_trabalho()
+
     elif escolha == "Dashboard":
         tela_dashboard()
 
@@ -8588,6 +8955,15 @@ def main():
 
     elif escolha == "Demandas a escalar":
         tela_demandas_a_escalar()
+
+    elif escolha == "Qualidade dos Registros":
+        tela_qualidade_registros()
+
+    elif escolha == "Linha do tempo":
+        tela_linha_tempo_atendimento()
+
+    elif escolha == "Relatório Governança COORZE":
+        tela_relatorio_governanca_coorze()
 
     elif escolha == "Instrumentos de orientação":
         tela_instrumentos_orientacao()
