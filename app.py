@@ -31,7 +31,7 @@ from reportlab.lib.utils import ImageReader
 # ============================================================
 
 st.set_page_config(
-    page_title="Gestão Integrada de Atendimentos da Corregedoria",
+    page_title="SIGA-COR",
     page_icon="⚖️",
     layout="wide"
 )
@@ -1142,7 +1142,7 @@ def gerar_relatorio_pdf_base_conhecimento(df, filtros_aplicados):
     elementos = []
 
     elementos.append(Paragraph("RELATÓRIO GERENCIAL DA BASE DE CONHECIMENTO", titulo))
-    elementos.append(Paragraph("Gestão Integrada de Atendimentos da Corregedoria", subtitulo))
+    elementos.append(Paragraph("SIGA-COR", subtitulo))
 
     elementos.append(Paragraph("1. Filtros aplicados", h2))
     filtros_data = [["Filtro", "Valor"]]
@@ -1410,7 +1410,7 @@ def atendimento_app_para_db(a):
 
 def montar_backup_completo():
     return {
-        "sistema": "Gestão Integrada de Atendimentos da Corregedoria",
+        "sistema": "SIGA-COR",
         "versao_backup": "2.1-supabase-rest",
         "gerado_em": agora_iso(),
         "observacao": "Backup completo gerado a partir do banco Supabase.",
@@ -2080,7 +2080,7 @@ def tela_login():
             <div class="logo-box">
                 <img src="data:image/png;base64,{LOGO_CORREGEDORIA_BASE64}">
             </div>
-            <h1>Gestão Integrada de Atendimentos da Corregedoria</h1>
+            <h1>SIGA-COR</h1>
         </div>
         """,
         unsafe_allow_html=True
@@ -2175,7 +2175,7 @@ def tela_login():
                         "Validação de cadastro - SIGA-COR",
                         (
                             f"Olá, {nome}.\n\n"
-                            "Recebemos seu cadastro no Gestão Integrada de Atendimentos da Corregedoria.\n\n"
+                            "Recebemos seu cadastro no SIGA-COR.\n\n"
                             "Para validar seu acesso ao sistema, acesse o link abaixo:\n\n"
                             f"{link}\n\n"
                             "Este link é destinado exclusivamente à validação de cadastro.\n"
@@ -2214,7 +2214,7 @@ def tela_login():
                     "Recuperação de senha - SIGA-COR",
                     (
                         "Olá.\n\n"
-                        "Recebemos uma solicitação de recuperação de senha para o Gestão Integrada de Atendimentos da Corregedoria.\n\n"
+                        "Recebemos uma solicitação de recuperação de senha para o SIGA-COR.\n\n"
                         "Para criar uma nova senha, acesse o link abaixo:\n\n"
                         f"{link}\n\n"
                         "Este link é destinado exclusivamente à recuperação de senha.\n"
@@ -2828,6 +2828,12 @@ def tela_orientacoes_zonas():
 
 
 
+def sidebar_nav_button(label, destino, key_prefix):
+    if st.sidebar.button(label, key=f"{key_prefix}_{destino}", use_container_width=True):
+        ir_para_pagina(destino)
+        st.rerun()
+
+
 def sidebar_menu():
     css_menu_institucional()
 
@@ -2844,64 +2850,90 @@ def sidebar_menu():
     st.sidebar.caption(f"Perfil: {perfil_atual() or 'não identificado'}")
     st.sidebar.caption(f"Modo: {modo_visualizacao_atual()}")
 
-    itens_principais = [
-        ("Início  ›", "Início"),
-        ("Minha área de trabalho  ›", "Minha área de trabalho"),
-        ("Novo atendimento  ›", "Novo atendimento"),
-        ("Painel gerencial  ›", "Dashboard"),
-        ("Orientações às Zonas  ›", "Orientações às Zonas"),
-    ]
+    st.sidebar.markdown("#### Início")
+    sidebar_nav_button("Início ›", "Início", "side_inicio")
+    sidebar_nav_button("Minha área de trabalho ›", "Minha área de trabalho", "side_inicio")
 
-    if usuario_eh_gestor():
-        itens_principais.insert(2, ("Validação da chefia  ›", "Validação da chefia"))
+    with st.sidebar.expander("Atendimento", expanded=True):
+        if usuario_pode_editar_atendimentos():
+            if st.button("Novo atendimento ›", key="side_atendimento_novo", use_container_width=True):
+                ir_para_pagina("Novo atendimento")
+                st.rerun()
 
-    if usuario_pode_ver_inteligencia():
-        itens_principais.insert(4, ("Inteligência gerencial  ›", "Inteligência gerencial"))
+        if usuario_eh_gestor():
+            if st.button("Validação da chefia ›", key="side_atendimento_validacao", use_container_width=True):
+                ir_para_pagina("Validação da chefia")
+                st.rerun()
 
-    if usuario_eh_gestor():
-        itens_principais.append(("Relatórios  ›", "Relatórios e exportação"))
-
-    for label, destino in itens_principais:
-        if st.sidebar.button(label, key=f"side_nav_{destino}", use_container_width=True):
-            ir_para_pagina(destino)
-            st.rerun()
-
-    with st.sidebar.expander("Mais opções  ⌄"):
-        outros = [
+        botoes_atendimento = [
             ("Meus atendimentos", "Meus atendimentos"),
             ("Triagem", "Triagem"),
             ("Em atendimento", "Em atendimento"),
             ("Atendimento realizado", "Atendimento realizado"),
             ("Base geral", "Base geral"),
+            ("Linha do tempo", "Linha do tempo"),
+        ]
+        for label, destino in botoes_atendimento:
+            if st.button(label, key=f"side_atendimento_{destino}", use_container_width=True):
+                ir_para_pagina(destino)
+                st.rerun()
+
+    with st.sidebar.expander("Conhecimento e orientações", expanded=True):
+        botoes_conhecimento = [
+            ("Orientações às Zonas", "Orientações às Zonas"),
             ("Base de conhecimento", "Base de conhecimento"),
             ("Modelos de resposta", "Modelos de resposta"),
         ]
-
         if usuario_pode_ver_governanca():
-            outros += [
-                ("Demandas a escalar", "Demandas a escalar"),
-                ("Qualidade dos Registros", "Qualidade dos Registros"),
-                ("Linha do tempo", "Linha do tempo"),
-                ("Relatório Governança COORZE", "Relatório Governança COORZE"),
+            botoes_conhecimento += [
                 ("Instrumentos de orientação", "Instrumentos de orientação"),
                 ("Curadoria do Portal", "Curadoria do Portal"),
-                ("Plano de ação COORZE", "Plano de ação COORZE"),
-                ("Diagnóstico das Zonas", "Diagnóstico das Zonas"),
-                ("Governança técnica", "Governança técnica"),
-                ("Backup e restauração", "Backup e restauração"),
             ]
 
-        if usuario_pode_ver_parametros():
-            outros += [
+        for label, destino in botoes_conhecimento:
+            if st.button(label, key=f"side_conhecimento_{destino}", use_container_width=True):
+                ir_para_pagina(destino)
+                st.rerun()
+
+    if usuario_eh_gestor() or usuario_pode_ver_governanca() or usuario_pode_ver_inteligencia():
+        with st.sidebar.expander("Gestão e governança", expanded=True):
+            botoes_gestao = [("Painel gerencial", "Dashboard")]
+
+            if usuario_pode_ver_inteligencia():
+                botoes_gestao += [
+                    ("Inteligência gerencial", "Inteligência gerencial"),
+                    ("Diagnóstico das Zonas", "Diagnóstico das Zonas"),
+                ]
+
+            if usuario_pode_ver_governanca():
+                botoes_gestao += [
+                    ("Demandas a escalar", "Demandas a escalar"),
+                    ("Qualidade dos Registros", "Qualidade dos Registros"),
+                    ("Plano de ação COORZE", "Plano de ação COORZE"),
+                    ("Relatório Governança COORZE", "Relatório Governança COORZE"),
+                    ("Governança técnica", "Governança técnica"),
+                ]
+
+            if usuario_eh_gestor():
+                botoes_gestao.append(("Relatórios", "Relatórios e exportação"))
+
+            for label, destino in botoes_gestao:
+                if st.button(label, key=f"side_gestao_{destino}", use_container_width=True):
+                    ir_para_pagina(destino)
+                    st.rerun()
+
+    if usuario_pode_ver_parametros():
+        with st.sidebar.expander("Administração do sistema", expanded=False):
+            botoes_admin = [
                 ("Assuntos", "Assuntos"),
                 ("Usuários", "Usuários"),
                 ("Parâmetros nacionais", "Parâmetros nacionais"),
+                ("Backup e restauração", "Backup e restauração"),
             ]
-
-        for label, destino in outros:
-            if st.button(label, key=f"side_more_{destino}", use_container_width=True):
-                ir_para_pagina(destino)
-                st.rerun()
+            for label, destino in botoes_admin:
+                if st.button(label, key=f"side_admin_{destino}", use_container_width=True):
+                    ir_para_pagina(destino)
+                    st.rerun()
 
     st.sidebar.divider()
 
@@ -6271,7 +6303,7 @@ def gerar_relatorio_pdf_sepro(df, filtros_aplicados):
     elementos = []
 
     elementos.append(Paragraph("RELATÓRIO GERENCIAL DE ATENDIMENTOS - SIGA-COR", titulo))
-    elementos.append(Paragraph("SEPRO / COAJUC - Gestão Integrada de Atendimentos da Corregedoria", subtitulo))
+    elementos.append(Paragraph("SEPRO / COAJUC - SIGA-COR", subtitulo))
 
     elementos.append(Paragraph("1. Identificação e filtros aplicados", h2))
     elementos.append(Paragraph(f"<b>Usuário emissor:</b> {usuario_logado().get('nome', '')} ({usuario_logado().get('email', '')})", normal))
