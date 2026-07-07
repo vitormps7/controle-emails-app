@@ -941,6 +941,43 @@ def registrar_reabertura(atendimento, motivo):
     registrar_historico_atendimento(atendimento.get("id"), "Reabertura", "Atendimento reaberto", motivo)
 
 
+
+def criar_modelo_resposta_do_atendimento(atendimento, titulo_modelo="", texto_modelo="", fundamento_normativo=""):
+    usuario = usuario_logado() or {}
+    titulo = titulo_modelo.strip() or f"Modelo - {atendimento.get('assunto') or 'Atendimento'}"
+    texto = texto_modelo.strip() or atendimento.get("providencia_adotada") or atendimento.get("conclusao") or atendimento.get("descricao") or ""
+
+    row = {
+        "secao": normalizar_secao(atendimento.get("secao")),
+        "assunto": atendimento.get("assunto") or "Não informado",
+        "titulo": titulo,
+        "texto_modelo": texto,
+        "fundamento_normativo": fundamento_normativo.strip(),
+        "criado_por_email": usuario.get("email", ""),
+        "criado_por_nome": usuario.get("nome", ""),
+        "ativo": True,
+        "versao": 1,
+        "superada": False,
+        "data_superacao": None,
+        "motivo_superacao": "",
+        "superada_por_email": "",
+        "superada_por_nome": "",
+        "criado_em": agora_iso(),
+        "atualizado_em": agora_iso(),
+    }
+    criado = supabase_insert_silencioso("modelos_resposta", [row])
+    try:
+        registrar_historico_atendimento(
+            atendimento.get("id"),
+            "Modelo de resposta",
+            "Modelo criado a partir do atendimento",
+            titulo
+        )
+    except Exception:
+        pass
+    return criado
+
+
 def criar_item_base_conhecimento(atendimento):
     usuario = usuario_logado() or {}
     row = {
@@ -2815,16 +2852,31 @@ def tela_validacao_chefia():
 
 
 def tela_orientacoes_zonas():
-    st.subheader("Orientações às Zonas  ›")
-    st.caption("Modelos de resposta, base de conhecimento e fundamentos para padronizar as orientações às zonas eleitorais.")
+    st.subheader("Orientações às Zonas")
+    aviso_modo_visualizacao()
+    st.caption(
+        "Ambiente integrado para consulta e manutenção da memória institucional, "
+        "modelos de resposta e instrumentos de orientação."
+    )
 
-    aba1, aba2 = st.tabs(["Modelos de resposta", "Base de conhecimento"])
+    aba1, aba2, aba3 = st.tabs([
+        "Base de conhecimento",
+        "Modelos de resposta",
+        "Instrumentos de orientação",
+    ])
 
     with aba1:
-        tela_modelos_resposta()
+        tela_base_conhecimento()
 
     with aba2:
-        tela_base_conhecimento()
+        tela_modelos_resposta()
+
+    with aba3:
+        if usuario_pode_ver_governanca():
+            tela_instrumentos_orientacao()
+        else:
+            st.info("Instrumentos de orientação estão disponíveis para chefia e administradores.")
+
 
 
 
@@ -2881,8 +2933,6 @@ def sidebar_menu():
     with st.sidebar.expander("Conhecimento e orientações", expanded=True):
         botoes_conhecimento = [
             ("Orientações às Zonas", "Orientações às Zonas"),
-            ("Base de conhecimento", "Base de conhecimento"),
-            ("Modelos de resposta", "Modelos de resposta"),
         ]
         if usuario_pode_ver_governanca():
             botoes_conhecimento += [
@@ -4239,9 +4289,14 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 )
 
                 gerar_conhecimento = st.checkbox(
-                    "Gerar item na base de conhecimento ao salvar",
+                    "Cadastrar orientação na base de conhecimento ao salvar",
                     value=False,
                     key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
+                )
+                gerar_modelo_resposta = st.checkbox(
+                    "Cadastrar modelo de resposta ao salvar",
+                    value=False,
+                    key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
                 )
 
                 if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
@@ -4274,6 +4329,13 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             registrar_diferencas_atendimento(antes, item, "edição")
                             if gerar_conhecimento:
                                 criar_item_base_conhecimento(item)
+                            if gerar_modelo_resposta:
+                                criar_modelo_resposta_do_atendimento(
+                                    item,
+                                    titulo_modelo=f"Modelo - {item.get('assunto') or 'Atendimento'}",
+                                    texto_modelo=item.get("providencia_adotada") or item.get("conclusao") or "",
+                                    fundamento_normativo=""
+                                )
                             st.success("Alterações salvas.")
                             st.rerun()
 
@@ -4335,6 +4397,48 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 st.markdown("##### Linha do tempo simplificada")
                 timeline_df = eventos_linha_tempo_atendimento(atendimento)
                 st.dataframe(timeline_df, use_container_width=True, hide_index=True)
+
+            st.divider()
+            st.markdown("##### Cadastrar conhecimento a partir deste atendimento")
+            st.caption("Use esta área quando a resposta do atendimento puder virar memória institucional ou texto-padrão.")
+
+            col_conh1, col_conh2 = st.columns(2)
+
+            with col_conh1:
+                if st.button("Cadastrar orientação na base", key=f"{chave_prefixo}_btn_criar_bc_{atendimento.get('id')}"):
+                    criar_item_base_conhecimento(atendimento)
+                    st.success("Orientação cadastrada na base de conhecimento.")
+                    st.rerun()
+
+            with col_conh2:
+                with st.popover("Cadastrar modelo de resposta"):
+                    titulo_modelo = st.text_input(
+                        "Título do modelo",
+                        value=f"Modelo - {atendimento.get('assunto') or 'Atendimento'}",
+                        key=f"{chave_prefixo}_titulo_modelo_at_{atendimento.get('id')}"
+                    )
+                    texto_padrao = st.text_area(
+                        "Texto do modelo",
+                        value=atendimento.get("providencia_adotada") or atendimento.get("conclusao") or "",
+                        height=180,
+                        key=f"{chave_prefixo}_texto_modelo_at_{atendimento.get('id')}"
+                    )
+                    fundamento_modelo = st.text_area(
+                        "Fundamento normativo, se houver",
+                        key=f"{chave_prefixo}_fund_modelo_at_{atendimento.get('id')}"
+                    )
+                    if st.button("Salvar modelo", key=f"{chave_prefixo}_btn_salvar_modelo_at_{atendimento.get('id')}"):
+                        if not texto_padrao.strip():
+                            st.warning("Informe o texto do modelo.")
+                        else:
+                            criar_modelo_resposta_do_atendimento(
+                                atendimento,
+                                titulo_modelo=titulo_modelo,
+                                texto_modelo=texto_padrao,
+                                fundamento_normativo=fundamento_modelo,
+                            )
+                            st.success("Modelo de resposta cadastrado.")
+                            st.rerun()
 
             st.divider()
             st.markdown("##### Comentários internos")
@@ -6945,7 +7049,7 @@ def tela_usuarios():
 def tela_modelos_resposta():
     aviso_modo_visualizacao()
     st.subheader("Modelos de resposta")
-    st.caption("Modelos institucionais de orientação vinculados por seção e assunto.")
+    st.caption("Textos-padrão para resposta às zonas, vinculados por seção, assunto e fundamento.")
 
     secao_filtro = st.selectbox("Seção", ["Todas"] + secoes_atendimento(), key="modelo_secao_filtro")
     incluir_superadas = st.checkbox("Exibir orientações superadas", value=True, key="modelo_exibir_superadas")
@@ -7232,7 +7336,7 @@ def tela_parametros_nacionais():
 def tela_base_conhecimento():
     aviso_modo_visualizacao()
     st.subheader("Base de conhecimento")
-    st.caption("Repositório de orientações extraídas dos atendimentos concluídos.")
+    st.caption("Memória institucional: dúvidas, fundamentos, orientações adotadas, revisões e superações.")
 
     rows = base_conhecimento_rows(incluir_superadas=True)
     df = pd.DataFrame(rows)
