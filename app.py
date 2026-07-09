@@ -2777,6 +2777,42 @@ def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key):
 
 
 
+
+
+def estilo_status_tabela_rapida(row):
+    status = str(row.get("Status", "")).casefold()
+
+    if "em atendimento" in status:
+        estilo = "background-color: #FFF4DE; color: #7A4B00; font-weight: 700;"
+    elif "realizado" in status:
+        estilo = "background-color: #E8F5E9; color: #1B5E20; font-weight: 700;"
+    elif "triagem" in status:
+        estilo = "background-color: #E3F2FD; color: #0D47A1; font-weight: 700;"
+    elif "devolvido" in status:
+        estilo = "background-color: #FDECEA; color: #B00020; font-weight: 700;"
+    elif "pendente" in status:
+        estilo = "background-color: #F3E8FF; color: #4A148C; font-weight: 700;"
+    else:
+        estilo = "background-color: #F8FAFC; color: #0F172A;"
+
+    return [estilo if col == "Status" else "" for col in row.index]
+
+
+def exibir_tabela_rapida_status_colorido(df):
+    if df is None or df.empty:
+        st.info("Nenhum atendimento cadastrado para exibição rápida.")
+        return
+
+    try:
+        st.dataframe(
+            df.style.apply(estilo_status_tabela_rapida, axis=1),
+            use_container_width=True,
+            hide_index=True,
+        )
+    except Exception:
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+
 def dataframe_atendimentos_rapidos(lista, limite=12):
     linhas = []
     for a in sorted(lista or [], key=lambda x: int(x.get("id", 0)), reverse=True)[:limite]:
@@ -2800,10 +2836,7 @@ def bloco_novos_atendimentos_inicio():
         if a.get("status") in (STATUS_EM_ATENDIMENTO, STATUS_REALIZADO)
     ]
     df = dataframe_atendimentos_rapidos(recentes, limite=15)
-    if df.empty:
-        st.info("Nenhum atendimento cadastrado para exibição rápida.")
-    else:
-        st.dataframe(df, use_container_width=True, hide_index=True)
+    exibir_tabela_rapida_status_colorido(df)
 
 def tela_menu_principal():
     css_menu_institucional()
