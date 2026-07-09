@@ -2775,6 +2775,36 @@ def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key):
 
 
 
+
+
+def dataframe_atendimentos_rapidos(lista, limite=12):
+    linhas = []
+    for a in sorted(lista or [], key=lambda x: int(x.get("id", 0)), reverse=True)[:limite]:
+        linhas.append({
+            "ID": a.get("id"),
+            "Data": data_para_exibir(a.get("data")),
+            "Quem originou": a.get("origem") or "",
+            "Zona eleitoral": a.get("zona_eleitoral") or "Não informado",
+            "Responsável": a.get("servidor") or "Não informado",
+            "Status": a.get("status") or "",
+            "Atualizado": formatar_data_hora_brasilia(a.get("atualizado_em")) if a.get("atualizado_em") else "",
+        })
+    return pd.DataFrame(linhas)
+
+
+def bloco_novos_atendimentos_inicio():
+    st.markdown("### Visualização rápida dos atendimentos cadastrados")
+    lista = filtrar_lista_por_perfil(atendimentos())
+    recentes = [
+        a for a in lista
+        if a.get("status") in (STATUS_EM_ATENDIMENTO, STATUS_REALIZADO)
+    ]
+    df = dataframe_atendimentos_rapidos(recentes, limite=15)
+    if df.empty:
+        st.info("Nenhum atendimento cadastrado para exibição rápida.")
+    else:
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
 def tela_menu_principal():
     css_menu_institucional()
 
@@ -2799,6 +2829,10 @@ def tela_menu_principal():
     for idx, card in enumerate(cards):
         with colunas[idx % len(colunas)]:
             render_card_navegacao(*card)
+
+    st.divider()
+
+    bloco_novos_atendimentos_inicio()
 
     st.divider()
 
@@ -2919,7 +2953,6 @@ def sidebar_menu():
 
         botoes_atendimento = [
             ("Meus atendimentos", "Meus atendimentos"),
-            ("Triagem", "Triagem"),
             ("Em atendimento", "Em atendimento"),
             ("Atendimento realizado", "Atendimento realizado"),
             ("Base geral", "Base geral"),
@@ -4255,6 +4288,35 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
                 )
 
+                fontes_disponiveis = FONTES_ATENDIMENTO if "FONTES_ATENDIMENTO" in globals() else ["Não informado", "E-mail", "Telefone", "WhatsApp", "Outro"]
+                fonte_atual = atendimento.get("fonte", "") or "Não informado"
+                if fonte_atual not in fontes_disponiveis:
+                    fontes_disponiveis = [fonte_atual] + fontes_disponiveis
+                novo_fonte = st.selectbox(
+                    "Fonte",
+                    fontes_disponiveis,
+                    index=fontes_disponiveis.index(fonte_atual) if fonte_atual in fontes_disponiveis else 0,
+                    key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
+                )
+
+                nova_origem = st.text_input(
+                    "Quem originou a demanda/chamada",
+                    value=atendimento.get("origem", ""),
+                    key=f"{chave_prefixo}_origem_{atendimento.get('id')}"
+                )
+
+                novo_protocolo = st.text_input(
+                    "Protocolo ou referência, se houver",
+                    value=atendimento.get("protocolo", ""),
+                    key=f"{chave_prefixo}_protocolo_{atendimento.get('id')}"
+                )
+
+                nova_descricao = st.text_area(
+                    "Descrição da demanda",
+                    value=atendimento.get("descricao", ""),
+                    key=f"{chave_prefixo}_descricao_{atendimento.get('id')}"
+                )
+
                 nova_complexidade = st.selectbox(
                     "Complexidade",
                     COMPLEXIDADES_ATENDIMENTO,
@@ -4308,6 +4370,10 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             item["secao"] = nova_secao
                             item["servidor"] = novo_servidor
                             item["assunto"] = novo_assunto
+                            item["fonte"] = novo_fonte
+                            item["origem"] = nova_origem
+                            item["protocolo"] = novo_protocolo
+                            item["descricao"] = nova_descricao
                             item["complexidade"] = nova_complexidade
                             item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
                             item["providencia_adotada"] = nova_providencia
@@ -5652,423 +5718,126 @@ def tela_dashboard():
 
 def tela_novo_atendimento():
     st.subheader("Novo atendimento")
+    aviso_modo_visualizacao()
+    st.caption("Cadastro rápido: informe apenas data, origem da demanda, zona eleitoral e responsável. Os demais campos serão preenchidos na fase Em atendimento.")
 
-    st.info("Todo novo atendimento entra primeiro na base **Triagem**. Na Triagem, será escolhido o usuário responsável; ao designar o usuário, a demanda seguirá para **Em atendimento**.")
+    if not usuario_pode_editar_atendimentos():
+        st.warning("Seu perfil permite consulta, sem criação de atendimento.")
+        return
 
-    col_param1, col_param2, col_param3 = st.columns(3)
-
-    with col_param1:
-        tribunais_disponiveis = tribunais_rows()
-        opcoes_tribunais = [t.get("sigla", TRIBUNAL_PADRAO) for t in tribunais_disponiveis] or [TRIBUNAL_PADRAO]
-        tribunal_atendimento = st.selectbox(
-            "Tribunal",
-            opcoes_tribunais,
-            index=0,
-            key="novo_atendimento_tribunal"
-        )
-        tribunal_row = next((t for t in tribunais_disponiveis if t.get("sigla") == tribunal_atendimento), {})
-        uf_atendimento = tribunal_row.get("uf") or UF_PADRAO
-
-    with col_param2:
-        unidades_disponiveis = unidades_corregedoria_rows(tribunal_atendimento)
-        opcoes_unidades = [u.get("sigla", UNIDADE_CORREGEDORIA_PADRAO) for u in unidades_disponiveis] or [UNIDADE_CORREGEDORIA_PADRAO]
-        unidade_atendimento = st.selectbox(
-            "Unidade da Corregedoria",
-            opcoes_unidades,
-            index=0,
-            key="novo_atendimento_unidade"
-        )
-
-    with col_param3:
-        secao_atendimento = st.selectbox(
-            "Seção responsável",
-            secoes_atendimento(),
-            index=0,
-            key="novo_atendimento_secao_responsavel"
-        )
-
-    st.caption(
-        f"Os assuntos exibidos abaixo pertencem à seção **{secao_atendimento}**. "
-        "Para cadastrar assunto de outra seção, altere primeiro a seção responsável."
-    )
-
-    with st.form("form_novo_atendimento", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
-
+    with st.form("form_novo_atendimento_simplificado"):
+        col1, col2 = st.columns(2)
         with col1:
-            data_atendimento = st.date_input("Data do atendimento", value=agora_brasilia().date(), format="DD/MM/YYYY")
-
-        with col2:
-            origem = st.text_input("Quem originou a demanda/chamada")
-
-        with col3:
-            zona = st.selectbox("Zona eleitoral", opcoes_zonas_nacionais(tribunal_atendimento))
-
-        col4, col5, col6, col7, col8 = st.columns(5)
-
-        with col4:
-            idx_fonte = FONTES.index("Não informado") if "Não informado" in FONTES else 0
-            fonte = st.selectbox("Fonte", FONTES, index=idx_fonte)
-
-        with col5:
-            lista_assuntos = assuntos(secao_atendimento)
-            idx_assunto = lista_assuntos.index("Não informado") if "Não informado" in lista_assuntos else 0
-            assunto = st.selectbox(
-                f"Assunto ({secao_atendimento})",
-                lista_assuntos,
-                index=idx_assunto,
-                key=f"novo_atendimento_assunto_{secao_atendimento}"
-            )
-
-        with col6:
-            prioridades = ["Não informado", "Normal", "Alta", "Urgente", "Baixa"]
-            prioridade = st.selectbox("Prioridade", prioridades, index=0)
-
-        with col7:
-            complexidade = st.selectbox("Complexidade", COMPLEXIDADES_ATENDIMENTO, index=0)
-
-        with col8:
-            informar_prazo = st.checkbox("Definir prazo", value=False)
-            prazo_limite = st.date_input(
-                "Prazo limite",
+            data_atendimento = st.date_input(
+                "Data do atendimento",
                 value=agora_brasilia().date(),
                 format="DD/MM/YYYY",
-                help="Marque 'Definir prazo' para que esta data seja gravada no atendimento."
+                key="novo_atendimento_data_simplificado"
             )
-
-        protocolo = st.text_input("Protocolo ou referência, se houver")
-
-        descricao = st.text_area("Descrição da demanda")
-        observacoes = st.text_area("Observações internas")
-        requer_validacao = st.checkbox("Exigir validação da chefia antes do encerramento", value=False)
-
-        natureza_demanda = "Orientação procedimental ordinária"
-        exige_validacao_tecnica = False
-        unidade_tecnica_validadora = "Não necessária"
-        status_validacao_tecnica = "Não necessária"
-        exige_coajuc = False
-        motivo_escalonamento = ""
-        potencial_uniformizacao = "Baixo"
-        produto_institucional_sugerido = "Não sugerido"
-
-        if usuario_eh_gestor():
-            with st.expander("Governança COORZE — campos avançados", expanded=False):
-                colg1, colg2, colg3 = st.columns(3)
-                with colg1:
-                    natureza_demanda = st.selectbox("Natureza da demanda", NATUREZAS_DEMANDA, index=0)
-                    potencial_uniformizacao = st.selectbox("Potencial de uniformização", POTENCIAIS_UNIFORMIZACAO, index=0)
-                with colg2:
-                    exige_validacao_tecnica = st.checkbox("Exige validação técnica", value=False)
-                    unidade_tecnica_validadora = st.selectbox("Unidade técnica validadora", UNIDADES_TECNICAS_VALIDACAO, index=0)
-                    status_validacao_tecnica = st.selectbox("Status da validação técnica", STATUS_VALIDACAO_TECNICA, index=0)
-                with colg3:
-                    exige_coajuc = st.checkbox("Exige articulação com COAJUC", value=False)
-                    produto_institucional_sugerido = st.selectbox("Produto institucional sugerido", PRODUTOS_INSTITUCIONAIS, index=0)
-                motivo_escalonamento = st.text_area("Motivo do escalonamento/observação de governança")
-
-        enviar = st.form_submit_button("Cadastrar atendimento", type="primary")
-
-        if enviar:
-            lista = atendimentos()
-            novo = {
-                "id": proximo_id(lista),
-                "data": data_atendimento.strftime("%d/%m/%Y"),
-                "status": STATUS_CADASTRADO,
-                "secao": secao_atendimento,
-                "tribunal": tribunal_atendimento,
-                "uf": uf_atendimento,
-                "unidade_responsavel": unidade_atendimento,
-                "requer_validacao": requer_validacao,
-                "situacao_validacao": "Pendente de validação" if requer_validacao else "Não requerida",
-                "validado_por": "",
-                "validado_em": "",
-                "servidor": "Não informado",
-                "fonte": fonte,
-                "assunto": assunto or "Não informado",
-                "zona_eleitoral": zona,
-                "origem": origem.strip(),
-                "protocolo": protocolo.strip(),
-                "prioridade": prioridade,
-                "complexidade": complexidade,
-                "prazo_limite": prazo_limite.strftime("%d/%m/%Y") if informar_prazo else "",
-                "descricao": descricao.strip(),
-                "observacoes": observacoes.strip(),
-                "providencia_adotada": "",
-                "conclusao": "",
-                "criado_por": usuario_logado().get("email", ""),
-                "criado_em": agora_iso(),
-                "atualizado_em": agora_iso(),
-                "data_realizacao": "",
-                "data_inicio_atendimento": "",
-                "data_conclusao": "",
-                "tempo_triagem_horas": None,
-                "tempo_atendimento_horas": None,
-                "tempo_total_horas": None,
-                "triado_por": "",
-                "triado_em": "",
-                "natureza_demanda": natureza_demanda,
-                "eixo_competencia": classificar_eixo_competencia(assunto, descricao),
-                "unidade_sugerida": unidade_sugerida_por_eixo(classificar_eixo_competencia(assunto, descricao)),
-                "exige_validacao_tecnica": exige_validacao_tecnica,
-                "unidade_tecnica_validadora": unidade_tecnica_validadora,
-                "status_validacao_tecnica": status_validacao_tecnica,
-                "exige_coajuc": exige_coajuc,
-                "motivo_escalonamento": motivo_escalonamento.strip(),
-                "potencial_uniformizacao": potencial_uniformizacao,
-                "produto_institucional_sugerido": produto_institucional_sugerido,
-            }
-            lista.append(novo)
-            salvar_atendimentos(lista)
-            registrar_auditoria_atendimento(novo["id"], "criação", "atendimento", "", "Atendimento cadastrado")
-            registrar_historico_atendimento(novo["id"], "Cadastro", "Atendimento cadastrado", f"Demanda registrada para {secao_atendimento}.")
-            st.success(f"Atendimento nº {novo['id']} cadastrado com sucesso na base: {STATUS_CADASTRADO}.")
-            st.rerun()
-
-
-
-
-def card_triagem(atendimento, chave_prefixo):
-    criado_formatado = formatar_data_hora_brasilia(atendimento.get("criado_em"))
-    atualizado_formatado = formatar_data_hora_brasilia(atendimento.get("atualizado_em"))
-    triado_formatado = formatar_data_hora_brasilia(atendimento.get("triado_em"))
-
-    with st.container(border=True):
-        col1, col2, col3 = st.columns([1.2, 2.2, 1.3])
-
-        with col1:
-            st.markdown(f"**ID:** {atendimento.get('id')}")
-            st.markdown(f"**Data:** {data_para_exibir(atendimento.get('data'))}")
-            st.markdown(status_badge(STATUS_CADASTRADO), unsafe_allow_html=True)
-            st.markdown(marcador_visual_atendimento(atendimento), unsafe_allow_html=True)
+            origem = st.text_input(
+                "Quem originou a demanda/chamada",
+                key="novo_atendimento_origem_simplificado"
+            )
 
         with col2:
-            st.markdown(f"**Assunto:** {atendimento.get('assunto', '')}")
-            st.markdown(f"**Seção:** {normalizar_secao(atendimento.get('secao'))}")
-            st.markdown(f"**Origem:** {atendimento.get('origem', '')}")
-            st.markdown(f"**Zona:** {atendimento.get('zona_eleitoral', '')}")
-            st.markdown(f"**Descrição:** {atendimento.get('descricao', '')}")
+            zona = st.selectbox(
+                "Zona eleitoral",
+                opcoes_zonas_nacionais(TRIBUNAL_PADRAO),
+                key="novo_atendimento_zona_simplificado"
+            )
 
-        with col3:
-            st.markdown(f"**Fonte:** {atendimento.get('fonte', '')}")
-            st.markdown(f"**Prioridade:** {atendimento.get('prioridade', 'Normal')}")
-            st.markdown(f"**Criado em:** {criado_formatado}")
+            servidores = nomes_usuarios_ativos() or []
+            usuario = usuario_logado() or {}
+            nome_usuario = usuario.get("nome") or usuario.get("email") or "Não informado"
 
-        if atendimento.get("observacoes"):
-            st.markdown(f"**Observações:** {atendimento.get('observacoes')}")
+            if nome_usuario not in servidores:
+                servidores = [nome_usuario] + servidores
 
-        st.divider()
-        st.markdown("##### Assumir diretamente")
-        st.caption("Use esta opção para atribuir a demanda ao usuário logado e encaminhá-la para Em atendimento.")
-        if st.button("Assumir atendimento", key=f"{chave_prefixo}_assumir_{atendimento.get('id')}", type="secondary"):
-            ok, msg = assumir_atendimento_por_id(atendimento.get("id"))
-            if ok:
-                st.success(msg)
-                st.rerun()
-            else:
-                st.warning(msg)
+            if "Não informado" not in servidores:
+                servidores = ["Não informado"] + servidores
 
-        st.divider()
-        st.markdown("##### Designar responsável pela demanda")
-
-        servidores = ["Não informado"] + nomes_usuarios_ativos()
-        col_a, col_b = st.columns([2, 1])
-
-        with col_a:
-            servidor_atual = atendimento.get("servidor", "Não informado") or "Não informado"
-            if servidor_atual in ("Aguardando triagem", "", None):
-                servidor_atual = "Não informado"
-            index_servidor = servidores.index(servidor_atual) if servidor_atual in servidores else 0
-            servidor_escolhido = st.selectbox(
-                "Usuário que irá tratar a demanda",
+            servidor = st.selectbox(
+                "Responsável",
                 servidores,
-                index=index_servidor,
-                key=f"{chave_prefixo}_designar_{atendimento.get('id')}"
+                index=servidores.index(nome_usuario) if nome_usuario in servidores else 0,
+                key="novo_atendimento_responsavel_simplificado"
             )
 
-        with col_b:
-            st.write("")
-            st.write("")
-            if st.button("Encaminhar para Em atendimento", key=f"{chave_prefixo}_encaminhar_{atendimento.get('id')}", type="primary"):
-                if servidor_escolhido == "Não informado":
-                    st.warning("Selecione um usuário responsável antes de encaminhar.")
-                else:
-                    lista = atendimentos()
-                    for item in lista:
-                        if int(item.get("id")) == int(atendimento.get("id")):
-                            item["servidor"] = servidor_escolhido
-                            antes = item.copy()
-                            item["status"] = STATUS_EM_ATENDIMENTO
-                            item["data_inicio_atendimento"] = agora_iso()
-                            item["atualizado_em"] = agora_iso()
-                            item["triado_por"] = usuario_logado().get("email", "")
-                            item["triado_em"] = agora_iso()
-                            t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
-                            item["tempo_triagem_horas"] = t_triagem
-                            item["tempo_atendimento_horas"] = t_atendimento
-                            item["tempo_total_horas"] = t_total
-                            salvar_atendimentos(lista)
-                            registrar_diferencas_atendimento(antes, item, "triagem")
-                            st.success(f"Demanda encaminhada para {servidor_escolhido}.")
-                            st.rerun()
+        enviar = st.form_submit_button("Cadastrar e enviar para Em atendimento", type="primary")
 
-        st.divider()
+    if enviar:
+        if not origem.strip():
+            st.warning("Informe quem originou a demanda/chamada.")
+            return
 
-        with st.expander("Editar todos os campos da Triagem"):
-            st.caption("Use esta área para corrigir qualquer informação do atendimento antes de encaminhar ou manter em triagem.")
+        lista = atendimentos()
+        novo_id = proximo_id(lista)
 
-            data_atual = parse_data(atendimento.get("data")) or agora_brasilia().date()
-            fonte_atual = atendimento.get("fonte", "")
-            assunto_atual = atendimento.get("assunto", "")
-            zona_atual = atendimento.get("zona_eleitoral", "")
-            prioridade_atual = atendimento.get("prioridade", "Normal")
-            status_atual = atendimento.get("status", STATUS_CADASTRADO)
-            secao_atual = normalizar_secao(atendimento.get("secao"))
+        item = {
+            "id": novo_id,
+            "data": data_atendimento.strftime("%d/%m/%Y"),
+            "status": STATUS_EM_ATENDIMENTO,
+            "secao": normalizar_secao((usuario_logado() or {}).get("secao") or "SEPRO"),
+            "tribunal": TRIBUNAL_PADRAO,
+            "uf": UF_PADRAO,
+            "unidade_responsavel": UNIDADE_CORREGEDORIA_PADRAO,
+            "requer_validacao": False,
+            "situacao_validacao": "Não requerida",
+            "validado_por": "",
+            "validado_em": "",
+            "servidor": servidor,
+            "fonte": "Não informado",
+            "assunto": "Não informado",
+            "zona_eleitoral": zona,
+            "origem": origem.strip(),
+            "prioridade": "Não informado",
+            "complexidade": "Não informada",
+            "prazo_limite": "",
+            "protocolo": "",
+            "descricao": "",
+            "observacoes": "",
+            "providencia_adotada": "",
+            "conclusao": "",
+            "data_realizacao": "",
+            "criado_por": email_usuario_logado(),
+            "criado_em": agora_iso(),
+            "atualizado_em": agora_iso(),
+            "data_inicio_atendimento": agora_iso(),
+            "data_conclusao": "",
+            "tempo_triagem_horas": 0,
+            "tempo_atendimento_horas": None,
+            "tempo_total_horas": None,
+            "triado_por": email_usuario_logado(),
+            "triado_em": agora_iso(),
+            "natureza_demanda": "Orientação procedimental ordinária",
+            "eixo_competencia": "",
+            "unidade_sugerida": "",
+            "exige_validacao_tecnica": False,
+            "unidade_tecnica_validadora": "Não necessária",
+            "status_validacao_tecnica": "Não necessária",
+            "exige_coajuc": False,
+            "motivo_escalonamento": "",
+            "potencial_uniformizacao": "Baixo",
+            "produto_institucional_sugerido": "Não sugerido",
+        }
 
-            lista_assuntos = assuntos(secao_atual)
-            if assunto_atual and assunto_atual not in lista_assuntos:
-                lista_assuntos = [assunto_atual] + lista_assuntos
+        lista.append(item)
+        salvar_atendimentos(lista)
 
-            lista_zonas = ZONAS_BAHIA
-            if zona_atual and zona_atual not in lista_zonas:
-                lista_zonas = [zona_atual] + lista_zonas
-
-            lista_fontes = FONTES
-            if fonte_atual and fonte_atual not in lista_fontes:
-                lista_fontes = [fonte_atual] + lista_fontes
-
-            lista_prioridades = ["Não informado", "Normal", "Alta", "Urgente", "Baixa"]
-            if prioridade_atual and prioridade_atual not in lista_prioridades:
-                lista_prioridades = [prioridade_atual] + lista_prioridades
-
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                nova_data = st.date_input(
-                    "Data do atendimento",
-                    value=data_atual,
-                    format="DD/MM/YYYY",
-                    key=f"{chave_prefixo}_edit_data_{atendimento.get('id')}"
-                )
-                nova_fonte = st.selectbox(
-                    "Fonte",
-                    lista_fontes,
-                    index=lista_fontes.index(fonte_atual) if fonte_atual in lista_fontes else 0,
-                    key=f"{chave_prefixo}_edit_fonte_{atendimento.get('id')}"
-                )
-                novo_status = st.selectbox(
-                    "Status",
-                    STATUS_OPCOES,
-                    index=STATUS_OPCOES.index(status_atual) if status_atual in STATUS_OPCOES else 0,
-                    key=f"{chave_prefixo}_edit_status_{atendimento.get('id')}"
-                )
-
-            with col2:
-                novo_assunto = st.selectbox(
-                    "Assunto",
-                    lista_assuntos,
-                    index=lista_assuntos.index(assunto_atual) if assunto_atual in lista_assuntos else 0,
-                    key=f"{chave_prefixo}_edit_assunto_{atendimento.get('id')}"
-                )
-                nova_zona = st.selectbox(
-                    "Zona eleitoral",
-                    lista_zonas,
-                    index=lista_zonas.index(zona_atual) if zona_atual in lista_zonas else 0,
-                    key=f"{chave_prefixo}_edit_zona_{atendimento.get('id')}"
-                )
-                nova_prioridade = st.selectbox(
-                    "Prioridade",
-                    lista_prioridades,
-                    index=lista_prioridades.index(prioridade_atual) if prioridade_atual in lista_prioridades else 0,
-                    key=f"{chave_prefixo}_edit_prioridade_{atendimento.get('id')}"
-                )
-
-            with col3:
-                nova_origem = st.text_input(
-                    "Quem originou a demanda/chamada",
-                    value=atendimento.get("origem", ""),
-                    key=f"{chave_prefixo}_edit_origem_{atendimento.get('id')}"
-                )
-                nova_secao_triagem = st.selectbox(
-                    "Seção",
-                    secoes_atendimento(),
-                    index=secoes_atendimento().index(secao_atual) if secao_atual in secoes_atendimento() else 0,
-                    key=f"{chave_prefixo}_edit_secao_{atendimento.get('id')}"
-                )
-                novo_protocolo = st.text_input(
-                    "Protocolo ou referência",
-                    value=atendimento.get("protocolo", ""),
-                    key=f"{chave_prefixo}_edit_protocolo_{atendimento.get('id')}"
-                )
-                servidores_edicao = ["Não informado"] + nomes_usuarios_ativos()
-                servidor_atual = atendimento.get("servidor", "Não informado") or "Não informado"
-                if servidor_atual == "Aguardando triagem":
-                    servidor_atual = "Não informado"
-                if servidor_atual not in servidores_edicao:
-                    servidores_edicao = [servidor_atual] + servidores_edicao
-                novo_servidor = st.selectbox(
-                    "Servidor(a) responsável",
-                    servidores_edicao,
-                    index=servidores_edicao.index(servidor_atual) if servidor_atual in servidores_edicao else 0,
-                    key=f"{chave_prefixo}_edit_servidor_{atendimento.get('id')}"
-                )
-
-            nova_descricao = st.text_area(
-                "Descrição da demanda",
-                value=atendimento.get("descricao", ""),
-                key=f"{chave_prefixo}_edit_descricao_{atendimento.get('id')}"
+        try:
+            registrar_historico_atendimento(
+                novo_id,
+                "Cadastro rápido",
+                "Atendimento cadastrado diretamente em Em atendimento",
+                f"Origem: {origem.strip()} | Zona: {zona} | Responsável: {servidor}"
             )
-            nova_obs = st.text_area(
-                "Observações internas",
-                value=atendimento.get("observacoes", ""),
-                key=f"{chave_prefixo}_edit_obs_{atendimento.get('id')}"
-            )
+        except Exception:
+            pass
 
-            if st.button("Salvar edição da triagem", key=f"{chave_prefixo}_salvar_edicao_{atendimento.get('id')}", type="primary"):
-                lista = atendimentos()
-                for item in lista:
-                    if int(item.get("id")) == int(atendimento.get("id")):
-                        item["data"] = nova_data.strftime("%d/%m/%Y")
-                        item["fonte"] = nova_fonte
-                        item["assunto"] = novo_assunto
-                        item["zona_eleitoral"] = nova_zona
-                        item["origem"] = nova_origem.strip()
-                        item["protocolo"] = novo_protocolo.strip()
-                        item["prioridade"] = nova_prioridade
-                        item["descricao"] = nova_descricao.strip()
-                        item["observacoes"] = nova_obs.strip()
-                        item["servidor"] = novo_servidor
-                        item["status"] = novo_status
-                        item["atualizado_em"] = agora_iso()
+        st.success(f"Atendimento nº {novo_id} cadastrado e enviado para Em atendimento.")
+        ir_para_pagina("Em atendimento")
+        st.rerun()
 
-                        if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
-                            item["data_realizacao"] = hoje_ddmmaaaa()
-                        elif novo_status != STATUS_REALIZADO:
-                            item["data_realizacao"] = ""
-
-                        if novo_status == STATUS_EM_ATENDIMENTO and novo_servidor != "Não informado":
-                            item["triado_por"] = usuario_logado().get("email", "")
-                            item["triado_em"] = agora_iso()
-
-                        salvar_atendimentos(lista)
-                        st.success("Campos da triagem atualizados com sucesso.")
-                        st.rerun()
-
-        if eh_admin():
-            with st.expander("Excluir atendimento"):
-                st.warning("Esta ação excluirá definitivamente este atendimento da base.")
-                confirmar_exclusao = st.checkbox(
-                    f"Confirmo a exclusão do atendimento nº {atendimento.get('id')}",
-                    key=f"{chave_prefixo}_triagem_conf_excluir_{atendimento.get('id')}"
-                )
-                if st.button("Excluir atendimento", key=f"{chave_prefixo}_triagem_excluir_{atendimento.get('id')}", type="secondary"):
-                    if not confirmar_exclusao:
-                        st.warning("Marque a confirmação antes de excluir.")
-                    else:
-                        if excluir_atendimento_por_id(atendimento.get("id")):
-                            st.success("Atendimento excluído com sucesso.")
-                            st.rerun()
-                        else:
-                            st.error("Atendimento não encontrado para exclusão.")
 
 
 def tela_status(nome_status, titulo, texto_ajuda):
@@ -9057,10 +8826,11 @@ def main():
         tela_orientacoes_zonas()
 
     elif escolha == "Triagem":
+        st.info("A fase de triagem foi suprimida. Novos atendimentos entram diretamente em Em atendimento.")
         tela_status(
             STATUS_CADASTRADO,
-            "Triagem",
-            "Demandas aguardando escolha do usuário responsável. Ao designar o responsável, o atendimento segue para Em atendimento."
+            "Triagem - histórico",
+            "Exibição apenas para registros antigos eventualmente cadastrados antes da mudança do fluxo."
         )
 
     elif escolha == "Em atendimento":
