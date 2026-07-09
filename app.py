@@ -2821,6 +2821,7 @@ def dataframe_atendimentos_rapidos(lista, limite=12):
             "Data": data_para_exibir(a.get("data")),
             "Quem originou": a.get("origem") or "",
             "Zona eleitoral": a.get("zona_eleitoral") or "Não informado",
+            "Assunto": a.get("assunto") or "Não informado",
             "Responsável": a.get("servidor") or "Não informado",
             "Status": a.get("status") or "",
             "Atualizado": formatar_data_hora_brasilia(a.get("atualizado_em")) if a.get("atualizado_em") else "",
@@ -5796,6 +5797,15 @@ def tela_novo_atendimento():
                 key="novo_atendimento_responsavel_simplificado"
             )
 
+        secao_padrao = normalizar_secao((usuario_logado() or {}).get("secao") or "SEPRO")
+        lista_assuntos = assuntos(secao_padrao)
+        assunto = st.selectbox(
+            f"Assunto ({secao_padrao})",
+            lista_assuntos,
+            index=lista_assuntos.index("Não informado") if "Não informado" in lista_assuntos else 0,
+            key="novo_atendimento_assunto_simplificado"
+        )
+
         enviar = st.form_submit_button("Cadastrar e enviar para Em atendimento", type="primary")
 
     if enviar:
@@ -5810,7 +5820,7 @@ def tela_novo_atendimento():
             "id": novo_id,
             "data": data_atendimento.strftime("%d/%m/%Y"),
             "status": STATUS_EM_ATENDIMENTO,
-            "secao": normalizar_secao((usuario_logado() or {}).get("secao") or "SEPRO"),
+            "secao": secao_padrao,
             "tribunal": TRIBUNAL_PADRAO,
             "uf": UF_PADRAO,
             "unidade_responsavel": UNIDADE_CORREGEDORIA_PADRAO,
@@ -5820,7 +5830,7 @@ def tela_novo_atendimento():
             "validado_em": "",
             "servidor": servidor,
             "fonte": "Não informado",
-            "assunto": "Não informado",
+            "assunto": assunto or "Não informado",
             "zona_eleitoral": zona,
             "origem": origem.strip(),
             "prioridade": "Não informado",
@@ -5862,7 +5872,7 @@ def tela_novo_atendimento():
                 novo_id,
                 "Cadastro rápido",
                 "Atendimento cadastrado diretamente em Em atendimento",
-                f"Origem: {origem.strip()} | Zona: {zona} | Responsável: {servidor}"
+                f"Origem: {origem.strip()} | Zona: {zona} | Assunto: {assunto or 'Não informado'} | Responsável: {servidor}"
             )
         except Exception:
             pass
