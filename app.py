@@ -4375,14 +4375,8 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
 
             nova_providencia = st.text_area(
                 "Providência adotada",
-                value=atendimento.get("providencia_adotada", ""),
+                value=atendimento.get("providencia_adotada", "") or atendimento.get("conclusao", ""),
                 key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
-            )
-
-            nova_conclusao = st.text_area(
-                "Providência adotada",
-                value=atendimento.get("conclusao", ""),
-                key=f"{chave_prefixo}_conclusao_{atendimento.get('id')}"
             )
 
             gerar_conhecimento = st.checkbox(
