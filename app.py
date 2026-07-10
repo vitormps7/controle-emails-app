@@ -2813,6 +2813,72 @@ def exibir_tabela_rapida_status_colorido(df):
         st.dataframe(df, use_container_width=True, hide_index=True)
 
 
+
+
+def pagina_por_status_atendimento(status):
+    status = str(status or "")
+    if status == STATUS_EM_ATENDIMENTO:
+        return "Em atendimento"
+    if status == STATUS_REALIZADO:
+        return "Atendimento realizado"
+    if status == STATUS_CADASTRADO:
+        return "Triagem"
+    return "Base geral"
+
+
+def abrir_atendimento_por_status(atendimento):
+    st.session_state["atendimento_foco_id"] = int(atendimento.get("id"))
+    st.session_state["atendimento_foco_status"] = atendimento.get("status")
+    ir_para_pagina(pagina_por_status_atendimento(atendimento.get("status")))
+    st.rerun()
+
+
+def atendimento_em_foco_id():
+    try:
+        return int(st.session_state.get("atendimento_foco_id")) if st.session_state.get("atendimento_foco_id") else None
+    except Exception:
+        return None
+
+
+def limpar_atendimento_em_foco():
+    st.session_state.pop("atendimento_foco_id", None)
+    st.session_state.pop("atendimento_foco_status", None)
+
+
+def render_tabela_rapida_com_acao(lista, limite=15):
+    recentes = sorted(lista or [], key=lambda x: int(x.get("id", 0)), reverse=True)[:limite]
+
+    if not recentes:
+        st.info("Nenhum atendimento cadastrado para exibição rápida.")
+        return
+
+    df = dataframe_atendimentos_rapidos(recentes, limite=limite)
+    exibir_tabela_rapida_status_colorido(df)
+
+    st.markdown("#### Abrir atendimento")
+    st.caption("Selecione um atendimento da lista acima e clique em abrir. O sistema irá para a página correspondente ao status atual.")
+
+    opcoes = [
+        f"{a.get('id')} - {a.get('status')} - {a.get('origem') or 'sem origem'} - {a.get('assunto') or 'sem assunto'}"
+        for a in recentes
+    ]
+
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        escolhido = st.selectbox(
+            "Atendimento",
+            opcoes,
+            key="abrir_atendimento_rapido_select",
+            label_visibility="collapsed",
+        )
+
+    with col2:
+        if st.button("Abrir", key="abrir_atendimento_rapido_btn", use_container_width=True):
+            atendimento_id = int(str(escolhido).split(" - ")[0])
+            atendimento = next((a for a in recentes if int(a.get("id")) == atendimento_id), None)
+            if atendimento:
+                abrir_atendimento_por_status(atendimento)
+
 def dataframe_atendimentos_rapidos(lista, limite=12):
     linhas = []
     for a in sorted(lista or [], key=lambda x: int(x.get("id", 0)), reverse=True)[:limite]:
@@ -2834,10 +2900,9 @@ def bloco_novos_atendimentos_inicio():
     lista = filtrar_lista_por_perfil(atendimentos())
     recentes = [
         a for a in lista
-        if a.get("status") in (STATUS_EM_ATENDIMENTO, STATUS_REALIZADO)
+        if a.get("status") in (STATUS_EM_ATENDIMENTO, STATUS_REALIZADO, STATUS_CADASTRADO)
     ]
-    df = dataframe_atendimentos_rapidos(recentes, limite=15)
-    exibir_tabela_rapida_status_colorido(df)
+    render_tabela_rapida_com_acao(recentes, limite=15)
 
 def tela_menu_principal():
     css_menu_institucional()
@@ -5883,7 +5948,23 @@ def tela_status(nome_status, titulo, texto_ajuda):
     st.caption(texto_ajuda)
 
     lista = [a for a in filtros_base(atendimentos()) if a.get("status") == nome_status]
-    lista, filtro_rapido_status = render_filtros_rapidos(lista, f"status_{nome_status}")
+
+    foco_id = atendimento_em_foco_id()
+    if foco_id:
+        foco_lista = [a for a in lista if int(a.get("id", 0)) == int(foco_id)]
+        if foco_lista:
+            st.info(f"Exibindo atendimento selecionado nº {foco_id}.")
+            if st.button("Limpar foco e ver todos", key=f"limpar_foco_{nome_status}"):
+                limpar_atendimento_em_foco()
+                st.rerun()
+            lista = foco_lista
+            filtro_rapido_status = "Atendimento selecionado"
+        else:
+            limpar_atendimento_em_foco()
+            lista, filtro_rapido_status = render_filtros_rapidos(lista, f"status_{nome_status}")
+    else:
+        lista, filtro_rapido_status = render_filtros_rapidos(lista, f"status_{nome_status}")
+
     st.caption(f"Filtro rápido aplicado: **{filtro_rapido_status}** | Total encontrado: **{len(lista)}**")
 
     if nome_status in [STATUS_EM_ATENDIMENTO, STATUS_REALIZADO]:
@@ -5943,6 +6024,15 @@ def tela_base_geral():
     st.subheader("Base geral de atendimentos")
 
     lista = filtros_base(atendimentos())
+    foco_id = atendimento_em_foco_id()
+    if foco_id:
+        foco_lista = [a for a in lista if int(a.get("id", 0)) == int(foco_id)]
+        if foco_lista:
+            st.info(f"Exibindo atendimento selecionado nº {foco_id}.")
+            if st.button("Limpar foco e ver todos", key="limpar_foco_base_geral"):
+                limpar_atendimento_em_foco()
+                st.rerun()
+            lista = foco_lista
     lista, filtro_rapido_base = render_filtros_rapidos(lista, "base_geral")
     df = atendimentos_df(lista)
 
