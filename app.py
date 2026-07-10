@@ -7602,13 +7602,28 @@ def tela_relatorio_governanca_coorze():
     else:
         st.info("Não há demandas a escalar no recorte atual.")
     with st.expander("Articulações técnicas", expanded=False):
-        st.dataframe(articulacoes, use_container_width=True, hide_index=True) if not articulacoes.empty else st.info("Nenhuma articulação técnica registrada.")
+        if articulacoes.empty:
+            st.info("Nenhuma articulação técnica registrada.")
+        else:
+            st.dataframe(articulacoes, use_container_width=True, hide_index=True)
+
     with st.expander("Instrumentos de orientação", expanded=False):
-        st.dataframe(instrumentos, use_container_width=True, hide_index=True) if not instrumentos.empty else st.info("Nenhum instrumento registrado.")
+        if instrumentos.empty:
+            st.info("Nenhum instrumento registrado.")
+        else:
+            st.dataframe(instrumentos, use_container_width=True, hide_index=True)
+
     with st.expander("Curadoria do portal", expanded=False):
-        st.dataframe(curadoria, use_container_width=True, hide_index=True) if not curadoria.empty else st.info("Nenhum conteúdo registrado.")
+        if curadoria.empty:
+            st.info("Nenhum conteúdo registrado.")
+        else:
+            st.dataframe(curadoria, use_container_width=True, hide_index=True)
+
     with st.expander("Planos de ação", expanded=False):
-        st.dataframe(planos, use_container_width=True, hide_index=True) if not planos.empty else st.info("Nenhum plano registrado.")
+        if planos.empty:
+            st.info("Nenhum plano registrado.")
+        else:
+            st.dataframe(planos, use_container_width=True, hide_index=True)
     st.divider()
     dados = {
         "qualidade": qualidade.to_dict(orient="records"),
