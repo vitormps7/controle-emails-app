@@ -2879,6 +2879,41 @@ def render_tabela_rapida_com_acao(lista, limite=15):
             if atendimento:
                 abrir_atendimento_por_status(atendimento)
 
+
+
+def buscar_atendimentos_texto(lista, termo):
+    termo = str(termo or "").strip().casefold()
+    if not termo:
+        return lista
+
+    campos = [
+        "id",
+        "data",
+        "status",
+        "secao",
+        "servidor",
+        "fonte",
+        "assunto",
+        "zona_eleitoral",
+        "origem",
+        "prioridade",
+        "complexidade",
+        "protocolo",
+        "descricao",
+        "observacoes",
+        "providencia_adotada",
+        "situacao_validacao",
+    ]
+
+    filtrados = []
+    for a in lista or []:
+        texto = " ".join([str(a.get(c, "")) for c in campos]).casefold()
+        if termo in texto:
+            filtrados.append(a)
+
+    return filtrados
+
+
 def dataframe_atendimentos_rapidos(lista, limite=12):
     linhas = []
     for a in sorted(lista or [], key=lambda x: int(x.get("id", 0)), reverse=True)[:limite]:
@@ -5969,42 +6004,20 @@ def tela_status(nome_status, titulo, texto_ajuda):
 
     if nome_status in [STATUS_EM_ATENDIMENTO, STATUS_REALIZADO]:
         nome_base = "Em atendimento" if nome_status == STATUS_EM_ATENDIMENTO else "Atendimento realizado"
-        st.markdown(f"### Filtros da base {nome_base}")
-
-        colf1, colf2 = st.columns(2)
-
-        atendentes = sorted(
-            set([a.get("servidor", "Não informado") or "Não informado" for a in lista]),
-            key=lambda x: x.casefold()
-        )
-        zonas = sorted(
-            set([a.get("zona_eleitoral", "Não informado") or "Não informado" for a in lista]),
-            key=lambda x: x.casefold()
-        )
+        st.markdown(f"### Busca na base {nome_base}")
 
         sufixo_chave = "em_atendimento" if nome_status == STATUS_EM_ATENDIMENTO else "realizado"
 
-        with colf1:
-            filtro_atendente = st.selectbox(
-                "Filtrar por atendente",
-                ["Todos"] + atendentes,
-                key=f"filtro_{sufixo_chave}_atendente"
-            )
+        busca_base = st.text_input(
+            "Buscar atendimento",
+            key=f"busca_{sufixo_chave}",
+            placeholder="Digite ID, origem, zona, responsável, assunto, protocolo ou palavra da descrição"
+        )
 
-        with colf2:
-            filtro_zona = st.selectbox(
-                "Filtrar por zona eleitoral",
-                ["Todas"] + zonas,
-                key=f"filtro_{sufixo_chave}_zona"
-            )
+        if busca_base.strip():
+            lista = buscar_atendimentos_texto(lista, busca_base)
 
-        if filtro_atendente != "Todos":
-            lista = [a for a in lista if (a.get("servidor") or "Não informado") == filtro_atendente]
-
-        if filtro_zona != "Todas":
-            lista = [a for a in lista if (a.get("zona_eleitoral") or "Não informado") == filtro_zona]
-
-        st.metric("Total nesta base após filtros", len(lista))
+        st.metric("Total nesta base após busca", len(lista))
     else:
         st.metric("Total nesta base", len(lista))
 
@@ -6024,6 +6037,15 @@ def tela_base_geral():
     st.subheader("Base geral de atendimentos")
 
     lista = filtros_base(atendimentos())
+
+    busca_base_geral = st.text_input(
+        "Buscar atendimento",
+        key="busca_base_geral",
+        placeholder="Digite ID, origem, zona, responsável, assunto, protocolo ou palavra da descrição"
+    )
+    if busca_base_geral.strip():
+        lista = buscar_atendimentos_texto(lista, busca_base_geral)
+
     foco_id = atendimento_em_foco_id()
     if foco_id:
         foco_lista = [a for a in lista if int(a.get("id", 0)) == int(foco_id)]
