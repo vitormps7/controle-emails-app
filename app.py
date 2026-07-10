@@ -2993,8 +2993,8 @@ def tela_orientacoes_zonas():
     )
 
     aba1, aba2, aba3 = st.tabs([
-        "Base de conhecimento",
-        "Modelos de resposta",
+        "Entendimentos / Base de conhecimento",
+        "Textos-padrão / Modelos de resposta",
         "Instrumentos de orientação",
     ])
 
@@ -4445,12 +4445,12 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
             )
 
             gerar_conhecimento = st.checkbox(
-                "Cadastrar orientação na base de conhecimento ao salvar",
+                "Cadastrar como entendimento na base ao salvar",
                 value=False,
                 key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
             )
             gerar_modelo_resposta = st.checkbox(
-                "Cadastrar modelo de resposta ao salvar",
+                "Cadastrar texto-padrão/modelo ao salvar",
                 value=False,
                 key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
             )
@@ -4500,7 +4500,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         st.rerun()
 
         with st.expander("Base de conhecimento, histórico e validação" if usuario_eh_gestor() else "Base de conhecimento e comentários"):
-            st.markdown("##### Base de conhecimento para resposta")
+            st.markdown("##### Entendimentos da base para apoiar a resposta")
             bases_disponiveis = bases_por_assunto_e_secao(atendimento.get("assunto"), atendimento.get("secao"))
 
             if not bases_disponiveis:
@@ -4520,14 +4520,14 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 base_item = next((b for b in bases_disponiveis if int(b.get("id")) == base_id), None)
 
                 if base_item:
-                    st.caption(f"Orientação selecionada: **{codigo_base_conhecimento(base_item.get('id'))}**")
-                    with st.expander("Visualizar orientação selecionada"):
+                    st.caption(f"Entendimento selecionado: **{codigo_base_conhecimento(base_item.get('id'))}**")
+                    with st.expander("Visualizar entendimento selecionado"):
                         st.markdown(f"**Resumo da dúvida:** {base_item.get('resumo_duvida', '')}")
                         st.markdown(f"**Orientação adotada:** {base_item.get('orientacao_adotada', '')}")
                         if base_item.get("fundamento_normativo"):
                             st.markdown(f"**Fundamento normativo:** {base_item.get('fundamento_normativo')}")
 
-                    if st.button("Usar esta base na resposta", key=f"{chave_prefixo}_usar_base_{atendimento.get('id')}"):
+                    if st.button("Usar este entendimento na resposta", key=f"{chave_prefixo}_usar_base_{atendimento.get('id')}"):
                         atendimento_atualizado = atendimento.copy()
                         codigo = codigo_base_conhecimento(base_item.get("id"))
                         texto_base = base_item.get("orientacao_adotada") or base_item.get("resumo_duvida") or ""
@@ -4560,18 +4560,18 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
 
             st.divider()
             st.markdown("##### Cadastrar conhecimento a partir deste atendimento")
-            st.caption("Use esta área quando a resposta do atendimento puder virar memória institucional ou texto-padrão.")
+            st.caption("Use esta área quando o atendimento puder gerar um entendimento institucional ou um texto-padrão para respostas futuras.")
 
             col_conh1, col_conh2 = st.columns(2)
 
             with col_conh1:
-                if st.button("Cadastrar orientação na base", key=f"{chave_prefixo}_btn_criar_bc_{atendimento.get('id')}"):
+                if st.button("Cadastrar como entendimento na base", key=f"{chave_prefixo}_btn_criar_bc_{atendimento.get('id')}"):
                     criar_item_base_conhecimento(atendimento)
-                    st.success("Orientação cadastrada na base de conhecimento.")
+                    st.success("Entendimento cadastrado na base de conhecimento.")
                     st.rerun()
 
             with col_conh2:
-                with st.popover("Cadastrar modelo de resposta"):
+                with st.popover("Cadastrar texto-padrão / modelo de resposta"):
                     titulo_modelo = st.text_input(
                         "Título do modelo",
                         value=f"Modelo - {atendimento.get('assunto') or 'Atendimento'}",
@@ -6945,8 +6945,8 @@ def tela_usuarios():
 
 def tela_modelos_resposta():
     aviso_modo_visualizacao()
-    st.subheader("Modelos de resposta")
-    st.caption("Textos-padrão para resposta às zonas, vinculados por seção, assunto e fundamento.")
+    st.subheader("Textos-padrão / Modelos de resposta")
+    st.caption("Textos prontos ou semiprontos para agilizar respostas às zonas, vinculados por seção, assunto e fundamento.")
 
     secao_filtro = st.selectbox("Seção", ["Todas"] + secoes_atendimento(), key="modelo_secao_filtro")
     incluir_superadas = st.checkbox("Exibir orientações superadas", value=True, key="modelo_exibir_superadas")
@@ -7076,7 +7076,7 @@ def tela_modelos_resposta():
             texto_edit = st.text_area("Texto do modelo", value=modelo.get("texto_modelo", ""), height=220, key=f"modelo_texto_edit_{modelo_id}")
 
             superada_edit = st.checkbox(
-                "Marcar como orientação superada",
+                "Marcar como entendimento superado",
                 value=bool(modelo.get("superada", False)),
                 key=f"modelo_superada_edit_{modelo_id}"
             )
@@ -7232,8 +7232,8 @@ def tela_parametros_nacionais():
 
 def tela_base_conhecimento():
     aviso_modo_visualizacao()
-    st.subheader("Base de conhecimento")
-    st.caption("Memória institucional: dúvidas, fundamentos, orientações adotadas, revisões e superações.")
+    st.subheader("Entendimentos / Base de conhecimento")
+    st.caption("Memória institucional: registra o entendimento da unidade, com dúvida, fundamento, orientação adotada, revisão e eventual superação.")
 
     rows = base_conhecimento_rows(incluir_superadas=True)
     df = pd.DataFrame(rows)
@@ -7359,8 +7359,8 @@ def tela_base_conhecimento():
         )
 
     st.divider()
-    st.markdown("### Cadastrar orientação manualmente")
-    st.caption("Após salvar, o registro receberá automaticamente um número de cadastro no formato BC-000001.")
+    st.markdown("### Cadastrar entendimento manualmente")
+    st.caption("Após salvar, o entendimento receberá automaticamente um número de cadastro no formato BC-000001.")
 
     with st.form("form_base_conhecimento"):
         col1, col2 = st.columns(2)
@@ -7374,7 +7374,7 @@ def tela_base_conhecimento():
         resumo = st.text_area("Resumo da dúvida")
         orientacao = st.text_area("Orientação adotada")
 
-        if st.form_submit_button("Salvar orientação", type="primary"):
+        if st.form_submit_button("Salvar entendimento", type="primary"):
             usuario = usuario_logado() or {}
             row = {
                 "atendimento_origem_id": int(atendimento_origem_id) if atendimento_origem_id else None,
@@ -7406,16 +7406,16 @@ def tela_base_conhecimento():
                 except Exception:
                     pass
                 registrar_historico_memoria("base_conhecimento", criado[0].get("id"), codigo, "Criação", "Orientação cadastrada manualmente.")
-                st.success(f"Orientação cadastrada sob o nº {codigo}.")
+                st.success(f"Entendimento cadastrado sob o nº {codigo}.")
             else:
-                st.success("Orientação cadastrada. O número BC será exibido na consulta da base.")
+                st.success("Entendimento cadastrado. O número BC será exibido na consulta da base.")
             st.rerun()
 
 
 
     if usuario_pode_ver_memoria_avancada():
         st.divider()
-        st.markdown("### Revisar, editar ou marcar orientação como superada")
+        st.markdown("### Revisar, editar ou marcar entendimento como superado")
 
         todos_bc = base_conhecimento_rows(incluir_superadas=True)
         if not todos_bc:
@@ -7461,7 +7461,7 @@ def tela_base_conhecimento():
                     orientacao_edit = st.text_area("Orientação adotada", value=base_sel.get("orientacao_adotada", ""), height=180, key=f"bc_orientacao_edit_{base_id}")
 
                     superada_edit = st.checkbox(
-                        "Marcar como orientação superada",
+                        "Marcar como entendimento superado",
                         value=bool(base_sel.get("superada", False)),
                         key=f"bc_superada_edit_{base_id}"
                     )
@@ -7483,7 +7483,7 @@ def tela_base_conhecimento():
                             substituta_atual = f"{codigo_base_conhecimento(substituta_atual_item)} - {substituta_atual_item.get('assunto', '')} - {str(substituta_atual_item.get('resumo_duvida') or substituta_atual_item.get('orientacao_adotada') or '')[:70]}"
 
                     substituta_sel = st.selectbox(
-                        "Orientação substituta, se houver",
+                        "Entendimento substituto, se houver",
                         opcoes_sub,
                         index=opcoes_sub.index(substituta_atual) if substituta_atual in opcoes_sub else 0,
                         key=f"bc_substituta_{base_id}"
@@ -7538,7 +7538,7 @@ def tela_base_conhecimento():
                         "Revisão / superação" if superada_edit else "Revisão",
                         motivo_superacao_edit.strip() or "Registro revisado."
                     )
-                    st.success("Orientação revisada.")
+                    st.success("Entendimento revisado.")
                     st.rerun()
 
                 if excluir_bc:
@@ -7549,7 +7549,7 @@ def tela_base_conhecimento():
                         base_id
                     )
                     registrar_historico_memoria("base_conhecimento", base_id, codigo_base_conhecimento(base_sel), "Exclusão lógica", "Registro removido da lista ativa.")
-                    st.success("Orientação removida da lista ativa. O histórico permanece preservado.")
+                    st.success("Entendimento removido da lista ativa. O histórico permanece preservado.")
                     st.rerun()
 
         hist_mem = pd.DataFrame(historico_memoria_rows("base_conhecimento"))
