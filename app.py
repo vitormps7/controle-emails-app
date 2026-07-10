@@ -4218,8 +4218,9 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
             st.markdown(f"**Observações:** {atendimento.get('observacoes')}")
         if atendimento.get("providencia_adotada"):
             st.markdown(f"**Providência adotada:** {atendimento.get('providencia_adotada')}")
-        if atendimento.get("conclusao"):
-            st.markdown(f"**Conclusão:** {atendimento.get('conclusao')}")
+        if atendimento.get("conclusao") and usuario_eh_gestor():
+            with st.expander("Conclusão histórica — campo legado", expanded=False):
+                st.markdown(atendimento.get("conclusao"))
 
         if not permitir_edicao or not usuario_pode_editar_atendimentos():
             if usuario_eh_consulta():
@@ -4259,9 +4260,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     st.rerun()
 
         with col_a:
-            if status != STATUS_CADASTRADO:
-                if st.button("Mover para Triagem", key=f"{chave_prefixo}_cad_{atendimento.get('id')}"):
-                    salvar_status(STATUS_CADASTRADO)
+            st.empty()
 
         with col_b:
             if status != STATUS_EM_ATENDIMENTO:
@@ -4274,170 +4273,172 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     salvar_status(STATUS_REALIZADO)
 
         with col_d:
-            with st.popover("Editar atendimento"):
-                nova_obs = st.text_area(
-                    "Observações",
-                    value=atendimento.get("observacoes", ""),
-                    key=f"{chave_prefixo}_obs_{atendimento.get('id')}"
-                )
-                novo_status = st.selectbox(
-                    "Status",
-                    STATUS_OPCOES,
-                    index=STATUS_OPCOES.index(status) if status in STATUS_OPCOES else 0,
-                    key=f"{chave_prefixo}_status_{atendimento.get('id')}"
-                )
-                secao_atual = normalizar_secao(atendimento.get("secao"))
-                nova_secao = st.selectbox(
-                    "Seção",
-                    secoes_atendimento(),
-                    index=secoes_atendimento().index(secao_atual) if secao_atual in secoes_atendimento() else 0,
-                    key=f"{chave_prefixo}_secao_{atendimento.get('id')}"
-                )
-                servidores_disponiveis = nomes_usuarios_ativos() or []
-                servidor_atual = atendimento.get("servidor", "") or "Não informado"
+            st.empty()
 
-                if servidor_atual not in servidores_disponiveis:
-                    servidores_disponiveis = [servidor_atual] + servidores_disponiveis
+        with st.expander("Editar atendimento", expanded=False):
+            nova_obs = st.text_area(
+                "Observações",
+                value=atendimento.get("observacoes", ""),
+                key=f"{chave_prefixo}_obs_{atendimento.get('id')}"
+            )
+            novo_status = st.selectbox(
+                "Status",
+                STATUS_OPCOES,
+                index=STATUS_OPCOES.index(status) if status in STATUS_OPCOES else 0,
+                key=f"{chave_prefixo}_status_{atendimento.get('id')}"
+            )
+            secao_atual = normalizar_secao(atendimento.get("secao"))
+            nova_secao = st.selectbox(
+                "Seção",
+                secoes_atendimento(),
+                index=secoes_atendimento().index(secao_atual) if secao_atual in secoes_atendimento() else 0,
+                key=f"{chave_prefixo}_secao_{atendimento.get('id')}"
+            )
+            servidores_disponiveis = nomes_usuarios_ativos() or []
+            servidor_atual = atendimento.get("servidor", "") or "Não informado"
 
-                if "Não informado" not in servidores_disponiveis:
-                    servidores_disponiveis = ["Não informado"] + servidores_disponiveis
+            if servidor_atual not in servidores_disponiveis:
+                servidores_disponiveis = [servidor_atual] + servidores_disponiveis
 
-                novo_servidor = st.selectbox(
-                    "Servidor(a)",
-                    servidores_disponiveis,
-                    index=servidores_disponiveis.index(servidor_atual) if servidor_atual in servidores_disponiveis else 0,
-                    key=f"{chave_prefixo}_serv_{atendimento.get('id')}"
-                )
+            if "Não informado" not in servidores_disponiveis:
+                servidores_disponiveis = ["Não informado"] + servidores_disponiveis
 
-                lista_assuntos_edicao = assuntos(nova_secao)
-                assunto_atual = atendimento.get("assunto", "") or "Não informado"
+            novo_servidor = st.selectbox(
+                "Servidor(a)",
+                servidores_disponiveis,
+                index=servidores_disponiveis.index(servidor_atual) if servidor_atual in servidores_disponiveis else 0,
+                key=f"{chave_prefixo}_serv_{atendimento.get('id')}"
+            )
 
-                if assunto_atual not in lista_assuntos_edicao:
-                    lista_assuntos_edicao = [assunto_atual] + lista_assuntos_edicao
+            lista_assuntos_edicao = assuntos(nova_secao)
+            assunto_atual = atendimento.get("assunto", "") or "Não informado"
 
-                novo_assunto = st.selectbox(
-                    "Assunto",
-                    lista_assuntos_edicao,
-                    index=lista_assuntos_edicao.index(assunto_atual) if assunto_atual in lista_assuntos_edicao else 0,
-                    key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
-                )
+            if assunto_atual not in lista_assuntos_edicao:
+                lista_assuntos_edicao = [assunto_atual] + lista_assuntos_edicao
 
-                fontes_disponiveis = FONTES_ATENDIMENTO if "FONTES_ATENDIMENTO" in globals() else ["Não informado", "E-mail", "Telefone", "WhatsApp", "Outro"]
-                fonte_atual = atendimento.get("fonte", "") or "Não informado"
-                if fonte_atual not in fontes_disponiveis:
-                    fontes_disponiveis = [fonte_atual] + fontes_disponiveis
-                novo_fonte = st.selectbox(
-                    "Fonte",
-                    fontes_disponiveis,
-                    index=fontes_disponiveis.index(fonte_atual) if fonte_atual in fontes_disponiveis else 0,
-                    key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
-                )
+            novo_assunto = st.selectbox(
+                "Assunto",
+                lista_assuntos_edicao,
+                index=lista_assuntos_edicao.index(assunto_atual) if assunto_atual in lista_assuntos_edicao else 0,
+                key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
+            )
 
-                nova_origem = st.text_input(
-                    "Quem originou a demanda/chamada",
-                    value=atendimento.get("origem", ""),
-                    key=f"{chave_prefixo}_origem_{atendimento.get('id')}"
-                )
+            fontes_disponiveis = FONTES_ATENDIMENTO if "FONTES_ATENDIMENTO" in globals() else ["Não informado", "E-mail", "Telefone", "WhatsApp", "Outro"]
+            fonte_atual = atendimento.get("fonte", "") or "Não informado"
+            if fonte_atual not in fontes_disponiveis:
+                fontes_disponiveis = [fonte_atual] + fontes_disponiveis
+            novo_fonte = st.selectbox(
+                "Fonte",
+                fontes_disponiveis,
+                index=fontes_disponiveis.index(fonte_atual) if fonte_atual in fontes_disponiveis else 0,
+                key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
+            )
 
-                novo_protocolo = st.text_input(
-                    "Protocolo ou referência, se houver",
-                    value=atendimento.get("protocolo", ""),
-                    key=f"{chave_prefixo}_protocolo_{atendimento.get('id')}"
-                )
+            nova_origem = st.text_input(
+                "Quem originou a demanda/chamada",
+                value=atendimento.get("origem", ""),
+                key=f"{chave_prefixo}_origem_{atendimento.get('id')}"
+            )
 
-                nova_descricao = st.text_area(
-                    "Descrição da demanda",
-                    value=atendimento.get("descricao", ""),
-                    key=f"{chave_prefixo}_descricao_{atendimento.get('id')}"
-                )
+            novo_protocolo = st.text_input(
+                "Protocolo ou referência, se houver",
+                value=atendimento.get("protocolo", ""),
+                key=f"{chave_prefixo}_protocolo_{atendimento.get('id')}"
+            )
 
-                nova_complexidade = st.selectbox(
-                    "Complexidade",
-                    COMPLEXIDADES_ATENDIMENTO,
-                    index=COMPLEXIDADES_ATENDIMENTO.index(normalizar_complexidade(atendimento.get("complexidade"))) if normalizar_complexidade(atendimento.get("complexidade")) in COMPLEXIDADES_ATENDIMENTO else 0,
-                    key=f"{chave_prefixo}_complexidade_{atendimento.get('id')}"
-                )
+            nova_descricao = st.text_area(
+                "Descrição da demanda",
+                value=atendimento.get("descricao", ""),
+                key=f"{chave_prefixo}_descricao_{atendimento.get('id')}"
+            )
 
-                prazo_atual = parse_data_opcional(atendimento.get("prazo_limite")) or agora_brasilia().date()
-                manter_prazo = st.checkbox(
-                    "Definir/manter prazo limite",
-                    value=bool(atendimento.get("prazo_limite")),
-                    key=f"{chave_prefixo}_tem_prazo_{atendimento.get('id')}"
-                )
-                novo_prazo = st.date_input(
-                    "Prazo limite",
-                    value=prazo_atual,
-                    format="DD/MM/YYYY",
-                    help="Marque 'Definir/manter prazo limite' para que esta data seja gravada no atendimento.",
-                    key=f"{chave_prefixo}_prazo_{atendimento.get('id')}"
-                )
+            nova_complexidade = st.selectbox(
+                "Complexidade",
+                COMPLEXIDADES_ATENDIMENTO,
+                index=COMPLEXIDADES_ATENDIMENTO.index(normalizar_complexidade(atendimento.get("complexidade"))) if normalizar_complexidade(atendimento.get("complexidade")) in COMPLEXIDADES_ATENDIMENTO else 0,
+                key=f"{chave_prefixo}_complexidade_{atendimento.get('id')}"
+            )
 
-                nova_providencia = st.text_area(
-                    "Providência adotada",
-                    value=atendimento.get("providencia_adotada", ""),
-                    key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
-                )
+            prazo_atual = parse_data_opcional(atendimento.get("prazo_limite")) or agora_brasilia().date()
+            manter_prazo = st.checkbox(
+                "Definir/manter prazo limite",
+                value=bool(atendimento.get("prazo_limite")),
+                key=f"{chave_prefixo}_tem_prazo_{atendimento.get('id')}"
+            )
+            novo_prazo = st.date_input(
+                "Prazo limite",
+                value=prazo_atual,
+                format="DD/MM/YYYY",
+                help="Marque 'Definir/manter prazo limite' para que esta data seja gravada no atendimento.",
+                key=f"{chave_prefixo}_prazo_{atendimento.get('id')}"
+            )
 
-                nova_conclusao = st.text_area(
-                    "Conclusão / resultado",
-                    value=atendimento.get("conclusao", ""),
-                    key=f"{chave_prefixo}_conclusao_{atendimento.get('id')}"
-                )
+            nova_providencia = st.text_area(
+                "Providência adotada",
+                value=atendimento.get("providencia_adotada", ""),
+                key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
+            )
 
-                gerar_conhecimento = st.checkbox(
-                    "Cadastrar orientação na base de conhecimento ao salvar",
-                    value=False,
-                    key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
-                )
-                gerar_modelo_resposta = st.checkbox(
-                    "Cadastrar modelo de resposta ao salvar",
-                    value=False,
-                    key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
-                )
+            nova_conclusao = st.text_area(
+                "Providência adotada",
+                value=atendimento.get("conclusao", ""),
+                key=f"{chave_prefixo}_conclusao_{atendimento.get('id')}"
+            )
 
-                if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
-                    for item in lista:
-                        if int(item.get("id")) == int(atendimento.get("id")):
-                            item["observacoes"] = nova_obs
-                            antes = item.copy()
-                            item["status"] = novo_status
-                            item["secao"] = nova_secao
-                            item["servidor"] = novo_servidor
-                            item["assunto"] = novo_assunto
-                            item["fonte"] = novo_fonte
-                            item["origem"] = nova_origem
-                            item["protocolo"] = novo_protocolo
-                            item["descricao"] = nova_descricao
-                            item["complexidade"] = nova_complexidade
-                            item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
-                            item["providencia_adotada"] = nova_providencia
-                            item["conclusao"] = nova_conclusao
-                            if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
-                                item["data_inicio_atendimento"] = agora_iso()
-                            if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
-                                item["realizado_em"] = agora_iso()
-                            if novo_status == STATUS_REALIZADO and not item.get("data_conclusao"):
-                                item["data_conclusao"] = agora_iso()
-                            item["atualizado_em"] = agora_iso()
-                            if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
-                                item["data_realizacao"] = hoje_ddmmaaaa()
-                            t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
-                            item["tempo_triagem_horas"] = t_triagem
-                            item["tempo_atendimento_horas"] = t_atendimento
-                            item["tempo_total_horas"] = t_total
-                            salvar_atendimentos(lista)
-                            registrar_diferencas_atendimento(antes, item, "edição")
-                            if gerar_conhecimento:
-                                criar_item_base_conhecimento(item)
-                            if gerar_modelo_resposta:
-                                criar_modelo_resposta_do_atendimento(
-                                    item,
-                                    titulo_modelo=f"Modelo - {item.get('assunto') or 'Atendimento'}",
-                                    texto_modelo=item.get("providencia_adotada") or item.get("conclusao") or "",
-                                    fundamento_normativo=""
-                                )
-                            st.success("Alterações salvas.")
-                            st.rerun()
+            gerar_conhecimento = st.checkbox(
+                "Cadastrar orientação na base de conhecimento ao salvar",
+                value=False,
+                key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
+            )
+            gerar_modelo_resposta = st.checkbox(
+                "Cadastrar modelo de resposta ao salvar",
+                value=False,
+                key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
+            )
+
+            if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
+                for item in lista:
+                    if int(item.get("id")) == int(atendimento.get("id")):
+                        item["observacoes"] = nova_obs
+                        antes = item.copy()
+                        item["status"] = novo_status
+                        item["secao"] = nova_secao
+                        item["servidor"] = novo_servidor
+                        item["assunto"] = novo_assunto
+                        item["fonte"] = novo_fonte
+                        item["origem"] = nova_origem
+                        item["protocolo"] = novo_protocolo
+                        item["descricao"] = nova_descricao
+                        item["complexidade"] = nova_complexidade
+                        item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
+                        item["providencia_adotada"] = nova_providencia
+                        item["conclusao"] = nova_conclusao
+                        if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
+                            item["data_inicio_atendimento"] = agora_iso()
+                        if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
+                            item["realizado_em"] = agora_iso()
+                        if novo_status == STATUS_REALIZADO and not item.get("data_conclusao"):
+                            item["data_conclusao"] = agora_iso()
+                        item["atualizado_em"] = agora_iso()
+                        if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
+                            item["data_realizacao"] = hoje_ddmmaaaa()
+                        t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
+                        item["tempo_triagem_horas"] = t_triagem
+                        item["tempo_atendimento_horas"] = t_atendimento
+                        item["tempo_total_horas"] = t_total
+                        salvar_atendimentos(lista)
+                        registrar_diferencas_atendimento(antes, item, "edição")
+                        if gerar_conhecimento:
+                            criar_item_base_conhecimento(item)
+                        if gerar_modelo_resposta:
+                            criar_modelo_resposta_do_atendimento(
+                                item,
+                                titulo_modelo=f"Modelo - {item.get('assunto') or 'Atendimento'}",
+                                texto_modelo=item.get("providencia_adotada") or "",
+                                fundamento_normativo=""
+                            )
+                        st.success("Alterações salvas.")
+                        st.rerun()
 
         with st.expander("Base de conhecimento, histórico e validação" if usuario_eh_gestor() else "Base de conhecimento e comentários"):
             st.markdown("##### Base de conhecimento para resposta")
