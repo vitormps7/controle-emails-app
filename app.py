@@ -4506,7 +4506,6 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         item["complexidade"] = nova_complexidade
                         item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
                         item["providencia_adotada"] = nova_providencia
-                        item["conclusao"] = nova_conclusao
                         if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
                             item["data_inicio_atendimento"] = agora_iso()
                         if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
