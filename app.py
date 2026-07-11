@@ -1,3 +1,4 @@
+import locale
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -25,6 +26,19 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
 from reportlab.lib.utils import ImageReader
+
+
+# ============================================================
+# LOCALIZACAO PT-BR
+# ============================================================
+try:
+    locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
+except Exception:
+    try:
+        locale.setlocale(locale.LC_TIME, "Portuguese_Brazil.1252")
+    except Exception:
+        pass
+
 
 # ============================================================
 # CONFIGURAÇÕES GERAIS
