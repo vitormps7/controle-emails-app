@@ -2032,6 +2032,58 @@ def enviar_email(destinatario, assunto_email, corpo):
         return False, f"Não foi possível enviar o e-mail: {e}"
 
 
+
+
+def email_interno_secao(secao):
+    secao_norm = normalizar_secao(secao)
+    if secao_norm == "SEOCE":
+        return "seoce@tre-ba.jus.br"
+    return "sepro@tre-ba.jus.br"
+
+
+def nome_unidade_email(secao):
+    secao_norm = normalizar_secao(secao)
+    if secao_norm == "SEOCE":
+        return "SEOCE"
+    return "SEPRO"
+
+
+def enviar_email_demanda_cadastrada_unidade(atendimento):
+    """
+    Solução paliativa: comunica o cadastramento à caixa da seção correspondente,
+    sem enviar diretamente à zona eleitoral.
+    """
+    destinatario = email_interno_secao(atendimento.get("secao"))
+    unidade = nome_unidade_email(atendimento.get("secao"))
+    usuario = usuario_logado() or {}
+
+    assunto_email = f"SIGA-COR - Atendimento cadastrado nº {atendimento.get('id')} - {unidade}"
+
+    corpo = f"""Prezados(as),
+
+Foi cadastrado novo atendimento no SIGA-COR e encaminhado diretamente para a fase Em atendimento.
+
+DADOS DO ATENDIMENTO
+ID: {atendimento.get('id')}
+Data do atendimento: {data_para_exibir(atendimento.get('data'))}
+Seção: {normalizar_secao(atendimento.get('secao'))}
+Origem da demanda/chamada: {atendimento.get('origem') or 'Não informado'}
+Zona eleitoral: {atendimento.get('zona_eleitoral') or 'Não informado'}
+Assunto: {atendimento.get('assunto') or 'Não informado'}
+Responsável: {atendimento.get('servidor') or 'Não informado'}
+Status: {atendimento.get('status') or 'Não informado'}
+
+DADOS DO CADASTRO
+Servidor cadastrador: {usuario.get('nome') or 'Não informado'}
+E-mail do cadastrador: {usuario.get('email') or 'Não informado'}
+Data/hora do cadastro: {agora_texto_brasilia()}
+
+Mensagem automática do SIGA-COR.
+"""
+
+    return enviar_email(destinatario, assunto_email, corpo)
+
+
 def app_base_url():
     return st.secrets.get("APP_BASE_URL", "").rstrip("/")
 
@@ -5975,6 +6027,8 @@ def tela_novo_atendimento():
         lista.append(item)
         salvar_atendimentos(lista)
 
+        email_ok, email_msg = enviar_email_demanda_cadastrada_unidade(item)
+
         try:
             registrar_historico_atendimento(
                 novo_id,
@@ -5982,10 +6036,23 @@ def tela_novo_atendimento():
                 "Atendimento cadastrado diretamente em Em atendimento",
                 f"Origem: {origem.strip()} | Zona: {zona} | Assunto: {assunto or 'Não informado'} | Responsável: {servidor}"
             )
+            registrar_historico_atendimento(
+                novo_id,
+                "E-mail automático",
+                "Comunicação interna de cadastramento",
+                f"Destinatário: {email_interno_secao(item.get('secao'))} | Resultado: {email_msg}"
+            )
         except Exception:
             pass
 
-        st.success(f"Atendimento nº {novo_id} cadastrado e enviado para Em atendimento.")
+        if email_ok:
+            st.success(f"Atendimento nº {novo_id} cadastrado, enviado para Em atendimento e comunicado por e-mail à unidade.")
+        else:
+            st.warning(
+                f"Atendimento nº {novo_id} cadastrado e enviado para Em atendimento. "
+                f"O e-mail automático para a unidade não foi enviado: {email_msg}"
+            )
+
         ir_para_pagina("Em atendimento")
         st.rerun()
 
