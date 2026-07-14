@@ -2052,14 +2052,16 @@ def enviar_email_demanda_cadastrada_unidade(atendimento):
     """
     Solução paliativa: comunica o cadastramento à caixa da seção correspondente,
     sem enviar diretamente à zona eleitoral.
+    Retorna sempre: (ok: bool, mensagem: str).
     """
-    destinatario = email_interno_secao(atendimento.get("secao"))
-    unidade = nome_unidade_email(atendimento.get("secao"))
-    usuario = usuario_logado() or {}
+    try:
+        destinatario = email_interno_secao(atendimento.get("secao"))
+        unidade = nome_unidade_email(atendimento.get("secao"))
+        usuario = usuario_logado() or {}
 
-    assunto_email = f"SIGA-COR - Atendimento cadastrado nº {atendimento.get('id')} - {unidade}"
+        assunto_email = f"SIGA-COR - Atendimento cadastrado nº {atendimento.get('id')} - {unidade}"
 
-    corpo = f"""Prezados(as),
+        corpo = f"""Prezados(as),
 
 Foi cadastrado novo atendimento no SIGA-COR e encaminhado diretamente para a fase Em atendimento.
 
@@ -2081,7 +2083,21 @@ Data/hora do cadastro: {agora_texto_brasilia()}
 Mensagem automática do SIGA-COR.
 """
 
-    return enviar_email(destinatario, assunto_email, corpo)
+        resultado = enviar_email(destinatario, assunto_email, corpo)
+
+        if isinstance(resultado, tuple) and len(resultado) >= 2:
+            return bool(resultado[0]), str(resultado[1])
+
+        if resultado is True:
+            return True, f"E-mail enviado para {destinatario}."
+
+        return False, (
+            f"E-mail não enviado para {destinatario}. "
+            "Verifique a configuração SMTP nos Secrets: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD e EMAIL_REMETENTE."
+        )
+
+    except Exception as e:
+        return False, f"Falha ao enviar e-mail automático: {type(e).__name__}: {e}"
 
 
 def app_base_url():
@@ -2904,6 +2920,27 @@ def atendimento_em_foco_id():
         return int(st.session_state.get("atendimento_foco_id")) if st.session_state.get("atendimento_foco_id") else None
     except Exception:
         return None
+
+
+
+def registrar_mensagem_sistema(tipo, texto):
+    st.session_state["mensagem_sistema_tipo"] = tipo
+    st.session_state["mensagem_sistema_texto"] = texto
+
+
+def exibir_mensagem_sistema():
+    texto = st.session_state.pop("mensagem_sistema_texto", "")
+    tipo = st.session_state.pop("mensagem_sistema_tipo", "")
+    if not texto:
+        return
+    if tipo == "success":
+        st.success(texto)
+    elif tipo == "warning":
+        st.warning(texto)
+    elif tipo == "error":
+        st.error(texto)
+    else:
+        st.info(texto)
 
 
 def limpar_atendimento_em_foco():
@@ -3857,6 +3894,7 @@ def render_visao_executiva(lista, titulo="Resumo executivo"):
 
 
 def tela_inicio():
+    exibir_mensagem_sistema()
     tela_menu_principal()
 
 
@@ -5911,6 +5949,7 @@ def tela_dashboard():
 
 
 def tela_novo_atendimento():
+    exibir_mensagem_sistema()
     st.subheader("Novo atendimento")
     aviso_modo_visualizacao()
     st.caption("Cadastro rápido: informe apenas data, origem da demanda, zona eleitoral e responsável. Os demais campos serão preenchidos na fase Em atendimento.")
@@ -6046,11 +6085,15 @@ def tela_novo_atendimento():
             pass
 
         if email_ok:
-            st.success(f"Atendimento nº {novo_id} cadastrado, enviado para Em atendimento e comunicado por e-mail à unidade.")
+            registrar_mensagem_sistema(
+                "success",
+                f"Atendimento nº {novo_id} cadastrado, enviado para Em atendimento e comunicado por e-mail à unidade. {email_msg}"
+            )
         else:
-            st.warning(
+            registrar_mensagem_sistema(
+                "warning",
                 f"Atendimento nº {novo_id} cadastrado e enviado para Em atendimento. "
-                f"O e-mail automático para a unidade não foi enviado: {email_msg}"
+                f"O e-mail automático para a unidade não foi enviado. Detalhe: {email_msg}"
             )
 
         ir_para_pagina("Em atendimento")
@@ -6059,6 +6102,7 @@ def tela_novo_atendimento():
 
 
 def tela_status(nome_status, titulo, texto_ajuda):
+    exibir_mensagem_sistema()
     st.subheader(titulo)
     st.caption(texto_ajuda)
 
