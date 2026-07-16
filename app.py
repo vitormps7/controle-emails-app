@@ -46,7 +46,7 @@ except Exception:
 
 st.set_page_config(
     page_title="SIGA-COR",
-    page_icon="⚖️",
+    page_icon="<i class="fi fi-rs-bank"></i>",
     layout="wide"
 )
 
@@ -153,6 +153,50 @@ ASSUNTOS_PADRAO = [
     "Zona Eleitoral",
     "Outro",
 ]
+
+TIPOLOGIAS_ASSUNTO = [
+    "Não classificado",
+    "Processo Cível Eleitoral",
+    "Processo Penal Eleitoral",
+    "Atos Normativos",
+    "Cadastro Eleitoral",
+    "Manuais, Cartilhas e Tutoriais",
+    "Sistemas",
+    "Processos Administrativos Eleitorais",
+    "Gestão, Governança e Apoio às Zonas",
+]
+
+TIPOLOGIA_PADRAO_POR_ASSUNTO = {
+    "Cumprimento de Sentença": "Processo Cível Eleitoral",
+    "Prestação de Contas Eleitorais": "Processo Cível Eleitoral",
+    "Prestação de Contas Anual": "Processo Cível Eleitoral",
+    "AIME": "Processo Cível Eleitoral",
+    "Propaganda Eleitoral": "Processo Cível Eleitoral",
+    "Registro de Candidatura": "Processo Cível Eleitoral",
+    "Ação Penal": "Processo Penal Eleitoral",
+    "Direitos Políticos": "Cadastro Eleitoral",
+    "Filiação Partidária": "Cadastro Eleitoral",
+    "Regularização de Situação Eleitoral": "Cadastro Eleitoral",
+    "Sisbajud": "Sistemas",
+    "AJUE": "Sistemas",
+    "Zona Eleitoral": "Gestão, Governança e Apoio às Zonas",
+    "Outro": "Não classificado",
+    "Não informado": "Não classificado",
+}
+
+
+def tipologias_assunto():
+    return TIPOLOGIAS_ASSUNTO
+
+
+def normalizar_tipologia_assunto(valor, assunto=None):
+    valor = str(valor or "").strip()
+    if valor in TIPOLOGIAS_ASSUNTO:
+        return valor
+    if assunto:
+        return TIPOLOGIA_PADRAO_POR_ASSUNTO.get(str(assunto or "").strip(), "Não classificado")
+    return "Não classificado"
+
 
 ZONAS_BAHIA = ["Não informado"] + [f"{i:03d}ª Zona Eleitoral - Bahia" for i in range(1, 206)]
 
@@ -1650,18 +1694,29 @@ def assunto_rows():
         if not nome:
             continue
 
+        tipologia = normalizar_tipologia_assunto(row.get("categoria"), nome)
         registros.append({
             "id": row.get("id"),
             "nome": nome,
             "secao": normalizar_secao(row.get("secao") or "SEPRO"),
-            "categoria": row.get("categoria") or nome,
+            "categoria": tipologia,
+            "tipologia": tipologia,
             "subcategoria": row.get("subcategoria") or "",
             "ordem": row.get("ordem") or 0,
             "ativo": True,
         })
 
     if not registros:
-        registros = [{"nome": nome, "secao": "SEPRO", "ativo": True} for nome in ASSUNTOS_PADRAO]
+        registros = [
+            {
+                "nome": nome,
+                "secao": "SEPRO",
+                "categoria": normalizar_tipologia_assunto(None, nome),
+                "tipologia": normalizar_tipologia_assunto(None, nome),
+                "ativo": True,
+            }
+            for nome in ASSUNTOS_PADRAO
+        ]
         salvar_assuntos_registros(registros)
 
     registros = sorted(
@@ -1673,6 +1728,21 @@ def assunto_rows():
         )
     )
     return cache_sessao_set("assuntos_rows", registros)
+
+
+
+def tipologia_do_assunto(nome_assunto, secao=None):
+    secao_norm = normalizar_secao(secao) if secao else None
+    nome_norm = str(nome_assunto or "").strip().casefold()
+
+    for r in assunto_rows():
+        if str(r.get("nome", "")).strip().casefold() != nome_norm:
+            continue
+        if secao_norm and normalizar_secao(r.get("secao")) != secao_norm:
+            continue
+        return normalizar_tipologia_assunto(r.get("tipologia") or r.get("categoria"), r.get("nome"))
+
+    return normalizar_tipologia_assunto(None, nome_assunto)
 
 def assuntos(secao=None):
     registros = assunto_rows()
@@ -1705,9 +1775,15 @@ def salvar_assuntos_registros(registros):
         if isinstance(r, dict):
             nome = str(r.get("nome") or "").strip()
             secao = normalizar_secao(r.get("secao") or "SEPRO")
+            tipologia = normalizar_tipologia_assunto(r.get("tipologia") or r.get("categoria"), nome)
+            subcategoria = str(r.get("subcategoria") or "").strip()
+            ordem = int(r.get("ordem") or 0)
         else:
             nome = str(r or "").strip()
             secao = "SEPRO"
+            tipologia = normalizar_tipologia_assunto(None, nome)
+            subcategoria = ""
+            ordem = 0
 
         if not nome:
             continue
@@ -1720,6 +1796,9 @@ def salvar_assuntos_registros(registros):
         normalizados.append({
             "nome": nome,
             "secao": secao,
+            "categoria": tipologia,
+            "subcategoria": subcategoria,
+            "ordem": ordem,
             "ativo": True,
             "criado_em": agora_iso(),
         })
@@ -1728,6 +1807,9 @@ def salvar_assuntos_registros(registros):
         normalizados.append({
             "nome": "Não informado",
             "secao": "SEPRO",
+            "categoria": "Não classificado",
+            "subcategoria": "",
+            "ordem": 0,
             "ativo": True,
             "criado_em": agora_iso(),
         })
@@ -1738,7 +1820,22 @@ def salvar_assuntos_registros(registros):
     )
 
     if normalizados:
-        supabase_insert("assuntos", normalizados)
+        try:
+            supabase_insert("assuntos", normalizados)
+        except Exception:
+            # Compatibilidade com bancos antigos sem colunas categoria/subcategoria/ordem.
+            # Nesse caso, o assunto permanece cadastrado, mas a tipologia só será persistida
+            # após a migração opcional da tabela assuntos.
+            basicos = [
+                {
+                    "nome": r.get("nome"),
+                    "secao": r.get("secao"),
+                    "ativo": r.get("ativo", True),
+                    "criado_em": r.get("criado_em", agora_iso()),
+                }
+                for r in normalizados
+            ]
+            supabase_insert("assuntos", basicos)
     cache_sessao_limpar("assuntos_rows")
     criar_backup_automatico("apos_salvar_assuntos")
 
@@ -1749,7 +1846,13 @@ def salvar_assuntos(lista):
         if isinstance(item, dict):
             registros.append(item)
         else:
-            registros.append({"nome": item, "secao": "SEPRO", "ativo": True})
+            registros.append({
+                "nome": item,
+                "secao": "SEPRO",
+                "categoria": normalizar_tipologia_assunto(None, item),
+                "tipologia": normalizar_tipologia_assunto(None, item),
+                "ativo": True,
+            })
     salvar_assuntos_registros(registros)
 
 
@@ -6730,7 +6833,7 @@ def tela_relatorios_exportacao():
 
 def tela_assuntos():
     st.subheader("Assuntos")
-    st.caption("Área exclusiva do administrador.")
+    st.caption("Área exclusiva do administrador. Os assuntos agora são organizados por tipologia, que funciona como gênero/classificação superior.")
 
     if not eh_admin():
         st.warning("Apenas administradores podem gerenciar assuntos.")
@@ -6740,14 +6843,21 @@ def tela_assuntos():
 
     st.markdown("### Incluir novo assunto")
     with st.form("form_assunto"):
-        col_a, col_b = st.columns([2.5, 1])
+        col_a, col_b, col_c = st.columns([2.2, 1.2, 1.6])
         with col_a:
             novo = st.text_input("Novo assunto")
         with col_b:
             secao_novo = st.selectbox("Seção do assunto", secoes_atendimento())
+        with col_c:
+            tipologia_nova = st.selectbox(
+                "Tipologia",
+                tipologias_assunto(),
+                index=tipologias_assunto().index("Não classificado")
+            )
 
         if st.form_submit_button("Adicionar assunto", type="primary"):
             novo = novo.strip()
+            tipologia_nova = normalizar_tipologia_assunto(tipologia_nova, novo)
             if not novo:
                 st.warning("Informe um assunto.")
             elif any(
@@ -6760,13 +6870,14 @@ def tela_assuntos():
                 registros.append({
                     "nome": novo,
                     "secao": secao_novo,
-                    "categoria": novo,
+                    "categoria": tipologia_nova,
+                    "tipologia": tipologia_nova,
                     "subcategoria": "",
                     "ordem": 0,
                     "ativo": True,
                 })
                 salvar_assuntos_registros(registros)
-                st.success(f"Assunto adicionado à seção {secao_novo}.")
+                st.success(f"Assunto adicionado à seção {secao_novo}, na tipologia {tipologia_nova}.")
                 st.rerun()
 
     st.divider()
@@ -6783,8 +6894,29 @@ def tela_assuntos():
                 and str(r.get("nome", "")).strip() != "Não informado"
             ]
 
+            busca = st.text_input(
+                f"Buscar assunto em {secao_exibida}",
+                key=f"busca_assuntos_{secao_exibida}",
+                placeholder="Digite parte do assunto ou da tipologia"
+            )
+
+            if busca.strip():
+                termo = busca.strip().casefold()
+                registros_secao = [
+                    r for r in registros_secao
+                    if termo in str(r.get("nome", "")).casefold()
+                    or termo in normalizar_tipologia_assunto(r.get("tipologia") or r.get("categoria"), r.get("nome")).casefold()
+                ]
+
             st.markdown(f"### {secao_exibida}")
-            st.caption(f"Total de assuntos cadastrados para {secao_exibida}: {len(registros_secao)}")
+            st.caption(f"Total de assuntos exibidos para {secao_exibida}: {len(registros_secao)}")
+
+            if registros_secao:
+                resumo = {}
+                for r in registros_secao:
+                    tip = normalizar_tipologia_assunto(r.get("tipologia") or r.get("categoria"), r.get("nome"))
+                    resumo[tip] = resumo.get(tip, 0) + 1
+                st.caption(" | ".join([f"{k}: {v}" for k, v in sorted(resumo.items())]))
 
             if not registros_secao:
                 st.info(f"Nenhum assunto cadastrado para {secao_exibida}.")
@@ -6793,8 +6925,11 @@ def tela_assuntos():
             for idx, registro in enumerate(registros_secao):
                 assunto = registro.get("nome", "")
                 secao_atual = normalizar_secao(registro.get("secao"))
+                tipologia_atual = normalizar_tipologia_assunto(
+                    registro.get("tipologia") or registro.get("categoria"),
+                    assunto
+                )
 
-                # índice real dentro da lista completa
                 idx_global = next(
                     (
                         i for i, r in enumerate(registros)
@@ -6808,7 +6943,7 @@ def tela_assuntos():
                     continue
 
                 with st.container(border=True):
-                    col1, col2, col3, col4 = st.columns([3, 1.2, 1, 1])
+                    col1, col2, col3, col4, col5 = st.columns([2.6, 1.15, 1.8, 0.85, 0.9])
 
                     with col1:
                         editado = st.text_input(
@@ -6826,10 +6961,19 @@ def tela_assuntos():
                         )
 
                     with col3:
+                        nova_tipologia = st.selectbox(
+                            "Tipologia",
+                            tipologias_assunto(),
+                            index=tipologias_assunto().index(tipologia_atual) if tipologia_atual in tipologias_assunto() else 0,
+                            key=f"assunto_tipologia_{secao_exibida}_{idx_global}_{assunto}"
+                        )
+
+                    with col4:
                         st.write("")
                         st.write("")
                         if st.button("Salvar", key=f"assunto_salvar_{secao_exibida}_{idx_global}_{assunto}"):
                             editado = editado.strip()
+                            nova_tipologia = normalizar_tipologia_assunto(nova_tipologia, editado)
                             if not editado:
                                 st.warning("O assunto não pode ficar vazio.")
                             elif any(
@@ -6844,14 +6988,15 @@ def tela_assuntos():
                                     **registros[idx_global],
                                     "nome": editado,
                                     "secao": nova_secao,
-                                    "categoria": registros[idx_global].get("categoria") or editado,
+                                    "categoria": nova_tipologia,
+                                    "tipologia": nova_tipologia,
                                     "ativo": True,
                                 }
                                 salvar_assuntos_registros(registros)
                                 st.success("Assunto atualizado.")
                                 st.rerun()
 
-                    with col4:
+                    with col5:
                         st.write("")
                         st.write("")
                         confirmar = st.checkbox(
@@ -6866,7 +7011,6 @@ def tela_assuntos():
                                 salvar_assuntos_registros(novos)
                                 st.success("Assunto removido da lista de opções. Registros antigos foram preservados.")
                                 st.rerun()
-
 
 
 
