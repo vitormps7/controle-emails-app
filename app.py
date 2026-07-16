@@ -131,6 +131,7 @@ PERFIS_USUARIO = [
     "Chefia SEOCE",
     "Operador SEPRO",
     "Operador SEOCE",
+    "Zona Eleitoral",
     "Consulta",
     "Administrador",
     "Usuário",
@@ -2137,6 +2138,97 @@ def enviar_email(destinatario, assunto_email, corpo):
 
 
 
+
+
+def numero_zona_eleitoral(valor):
+    texto = str(valor or "")
+    m = re.search(r"(\d{1,3})", texto)
+    if not m:
+        return None
+    try:
+        n = int(m.group(1))
+        if 1 <= n <= 999:
+            return n
+    except Exception:
+        pass
+    return None
+
+
+def email_zona_eleitoral(valor):
+    n = numero_zona_eleitoral(valor)
+    if not n:
+        return ""
+    return f"zona{n:03d}@tre-ba.jus.br"
+
+
+def descricao_diferenca_base_modelo():
+    st.info(
+        "Entendimento/Base de conhecimento guarda a orientação institucional, o fundamento e a memória técnica. "
+        "Texto-padrão/Modelo de resposta guarda uma minuta reutilizável de mensagem para acelerar respostas futuras."
+    )
+
+
+def base_conhecimento_filtrada_para_zona(tipologia=None, assunto=None, termo=None):
+    registros = base_conhecimento_rows(incluir_superadas=False)
+    tipologia = str(tipologia or "").strip()
+    assunto = str(assunto or "").strip()
+    termo = str(termo or "").strip().casefold()
+
+    saida = []
+    for b in registros:
+        assunto_base = str(b.get("assunto") or b.get("categoria") or "Não informado").strip()
+        tip_base = tipologia_do_assunto(assunto_base, b.get("secao"))
+
+        if tipologia and tipologia != "Todas" and tip_base != tipologia:
+            continue
+        if assunto and assunto != "Todos" and assunto_base != assunto:
+            continue
+
+        texto = " ".join([
+            str(b.get("codigo_cadastro") or ""),
+            str(assunto_base),
+            str(tip_base),
+            str(b.get("resumo_duvida") or ""),
+            str(b.get("orientacao_adotada") or ""),
+            str(b.get("fundamento_normativo") or ""),
+        ]).casefold()
+
+        if termo and termo not in texto:
+            continue
+
+        saida.append({**b, "_assunto_base": assunto_base, "_tipologia": tip_base})
+
+    return saida
+
+
+def enviar_email_resposta_zona(atendimento):
+    destinatario = email_zona_eleitoral(atendimento.get("zona_eleitoral"))
+    if not destinatario:
+        return False, "Não foi possível identificar o e-mail da zona eleitoral."
+
+    assunto_email = f"SIGA-COR - Resposta ao atendimento nº {atendimento.get('id')}"
+
+    corpo = f"""Prezados(as),
+
+O atendimento registrado no SIGA-COR foi finalizado pela unidade responsável.
+
+DADOS DO ATENDIMENTO
+ID: {atendimento.get('id')}
+Data: {data_para_exibir(atendimento.get('data'))}
+Seção responsável: {normalizar_secao(atendimento.get('secao'))}
+Zona eleitoral: {atendimento.get('zona_eleitoral') or 'Não informado'}
+Assunto: {atendimento.get('assunto') or 'Não informado'}
+Origem: {atendimento.get('origem') or 'Não informado'}
+
+RESPOSTA / PROVIDÊNCIA ADOTADA
+{atendimento.get('providencia_adotada') or atendimento.get('observacoes') or 'Atendimento finalizado pela unidade responsável.'}
+
+Mensagem automática do SIGA-COR.
+"""
+
+    return enviar_email(destinatario, assunto_email, corpo)
+
+
 def email_interno_secao(secao):
     secao_norm = normalizar_secao(secao)
     if secao_norm == "SEOCE":
@@ -3232,6 +3324,7 @@ def tela_orientacoes_zonas():
         "Ambiente integrado para consulta e manutenção da memória institucional, "
         "modelos de resposta e instrumentos de orientação."
     )
+    descricao_diferenca_base_modelo()
 
     aba1, aba2, aba3 = st.tabs([
         "Entendimentos / Base de conhecimento",
@@ -3250,6 +3343,365 @@ def tela_orientacoes_zonas():
             tela_instrumentos_orientacao()
         else:
             st.info("Instrumentos de orientação estão disponíveis para chefia e administradores.")
+
+
+
+
+
+
+def demandas_da_zona(zona):
+    """
+    Retorna todos os atendimentos vinculados à zona informada, independentemente da origem:
+    - cadastrados diretamente pela Zona no Portal;
+    - cadastrados internamente pela SEPRO;
+    - cadastrados internamente pela SEOCE;
+    - cadastrados a partir de ligação, e-mail, WhatsApp ou outro canal.
+
+    A restrição de segurança é sempre pela zona eleitoral, nunca pela origem do cadastro.
+    """
+    n = numero_zona_eleitoral(zona)
+    if not n:
+        return []
+
+    saida = []
+    for a in atendimentos():
+        if numero_zona_eleitoral(a.get("zona_eleitoral")) == n:
+            saida.append(a)
+
+    return sorted(saida, key=lambda x: int(x.get("id", 0)), reverse=True)
+
+
+def render_card_demanda_zona(a):
+    fonte = a.get("fonte") or "Não informado"
+    origem = a.get("origem") or "Não informado"
+    cadastrado_via_portal = str(fonte).casefold() == "portal da zona" or "portal da zona" in str(origem).casefold()
+    tipo_cadastro = "Cadastrado pela Zona" if cadastrado_via_portal else "Cadastrado pela unidade"
+
+    with st.container(border=True):
+        col1, col2, col3 = st.columns([0.8, 1.4, 1.4])
+        with col1:
+            st.markdown(f"**ID:** {a.get('id')}")
+            st.markdown(status_badge(a.get("status")), unsafe_allow_html=True)
+            st.caption(tipo_cadastro)
+        with col2:
+            st.markdown(f"**Assunto:** {a.get('assunto') or 'Não informado'}")
+            st.markdown(f"**Unidade:** {normalizar_secao(a.get('secao'))}")
+            st.markdown(f"**Data:** {data_para_exibir(a.get('data'))}")
+        with col3:
+            st.markdown(f"**Protocolo:** {a.get('protocolo') or 'Não informado'}")
+            st.markdown(f"**Canal/origem:** {origem}")
+            st.markdown(f"**Atualizado:** {formatar_data_hora_brasilia(a.get('atualizado_em'))}")
+
+        st.markdown("**Pergunta/demanda registrada:**")
+        st.write(a.get("descricao") or "Não informada.")
+
+        if a.get("status") == STATUS_REALIZADO:
+            st.markdown("**Resposta da unidade responsável:**")
+            st.write(a.get("providencia_adotada") or a.get("conclusao") or "Atendimento finalizado, sem resposta textual registrada.")
+        else:
+            st.info("Atendimento ainda em análise pela unidade responsável.")
+
+
+def tela_portal_zonas_eleitorais():
+    st.subheader("Portal das Zonas Eleitorais")
+    st.caption(
+        "Módulo de interação direta com as Zonas Eleitorais: consulta à base de conhecimento, "
+        "cadastro de demandas e acompanhamento restrito às próprias solicitações."
+    )
+
+    zona_do_usuario = zona_eleitoral_usuario_logado()
+    perfil_zona = usuario_eh_zona_eleitoral()
+
+    if perfil_zona and zona_do_usuario:
+        st.info(f"Acesso identificado para a {zona_do_usuario}. Os atendimentos exibidos serão restritos a essa zona, inclusive aqueles cadastrados internamente pela SEPRO ou SEOCE.")
+    elif perfil_zona:
+        st.warning(
+            "Seu perfil é de Zona Eleitoral, mas o sistema ainda não conseguiu identificar automaticamente a zona vinculada ao usuário. "
+            "Para acompanhamento seguro das próprias demandas, cadastre o usuário com e-mail no padrão zonaXXX@tre-ba.jus.br "
+            "ou inclua a zona eleitoral no cadastro do usuário."
+        )
+
+    aba_consulta, aba_cadastro, aba_minhas = st.tabs([
+        "Consultar base de conhecimento",
+        "Cadastrar demanda",
+        "Atendimentos da minha Zona"
+    ])
+
+    with aba_consulta:
+        st.markdown("### Consulta à base de conhecimento")
+        st.caption(
+            "Aqui a zona consulta somente entendimentos institucionalizados e salvos na base de conhecimento. "
+            "Respostas individuais dadas a outras zonas não são exibidas."
+        )
+
+        col1, col2, col3 = st.columns([1.3, 1.3, 2])
+        with col1:
+            tipologia = st.selectbox(
+                "Tipologia",
+                ["Todas"] + [t for t in tipologias_assunto() if t != "Não classificado"],
+                key="portal_zona_tipologia"
+            )
+
+        assuntos_disponiveis = sorted(
+            {
+                str(b.get("assunto") or b.get("categoria") or "Não informado")
+                for b in base_conhecimento_rows(incluir_superadas=False)
+                if str(b.get("assunto") or b.get("categoria") or "").strip()
+            },
+            key=lambda x: x.casefold()
+        )
+
+        with col2:
+            assunto = st.selectbox(
+                "Assunto",
+                ["Todos"] + assuntos_disponiveis,
+                key="portal_zona_assunto"
+            )
+
+        with col3:
+            termo = st.text_input(
+                "Busca livre",
+                placeholder="Digite uma palavra-chave da dúvida",
+                key="portal_zona_busca_livre"
+            )
+
+        resultados = base_conhecimento_filtrada_para_zona(tipologia, assunto, termo)
+
+        st.metric("Entendimentos encontrados", len(resultados))
+
+        if not resultados:
+            st.info("Nenhum entendimento institucional encontrado para os critérios informados.")
+        else:
+            for b in resultados[:30]:
+                codigo = codigo_base_conhecimento(b)
+                with st.expander(f"{codigo} | {b.get('_tipologia')} | {b.get('_assunto_base')}"):
+                    if b.get("resumo_duvida"):
+                        st.markdown("Pergunta/dúvida recorrente")
+                        st.write(b.get("resumo_duvida"))
+                    if b.get("orientacao_adotada"):
+                        st.markdown("Orientação institucional")
+                        st.write(b.get("orientacao_adotada"))
+                    if b.get("fundamento_normativo"):
+                        st.markdown("Fundamento normativo")
+                        st.write(b.get("fundamento_normativo"))
+
+    with aba_cadastro:
+        st.markdown("### Cadastrar demanda da Zona Eleitoral")
+        st.caption(
+            "O cadastro será encaminhado à unidade responsável. Ao final, a resposta poderá ser enviada ao e-mail institucional da zona."
+        )
+
+        with st.form("form_portal_zona_cadastrar_demanda"):
+            col1, col2 = st.columns(2)
+            with col1:
+                if zona_do_usuario:
+                    zona = zona_do_usuario
+                    st.text_input("Zona eleitoral", value=zona, disabled=True)
+                else:
+                    zona = st.selectbox(
+                        "Zona eleitoral",
+                        opcoes_zonas_nacionais(TRIBUNAL_PADRAO),
+                        key="portal_zona_cadastro_zona"
+                    )
+
+                servidor_solicitante = st.text_input(
+                    "Servidor solicitante",
+                    value=(usuario_logado() or {}).get("nome", ""),
+                    key="portal_zona_servidor_solicitante"
+                )
+                email_solicitante = st.text_input(
+                    "E-mail do servidor solicitante",
+                    value=(usuario_logado() or {}).get("email", ""),
+                    key="portal_zona_email_solicitante"
+                )
+
+            with col2:
+                secao_destino = st.selectbox(
+                    "Unidade responsável pela resposta",
+                    secoes_atendimento(),
+                    key="portal_zona_secao_destino"
+                )
+                lista_assuntos = assuntos(secao_destino)
+                assunto_demanda = st.selectbox(
+                    "Assunto",
+                    lista_assuntos,
+                    key="portal_zona_assunto_demanda"
+                )
+                tipologia_info = tipologia_do_assunto(assunto_demanda, secao_destino)
+                st.caption(f"Tipologia: {tipologia_info}")
+
+            pergunta = st.text_area(
+                "Pergunta/demanda da zona",
+                height=160,
+                key="portal_zona_pergunta",
+                placeholder="Descreva a dúvida de forma objetiva. Informe processo, classe, sistema ou contexto, se houver."
+            )
+
+            colp1, colp2 = st.columns(2)
+            with colp1:
+                protocolo = st.text_input(
+                    "Processo/protocolo relacionado, se houver",
+                    key="portal_zona_protocolo"
+                )
+            with colp2:
+                prioridade = st.selectbox(
+                    "Prioridade percebida",
+                    ["Não informado", "Normal", "Alta", "Urgente"],
+                    key="portal_zona_prioridade"
+                )
+
+            enviar = st.form_submit_button("Enviar demanda à unidade responsável", type="primary")
+
+        if enviar:
+            if not numero_zona_eleitoral(zona):
+                st.warning("Informe uma zona eleitoral válida.")
+                return
+            if not servidor_solicitante.strip():
+                st.warning("Informe o servidor solicitante.")
+                return
+            if not pergunta.strip():
+                st.warning("Descreva a pergunta/demanda.")
+                return
+
+            lista = atendimentos()
+            novo_id = proximo_id(lista)
+
+            origem = f"Portal da Zona - {servidor_solicitante.strip()}"
+            if email_solicitante.strip():
+                origem += f" ({email_solicitante.strip()})"
+
+            item = {
+                "id": novo_id,
+                "data": hoje_ddmmaaaa(),
+                "status": STATUS_EM_ATENDIMENTO,
+                "secao": secao_destino,
+                "tribunal": TRIBUNAL_PADRAO,
+                "uf": UF_PADRAO,
+                "unidade_responsavel": UNIDADE_CORREGEDORIA_PADRAO,
+                "requer_validacao": False,
+                "situacao_validacao": "Não requerida",
+                "validado_por": "",
+                "validado_em": "",
+                "servidor": "Não informado",
+                "fonte": "Portal da Zona",
+                "assunto": assunto_demanda or "Não informado",
+                "zona_eleitoral": zona,
+                "origem": origem,
+                "prioridade": prioridade,
+                "complexidade": "Não informada",
+                "prazo_limite": "",
+                "protocolo": protocolo.strip(),
+                "descricao": pergunta.strip(),
+                "observacoes": f"Demanda cadastrada diretamente pela zona. E-mail da zona: {email_zona_eleitoral(zona) or 'não identificado'}. E-mail do solicitante: {email_solicitante.strip() or 'não informado'}.",
+                "providencia_adotada": "",
+                "conclusao": "",
+                "data_realizacao": "",
+                "criado_por": email_solicitante.strip() or email_usuario_logado(),
+                "criado_em": agora_iso(),
+                "atualizado_em": agora_iso(),
+                "data_inicio_atendimento": agora_iso(),
+                "data_conclusao": "",
+                "tempo_triagem_horas": 0,
+                "tempo_atendimento_horas": None,
+                "tempo_total_horas": None,
+                "triado_por": email_usuario_logado(),
+                "triado_em": agora_iso(),
+                "natureza_demanda": "Demanda cadastrada pela Zona Eleitoral",
+                "eixo_competencia": tipologia_info,
+                "unidade_sugerida": secao_destino,
+                "exige_validacao_tecnica": False,
+                "unidade_tecnica_validadora": "Não necessária",
+                "status_validacao_tecnica": "Não necessária",
+                "exige_coajuc": False,
+                "motivo_escalonamento": "",
+                "potencial_uniformizacao": "Médio",
+                "produto_institucional_sugerido": "Avaliar após resposta",
+            }
+
+            lista.append(item)
+            salvar_atendimentos(lista)
+
+            email_ok, email_msg = enviar_email_demanda_cadastrada_unidade(item)
+
+            try:
+                registrar_historico_atendimento(
+                    novo_id,
+                    "Cadastro pela Zona",
+                    "Demanda cadastrada diretamente no Portal das Zonas",
+                    f"Zona: {zona} | Solicitante: {servidor_solicitante.strip()} | Assunto: {assunto_demanda} | Unidade: {secao_destino}"
+                )
+                registrar_historico_atendimento(
+                    novo_id,
+                    "E-mail automático",
+                    "Comunicação interna de cadastramento pela zona",
+                    f"Destinatário: {email_interno_secao(secao_destino)} | Resultado: {email_msg}"
+                )
+            except Exception:
+                pass
+
+            if email_ok:
+                st.success(f"Demanda nº {novo_id} cadastrada e comunicada à {secao_destino}.")
+            else:
+                st.warning(f"Demanda nº {novo_id} cadastrada, mas o e-mail interno não foi enviado. Detalhe: {email_msg}")
+
+            st.info("A unidade responsável visualizará a demanda em Em atendimento.")
+
+    with aba_minhas:
+        st.markdown("### Atendimentos da minha Zona")
+        st.caption(
+            "Esta área exibe apenas demandas vinculadas à própria zona eleitoral. "
+            "Respostas de outras zonas não são exibidas."
+        )
+
+        if zona_do_usuario:
+            zona_consulta = zona_do_usuario
+            st.text_input("Zona eleitoral vinculada", value=zona_consulta, disabled=True)
+        elif perfil_zona:
+            st.warning(
+                "Não foi possível identificar a zona vinculada ao usuário. "
+                "Para evitar acesso indevido a demandas de outras zonas, a listagem foi bloqueada."
+            )
+            return
+        else:
+            zona_consulta = st.selectbox(
+                "Zona eleitoral para consulta administrativa",
+                opcoes_zonas_nacionais(TRIBUNAL_PADRAO),
+                key="portal_zona_minhas_demandas_zona_admin"
+            )
+
+        lista_zona = demandas_da_zona(zona_consulta)
+
+        busca_atendimento_zona = st.text_input(
+            "Buscar nos atendimentos da zona",
+            key="portal_zona_busca_atendimentos_proprios",
+            placeholder="Digite ID, assunto, protocolo, origem ou palavra da pergunta/resposta"
+        )
+
+        if busca_atendimento_zona.strip():
+            termo = busca_atendimento_zona.strip().casefold()
+            lista_zona = [
+                a for a in lista_zona
+                if termo in " ".join([
+                    str(a.get("id") or ""),
+                    str(a.get("assunto") or ""),
+                    str(a.get("protocolo") or ""),
+                    str(a.get("origem") or ""),
+                    str(a.get("descricao") or ""),
+                    str(a.get("providencia_adotada") or ""),
+                    str(a.get("conclusao") or ""),
+                    str(a.get("status") or ""),
+                    str(a.get("secao") or ""),
+                ]).casefold()
+            ]
+
+        st.metric("Atendimentos da zona", len(lista_zona))
+
+        if not lista_zona:
+            st.info("Nenhum atendimento encontrado para esta zona.")
+        else:
+            for a in lista_zona[:80]:
+                render_card_demanda_zona(a)
+
 
 
 
@@ -3277,8 +3729,33 @@ def sidebar_menu():
     st.sidebar.caption(f"Modo: {modo_visualizacao_atual()}")
 
     st.sidebar.markdown("#### Início")
-    sidebar_nav_button("Início ›", "Início", "side_inicio")
-    sidebar_nav_button("Minha área de trabalho ›", "Minha área de trabalho", "side_inicio")
+    if usuario_eh_zona_eleitoral():
+        sidebar_nav_button("Portal das Zonas ›", "Portal das Zonas", "side_inicio")
+        st.sidebar.info("Perfil de Zona Eleitoral: acesso restrito à base de conhecimento e aos atendimentos vinculados à própria zona.")
+    else:
+        sidebar_nav_button("Início ›", "Início", "side_inicio")
+        sidebar_nav_button("Minha área de trabalho ›", "Minha área de trabalho", "side_inicio")
+
+    if usuario_eh_zona_eleitoral():
+        st.sidebar.divider()
+
+        if st.sidebar.button("Atualizar dados do sistema", use_container_width=True):
+            cache_sessao_limpar_dados()
+            st.rerun()
+
+        st.sidebar.divider()
+
+        usuario = usuario_logado() or {}
+        st.sidebar.caption(f"Usuário: {usuario.get('nome') or usuario.get('email') or 'não identificado'}")
+
+        if st.sidebar.button("Sair", use_container_width=True):
+            remover_usuario_logado()
+            st.session_state.pop("usuario", None)
+            st.session_state.pop("pagina_atual", None)
+            cache_sessao_limpar()
+            st.rerun()
+
+        return st.session_state.get("pagina_atual", "Portal das Zonas")
 
     with st.sidebar.expander("Atendimento", expanded=True):
         if usuario_pode_editar_atendimentos():
@@ -3305,6 +3782,7 @@ def sidebar_menu():
 
     with st.sidebar.expander("Conhecimento e orientações", expanded=True):
         botoes_conhecimento = [
+            ("Portal das Zonas", "Portal das Zonas"),
             ("Orientações às Zonas", "Orientações às Zonas"),
         ]
         if usuario_pode_ver_governanca():
@@ -3649,8 +4127,30 @@ def usuario_eh_consulta():
     return perfil_atual() == "Consulta"
 
 
+def usuario_eh_zona_eleitoral():
+    return perfil_atual() == "Zona Eleitoral"
+
+
+def zona_eleitoral_usuario_logado():
+    usuario = usuario_logado() or {}
+
+    zona_salva = usuario.get("zona_eleitoral") or usuario.get("zona") or usuario.get("lotacao_zona")
+    if zona_salva:
+        n = numero_zona_eleitoral(zona_salva)
+        if n:
+            return f"{n:03d}ª Zona Eleitoral - Bahia"
+
+    email = normalizar_email(usuario.get("email"))
+    m = re.search(r"zona(\d{3})@", email or "")
+    if m:
+        n = int(m.group(1))
+        return f"{n:03d}ª Zona Eleitoral - Bahia"
+
+    return ""
+
+
 def usuario_pode_editar_atendimentos():
-    return not usuario_eh_consulta()
+    return not usuario_eh_consulta() and not usuario_eh_zona_eleitoral()
 
 
 def usuario_pode_ver_inteligencia():
@@ -3675,6 +4175,8 @@ def modo_visualizacao_atual():
         return "Visão completa"
     if perfil.startswith("Chefia"):
         return "Visão de chefia"
+    if usuario_eh_zona_eleitoral():
+        return "Portal da Zona"
     if usuario_eh_consulta():
         return "Consulta"
     return "Operação"
@@ -3686,6 +4188,7 @@ def aviso_modo_visualizacao():
         "Visão completa": "Visualização completa: governança, inteligência, memória institucional e parametrização.",
         "Visão de chefia": "Visualização de chefia: validação, indicadores e acompanhamento gerencial.",
         "Consulta": "Visualização de consulta: sem edição de registros.",
+        "Portal da Zona": "Visualização externa: consulta à base de conhecimento e acompanhamento apenas dos atendimentos vinculados à própria zona.",
         "Operação": "Visualização operacional: foco nos atendimentos e campos essenciais.",
     }.get(modo, "Visualização ajustada ao seu perfil.")
     st.caption(f"Modo de visualização: **{modo}** — {texto}")
@@ -4686,6 +5189,10 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
             )
 
+            st.caption(
+                "Ao salvar, você pode transformar este atendimento em entendimento institucional "
+                "ou em texto-padrão reutilizável. Use entendimento para guardar a orientação; use modelo para guardar uma minuta de resposta."
+            )
             gerar_conhecimento = st.checkbox(
                 "Cadastrar como entendimento na base ao salvar",
                 value=False,
@@ -4720,8 +5227,21 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         if novo_status == STATUS_REALIZADO and not item.get("data_conclusao"):
                             item["data_conclusao"] = agora_iso()
                         item["atualizado_em"] = agora_iso()
+                        resposta_zona_msg = ""
                         if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
                             item["data_realizacao"] = hoje_ddmmaaaa()
+                        if novo_status == STATUS_REALIZADO and antes.get("status") != STATUS_REALIZADO:
+                            email_zona_ok, email_zona_msg = enviar_email_resposta_zona(item)
+                            resposta_zona_msg = email_zona_msg
+                            try:
+                                registrar_historico_atendimento(
+                                    item.get("id"),
+                                    "E-mail automático",
+                                    "Resposta enviada à zona eleitoral" if email_zona_ok else "Falha no envio de resposta à zona eleitoral",
+                                    f"Destinatário: {email_zona_eleitoral(item.get('zona_eleitoral')) or 'não identificado'} | Resultado: {email_zona_msg}"
+                                )
+                            except Exception:
+                                pass
                         t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
                         item["tempo_triagem_horas"] = t_triagem
                         item["tempo_atendimento_horas"] = t_atendimento
@@ -4737,7 +5257,10 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                                 texto_modelo=item.get("providencia_adotada") or "",
                                 fundamento_normativo=""
                             )
-                        st.success("Alterações salvas.")
+                        if novo_status == STATUS_REALIZADO and resposta_zona_msg:
+                            st.success(f"Alterações salvas. Resultado do e-mail à zona: {resposta_zona_msg}")
+                        else:
+                            st.success("Alterações salvas.")
                         st.rerun()
 
         with st.expander("Base de conhecimento, histórico e validação" if usuario_eh_gestor() else "Base de conhecimento e comentários"):
@@ -4745,14 +5268,14 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
             bases_disponiveis = bases_por_assunto_e_secao(atendimento.get("assunto"), atendimento.get("secao"))
 
             if not bases_disponiveis:
-                st.info("Nenhuma orientação da base de conhecimento encontrada para este assunto/seção.")
+                st.info("Nenhum entendimento da base de conhecimento encontrado para este assunto/seção.")
             else:
                 opcoes_base = [
                     f"{codigo_base_conhecimento(b.get('id'))} - {b.get('assunto', 'Não informado')} - {str(b.get('resumo_duvida') or b.get('orientacao_adotada') or '')[:90]}"
                     for b in bases_disponiveis
                 ]
                 escolha_base = st.selectbox(
-                    "Selecionar orientação da base",
+                    "Selecionar entendimento da base",
                     opcoes_base,
                     key=f"{chave_prefixo}_base_conhecimento_{atendimento.get('id')}"
                 )
@@ -9225,6 +9748,10 @@ def main():
     cabecalho()
     escolha = sidebar_menu()
 
+    if usuario_eh_zona_eleitoral() and escolha != "Portal das Zonas":
+        escolha = "Portal das Zonas"
+        st.session_state["pagina_atual"] = "Portal das Zonas"
+
     if escolha == "Menu":
         escolha = "Início"
     if escolha == "Fila gerencial":
@@ -9254,6 +9781,9 @@ def main():
 
     elif escolha == "Validação da chefia":
         tela_validacao_chefia()
+
+    elif escolha == "Portal das Zonas":
+        tela_portal_zonas_eleitorais()
 
     elif escolha == "Orientações às Zonas":
         tela_orientacoes_zonas()
