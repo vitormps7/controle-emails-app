@@ -3838,7 +3838,8 @@ def sidebar_menu():
         with st.sidebar.expander("Administração do sistema", expanded=False):
             botoes_admin = [
                 ("Assuntos", "Assuntos"),
-                ("Usuários", "Usuários"),
+                ("Usuários internos", "Usuários"),
+                ("Usuários das Zonas", "Usuários das Zonas"),
                 ("Parâmetros nacionais", "Parâmetros nacionais"),
                 ("Backup e restauração", "Backup e restauração"),
             ]
@@ -7619,8 +7620,8 @@ def tela_assuntos():
 
 
 def tela_usuarios():
-    st.subheader("Usuários")
-    st.caption("Área exclusiva do administrador.")
+    st.subheader("Usuários internos")
+    st.caption("Área exclusiva do administrador. Use esta tela para servidores da SEPRO, SEOCE, chefias, administradores e perfis de consulta interna.")
 
     if not eh_admin():
         st.warning("Apenas administradores podem gerenciar usuários.")
@@ -7680,10 +7681,12 @@ def tela_usuarios():
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
+            perfis_internos = [p for p in PERFIS_USUARIO if p != "Zona Eleitoral"]
+            perfil_usuario_atual = perfil_normalizado(usuario.get("perfil"))
             novo_perfil = st.selectbox(
                 "Perfil",
-                PERFIS_USUARIO,
-                index=PERFIS_USUARIO.index(perfil_normalizado(usuario.get("perfil"))) if perfil_normalizado(usuario.get("perfil")) in PERFIS_USUARIO else 0,
+                perfis_internos,
+                index=perfis_internos.index(perfil_usuario_atual) if perfil_usuario_atual in perfis_internos else 0,
                 key=f"usuario_perfil_{email_original}"
             )
 
@@ -8059,6 +8062,278 @@ def tela_modelos_resposta():
             )
             st.success("Modelo excluído da lista ativa. O registro permanece preservado no banco para memória.")
             st.rerun()
+
+
+
+
+def tela_usuarios_zonas():
+    st.subheader("Usuários das Zonas Eleitorais")
+    st.caption(
+        "Cadastro específico para acesso externo das Zonas Eleitorais. "
+        "Esses usuários acessam somente o Portal das Zonas, a base de conhecimento institucional "
+        "e os atendimentos vinculados à própria zona."
+    )
+
+    if not eh_admin():
+        st.warning("Apenas administradores podem gerenciar usuários das zonas.")
+        return
+
+    lista = usuarios()
+    usuarios_zona = [
+        u for u in lista
+        if perfil_normalizado(u.get("perfil")) == "Zona Eleitoral"
+    ]
+
+    st.markdown("### Cadastrar usuário de Zona Eleitoral")
+
+    with st.form("form_novo_usuario_zona"):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            zona = st.selectbox(
+                "Zona eleitoral",
+                opcoes_zonas_nacionais(TRIBUNAL_PADRAO),
+                key="novo_usuario_zona_zona"
+            )
+
+            n_zona = numero_zona_eleitoral(zona)
+            nome_padrao = f"{n_zona:03d}ª Zona Eleitoral" if n_zona else ""
+
+            nome = st.text_input(
+                "Nome de exibição",
+                value=nome_padrao,
+                key="novo_usuario_zona_nome"
+            )
+
+        with col2:
+            email_padrao = email_zona_eleitoral(zona) if zona and zona != "Não informado" else ""
+            email = normalizar_email(st.text_input(
+                "E-mail de acesso",
+                value=email_padrao,
+                key="novo_usuario_zona_email"
+            ))
+
+            senha = st.text_input(
+                "Senha inicial",
+                type="password",
+                key="novo_usuario_zona_senha"
+            )
+
+        col3, col4 = st.columns(2)
+        with col3:
+            ativo = st.checkbox("Ativo", value=True, key="novo_usuario_zona_ativo")
+        with col4:
+            validado = st.checkbox("Validado", value=True, key="novo_usuario_zona_validado")
+
+        st.caption(
+            "Sugestão: utilize o e-mail institucional da zona no padrão zonaXXX@tre-ba.jus.br. "
+            "O vínculo da zona será usado para restringir a visualização dos atendimentos."
+        )
+
+        criar = st.form_submit_button("Criar usuário da Zona", type="primary")
+
+    if criar:
+        if not zona or zona == "Não informado" or not numero_zona_eleitoral(zona):
+            st.warning("Informe a zona eleitoral.")
+            return
+
+        if not nome.strip():
+            st.warning("Informe o nome de exibição.")
+            return
+
+        if not email_institucional(email):
+            st.warning(f"O e-mail deve terminar com {DOMINIO_INSTITUCIONAL}.")
+            return
+
+        if any(normalizar_email(u.get("email")) == email for u in lista):
+            st.warning("Já existe usuário cadastrado com este e-mail.")
+            return
+
+        if not senha or len(senha) < 6:
+            st.warning("A senha inicial deve ter pelo menos 6 caracteres.")
+            return
+
+        novo = {
+            "nome": nome.strip(),
+            "email": email,
+            "senha_hash": senha_hash(senha),
+            "perfil": "Zona Eleitoral",
+            "secao_operador": "",
+            "zona_eleitoral": zona,
+            "ativo": ativo,
+            "validado": validado,
+            "token_validacao": "",
+            "token_recuperacao": "",
+            "criado_em": agora_iso(),
+            "atualizado_em": agora_iso(),
+        }
+
+        lista.append(novo)
+        salvar_usuarios(lista)
+        st.success(f"Usuário da {zona} criado com acesso restrito ao Portal das Zonas.")
+        st.rerun()
+
+    st.divider()
+    st.markdown("### Usuários de Zona cadastrados")
+
+    if not usuarios_zona:
+        st.info("Nenhum usuário de Zona Eleitoral cadastrado.")
+        return
+
+    dados = []
+    for u in usuarios_zona:
+        dados.append({
+            "Zona": u.get("zona_eleitoral") or "",
+            "Nome": u.get("nome"),
+            "E-mail": u.get("email"),
+            "Ativo": "Sim" if u.get("ativo", True) else "Não",
+            "Validado": "Sim" if u.get("validado", False) else "Não",
+        })
+
+    st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
+
+    st.markdown("### Editar usuário de Zona")
+
+    opcoes = [
+        f"{u.get('zona_eleitoral') or 'Zona não vinculada'} - {u.get('nome')} - {u.get('email')}"
+        for u in usuarios_zona
+    ]
+
+    selecionado = st.selectbox("Selecione o usuário da zona", opcoes, key="editar_usuario_zona_select")
+    email_sel = selecionado.split(" - ")[-1]
+
+    usuario = next((u for u in lista if normalizar_email(u.get("email")) == normalizar_email(email_sel)), None)
+    if not usuario:
+        st.warning("Usuário não encontrado.")
+        return
+
+    email_original = normalizar_email(usuario.get("email"))
+
+    with st.form(f"form_editar_usuario_zona_{email_original}"):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            zona_atual = usuario.get("zona_eleitoral") or ""
+            nova_zona = st.selectbox(
+                "Zona eleitoral vinculada",
+                opcoes_zonas_nacionais(TRIBUNAL_PADRAO),
+                index=opcoes_zonas_nacionais(TRIBUNAL_PADRAO).index(zona_atual) if zona_atual in opcoes_zonas_nacionais(TRIBUNAL_PADRAO) else 0,
+                key=f"editar_usuario_zona_zona_{email_original}"
+            )
+
+            novo_nome = st.text_input(
+                "Nome de exibição",
+                value=usuario.get("nome", ""),
+                key=f"editar_usuario_zona_nome_{email_original}"
+            )
+
+        with col2:
+            novo_email = normalizar_email(st.text_input(
+                "E-mail de acesso",
+                value=usuario.get("email", ""),
+                key=f"editar_usuario_zona_email_{email_original}"
+            ))
+
+            ativo = st.checkbox(
+                "Ativo",
+                value=usuario.get("ativo", True),
+                key=f"editar_usuario_zona_ativo_{email_original}"
+            )
+
+            validado = st.checkbox(
+                "Validado",
+                value=usuario.get("validado", False),
+                key=f"editar_usuario_zona_validado_{email_original}"
+            )
+
+        redefinir = st.checkbox(
+            "Redefinir senha",
+            value=False,
+            key=f"editar_usuario_zona_redefinir_{email_original}"
+        )
+
+        nova_senha = ""
+        confirmar_senha = ""
+
+        if redefinir:
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                nova_senha = st.text_input(
+                    "Nova senha",
+                    type="password",
+                    key=f"editar_usuario_zona_senha_{email_original}"
+                )
+            with col_s2:
+                confirmar_senha = st.text_input(
+                    "Confirmar nova senha",
+                    type="password",
+                    key=f"editar_usuario_zona_confirma_{email_original}"
+                )
+
+        salvar = st.form_submit_button("Salvar usuário da Zona", type="primary")
+
+    if salvar:
+        if not nova_zona or nova_zona == "Não informado" or not numero_zona_eleitoral(nova_zona):
+            st.warning("Informe a zona eleitoral vinculada.")
+            return
+
+        if not novo_nome.strip():
+            st.warning("Informe o nome de exibição.")
+            return
+
+        if not email_institucional(novo_email):
+            st.warning(f"O e-mail deve terminar com {DOMINIO_INSTITUCIONAL}.")
+            return
+
+        if novo_email != email_original and any(normalizar_email(u.get("email")) == novo_email for u in lista):
+            st.warning("Já existe outro usuário com este e-mail.")
+            return
+
+        if redefinir:
+            if not nova_senha or len(nova_senha) < 6:
+                st.warning("A nova senha deve ter pelo menos 6 caracteres.")
+                return
+            if nova_senha != confirmar_senha:
+                st.warning("As senhas não conferem.")
+                return
+
+        usuario["nome"] = novo_nome.strip()
+        usuario["email"] = novo_email
+        usuario["perfil"] = "Zona Eleitoral"
+        usuario["secao_operador"] = ""
+        usuario["zona_eleitoral"] = nova_zona
+        usuario["ativo"] = ativo
+        usuario["validado"] = validado
+        usuario["atualizado_em"] = agora_iso()
+
+        if redefinir:
+            usuario["senha_hash"] = senha_hash(nova_senha)
+            usuario["token_recuperacao"] = ""
+
+        salvar_usuarios(lista)
+        st.success("Usuário da Zona atualizado.")
+        st.rerun()
+
+    st.divider()
+    st.markdown("### Excluir usuário de Zona")
+
+    confirmar = st.checkbox(
+        f"Confirmo a exclusão do usuário {usuario.get('email')}",
+        key=f"excluir_usuario_zona_confirma_{email_original}"
+    )
+
+    if st.button("Excluir usuário da Zona", type="secondary", key=f"excluir_usuario_zona_{email_original}"):
+        if not confirmar:
+            st.warning("Marque a confirmação antes de excluir.")
+        else:
+            nova_lista = [
+                u for u in lista
+                if normalizar_email(u.get("email")) != email_original
+            ]
+            salvar_usuarios(nova_lista)
+            st.success("Usuário da Zona excluído.")
+            st.rerun()
+
 
 
 
