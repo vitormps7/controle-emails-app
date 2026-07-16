@@ -2414,7 +2414,12 @@ def tela_login():
     processar_validacao()
     processar_recuperacao()
 
-    aba_login, aba_cadastro, aba_recuperar = st.tabs(["Entrar", "Cadastrar usuário", "Recuperar senha"])
+    aba_login, aba_cadastro_interno, aba_cadastro_zona, aba_recuperar = st.tabs([
+        "Entrar",
+        "Cadastro interno",
+        "Cadastro da Zona Eleitoral",
+        "Recuperar senha"
+    ])
 
     with aba_login:
         st.subheader("Acesso ao sistema")
@@ -2444,33 +2449,36 @@ def tela_login():
                 st.success("Login realizado com sucesso.")
                 st.rerun()
 
-    with aba_cadastro:
-        st.subheader("Cadastro de usuário")
+    with aba_cadastro_interno:
+        st.subheader("Cadastro interno")
+        st.caption("Uso exclusivo para servidores(as) da SEPRO, SEOCE, chefias, administradores e perfis internos de consulta.")
 
         lista = usuarios()
         primeiro_usuario = len(lista) == 0
 
-        nome = st.text_input("Nome completo", key="cad_nome")
-        email = normalizar_email(st.text_input("E-mail institucional", key="cad_email"))
-        senha = st.text_input("Senha", type="password", key="cad_senha")
-        confirmar = st.text_input("Confirmar senha", type="password", key="cad_conf")
+        nome = st.text_input("Nome completo", key="cad_int_nome")
+        email = normalizar_email(st.text_input("E-mail institucional", key="cad_int_email"))
+        senha = st.text_input("Senha", type="password", key="cad_int_senha")
+        confirmar = st.text_input("Confirmar senha", type="password", key="cad_int_conf")
 
         if primeiro_usuario:
-            st.info("O primeiro usuário triagem será o Administrador do sistema.")
+            st.info("O primeiro usuário cadastrado será o Administrador do sistema.")
         else:
-            st.info("Após o cadastro, será enviado um link de validação para o e-mail institucional.")
+            st.info("Após o cadastro, o acesso interno ficará pendente de validação administrativa/e-mail.")
 
-        if st.button("Cadastrar", key="btn_cadastrar"):
+        if st.button("Cadastrar usuário interno", key="btn_cadastrar_interno"):
             if not nome.strip():
                 st.warning("Informe o nome.")
             elif not email_institucional(email):
                 st.warning(f"O e-mail deve terminar com {DOMINIO_INSTITUCIONAL}.")
+            elif email.startswith("zona"):
+                st.warning("E-mails de Zona Eleitoral devem usar a aba Cadastro da Zona Eleitoral.")
             elif len(senha) < 6:
                 st.warning("A senha deve ter pelo menos 6 caracteres.")
             elif senha != confirmar:
                 st.warning("As senhas não conferem.")
             elif any(normalizar_email(u.get("email")) == email for u in lista):
-                st.warning("Este e-mail já está triagem.")
+                st.warning("Este e-mail já está cadastrado.")
             else:
                 token = secrets.token_urlsafe(32)
 
@@ -2481,6 +2489,7 @@ def tela_login():
                     "senha_hash": senha_hash(senha),
                     "perfil": "Administrador" if primeiro_usuario else "Usuário",
                     "secao_operador": "SEPRO",
+                    "zona_eleitoral": "",
                     "ativo": True,
                     "validado": True if primeiro_usuario else False,
                     "token_validacao": "" if primeiro_usuario else token,
@@ -2492,30 +2501,129 @@ def tela_login():
                 salvar_usuarios(lista)
 
                 if primeiro_usuario:
-                    st.success("Administrador triagem com sucesso. Faça login.")
+                    st.success("Administrador cadastrado com sucesso. Faça login.")
                 else:
                     link = gerar_link_validacao(token)
                     ok, msg = enviar_email(
                         email,
-                        "Validação de cadastro - SIGA-COR",
+                        "Validação de cadastro interno - SIGA-COR",
                         (
                             f"Olá, {nome}.\n\n"
-                            "Recebemos seu cadastro no SIGA-COR.\n\n"
+                            "Recebemos seu cadastro interno no SIGA-COR.\n\n"
                             "Para validar seu acesso ao sistema, acesse o link abaixo:\n\n"
                             f"{link}\n\n"
-                            "Este link é destinado exclusivamente à validação de cadastro.\n"
                             "Caso você não tenha solicitado o cadastro, ignore esta mensagem."
                         )
                     )
                     if ok:
-                        st.success("Usuário triagem. Link de validação enviado ao e-mail informado.")
+                        st.success("Usuário interno cadastrado. Link de validação enviado ao e-mail informado.")
                     else:
                         st.warning(f"{msg} Link de validação gerado: {link}")
+
+    with aba_cadastro_zona:
+        st.subheader("Cadastro da Zona Eleitoral")
+        st.caption(
+            "Uso destinado às Zonas Eleitorais. Este acesso fica restrito ao Portal das Zonas, "
+            "à base de conhecimento institucional e aos atendimentos vinculados à própria zona."
+        )
+
+        lista = usuarios()
+
+        with st.form("form_cadastro_externo_zona"):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                zona = st.selectbox(
+                    "Zona eleitoral",
+                    opcoes_zonas_nacionais(TRIBUNAL_PADRAO),
+                    key="cad_ext_zona"
+                )
+
+                n_zona = numero_zona_eleitoral(zona)
+                nome_padrao = f"{n_zona:03d}ª Zona Eleitoral" if n_zona else ""
+
+                nome = st.text_input(
+                    "Nome de exibição",
+                    value=nome_padrao,
+                    key="cad_ext_nome"
+                )
+
+            with col2:
+                email_padrao = email_zona_eleitoral(zona) if zona and zona != "Não informado" else ""
+                email = normalizar_email(st.text_input(
+                    "E-mail institucional da zona",
+                    value=email_padrao,
+                    key="cad_ext_email"
+                ))
+
+                senha = st.text_input("Senha", type="password", key="cad_ext_senha")
+                confirmar = st.text_input("Confirmar senha", type="password", key="cad_ext_conf")
+
+            st.caption(
+                "Sugestão: use o e-mail institucional da zona no padrão zonaXXX@tre-ba.jus.br. "
+                "O vínculo da zona será usado para restringir a visualização dos atendimentos."
+            )
+
+            cadastrar_zona = st.form_submit_button("Cadastrar acesso da Zona", type="primary")
+
+        if cadastrar_zona:
+            if not zona or zona == "Não informado" or not numero_zona_eleitoral(zona):
+                st.warning("Informe a zona eleitoral.")
+            elif not nome.strip():
+                st.warning("Informe o nome de exibição.")
+            elif not email_institucional(email):
+                st.warning(f"O e-mail deve terminar com {DOMINIO_INSTITUCIONAL}.")
+            elif len(senha) < 6:
+                st.warning("A senha deve ter pelo menos 6 caracteres.")
+            elif senha != confirmar:
+                st.warning("As senhas não conferem.")
+            elif any(normalizar_email(u.get("email")) == email for u in lista):
+                st.warning("Este e-mail já está cadastrado.")
+            else:
+                token = secrets.token_urlsafe(32)
+
+                novo = {
+                    "id": proximo_id(lista),
+                    "nome": nome.strip(),
+                    "email": email,
+                    "senha_hash": senha_hash(senha),
+                    "perfil": "Zona Eleitoral",
+                    "secao_operador": "",
+                    "zona_eleitoral": zona,
+                    "ativo": True,
+                    "validado": False,
+                    "token_validacao": token,
+                    "token_recuperacao": "",
+                    "criado_em": agora_iso(),
+                }
+
+                lista.append(novo)
+                salvar_usuarios(lista)
+
+                link = gerar_link_validacao(token)
+                ok, msg = enviar_email(
+                    email,
+                    "Validação de cadastro da Zona Eleitoral - SIGA-COR",
+                    (
+                        f"Olá, {nome}.\n\n"
+                        f"Recebemos o cadastro de acesso da {zona} ao Portal das Zonas do SIGA-COR.\n\n"
+                        "Para validar o acesso, utilize o link abaixo:\n\n"
+                        f"{link}\n\n"
+                        "Este acesso permitirá consultar a base de conhecimento institucional "
+                        "e acompanhar apenas os atendimentos vinculados à própria zona.\n\n"
+                        "Caso o cadastro não tenha sido solicitado pela unidade, ignore esta mensagem."
+                    )
+                )
+
+                if ok:
+                    st.success("Usuário da Zona cadastrado. Link de validação enviado ao e-mail informado.")
+                else:
+                    st.warning(f"{msg} Link de validação gerado: {link}")
 
     with aba_recuperar:
         st.subheader("Recuperação de senha")
         st.caption("Use esta opção apenas para recuperar o acesso de usuário já cadastrado.")
-        email_rec = normalizar_email(st.text_input("E-mail triagem", key="rec_email"))
+        email_rec = normalizar_email(st.text_input("E-mail cadastrado", key="rec_email"))
 
         if st.button("Gerar link de recuperação"):
             lista = usuarios()
@@ -2548,7 +2656,7 @@ def tela_login():
                 )
 
                 if ok:
-                    st.success("Link de recuperação enviado ao e-mail triagem.")
+                    st.success("Link de recuperação enviado ao e-mail cadastrado.")
                 else:
                     st.warning(f"{msg} Link de recuperação de senha gerado: {link}")
 
