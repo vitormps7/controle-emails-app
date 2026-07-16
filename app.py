@@ -841,6 +841,7 @@ def usuario_db_para_app(row):
         "senha_hash": row.get("senha_hash", ""),
         "perfil": perfil_normalizado(row.get("perfil", "Usuário")),
         "secao_operador": normalizar_secao(row.get("secao_operador") or row.get("secao") or "SEPRO"),
+        "zona_eleitoral": row.get("zona_eleitoral") or row.get("zona") or row.get("lotacao_zona") or "",
         "ativo": row.get("ativo", True),
         "validado": row.get("validado", False),
         "token_validacao": row.get("token_validacao") or "",
@@ -858,6 +859,7 @@ def usuario_app_para_db(u):
         "senha_hash": u.get("senha_hash", ""),
         "perfil": perfil_normalizado(u.get("perfil", "Usuário")),
         "secao_operador": normalizar_secao(u.get("secao_operador") or u.get("secao") or "SEPRO"),
+        "zona_eleitoral": u.get("zona_eleitoral") or "",
         "ativo": bool(u.get("ativo", True)),
         "validado": bool(u.get("validado", False)),
         "token_validacao": u.get("token_validacao") or None,
@@ -1633,7 +1635,16 @@ def salvar_usuarios(lista):
     if rows:
         for r in rows:
             r.pop("id", None)
-        supabase_upsert_many("usuarios", rows, on_conflict="email")
+        try:
+            supabase_upsert_many("usuarios", rows, on_conflict="email")
+        except Exception:
+            # Compatibilidade com banco antigo sem coluna zona_eleitoral.
+            rows_basicos = []
+            for r in rows:
+                rb = dict(r)
+                rb.pop("zona_eleitoral", None)
+                rows_basicos.append(rb)
+            supabase_upsert_many("usuarios", rows_basicos, on_conflict="email")
         supabase_delete_not_in("usuarios", "email", [r.get("email") for r in rows])
     cache_sessao_limpar("usuarios", "usuarios_logados")
     criar_backup_automatico("apos_salvar_usuarios")
@@ -6732,9 +6743,80 @@ def tela_status(nome_status, titulo, texto_ajuda):
     st.subheader(titulo)
     st.caption(texto_ajuda)
 
-    lista = [a for a in filtros_base(atendimentos()) if a.get("status") == nome_status]
+    lista_base_status = [a for a in filtros_base(atendimentos()) if a.get("status") == nome_status]
 
     foco_id = atendimento_em_foco_id()
+
+    # Atendimento realizado: não carregar "todos" por padrão.
+    # A consulta passa a exigir busca/filtro, para evitar sobrecarga conforme a base crescer.
+    if nome_status == STATUS_REALIZADO:
+        st.markdown("### Consulta de atendimentos realizados")
+        st.caption(
+            "Para preservar desempenho, esta tela não carrega todos os atendimentos realizados automaticamente. "
+            "Digite um critério de busca para consultar registros específicos."
+        )
+
+        if foco_id:
+            foco_lista = [a for a in lista_base_status if int(a.get("id", 0)) == int(foco_id)]
+            if foco_lista:
+                st.info(f"Exibindo atendimento selecionado nº {foco_id}.")
+                if st.button("Limpar atendimento selecionado", key=f"limpar_foco_{nome_status}"):
+                    limpar_atendimento_em_foco()
+                    st.rerun()
+
+                item = foco_lista[0]
+                card_atendimento(item, f"card_{nome_status.replace(' ', '_')}_{item.get('id')}")
+                return
+            else:
+                limpar_atendimento_em_foco()
+
+        col_busca1, col_busca2 = st.columns([3, 1])
+
+        with col_busca1:
+            busca_base = st.text_input(
+                "Buscar atendimento realizado",
+                key="busca_realizado_obrigatoria",
+                placeholder="Digite ID, zona, assunto, protocolo, origem ou palavra da pergunta/resposta"
+            )
+
+        with col_busca2:
+            limite_resultados = st.selectbox(
+                "Limite",
+                [25, 50, 100, 200],
+                index=1,
+                key="limite_realizados_consulta"
+            )
+
+        if not busca_base.strip():
+            st.info(
+                "Informe um critério de busca para consultar atendimentos realizados. "
+                "Exemplos: 380, zona 001, AIME, Sisbajud, protocolo ou palavra da resposta."
+            )
+            st.metric("Total carregado na tela", 0)
+            return
+
+        lista = buscar_atendimentos_texto(lista_base_status, busca_base)
+
+        total_encontrado = len(lista)
+        lista = sorted(lista, key=lambda x: int(x.get("id", 0)), reverse=True)[:int(limite_resultados)]
+
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.metric("Total encontrado pela busca", total_encontrado)
+        with col_m2:
+            st.metric("Exibidos na tela", len(lista))
+
+        if not lista:
+            st.info("Nenhum atendimento realizado encontrado para o critério informado.")
+            return
+
+        for item in lista:
+            card_atendimento(item, f"card_{nome_status.replace(' ', '_')}_{item.get('id')}")
+        return
+
+    # Demais bases continuam com comportamento normal.
+    lista = lista_base_status
+
     if foco_id:
         foco_lista = [a for a in lista if int(a.get("id", 0)) == int(foco_id)]
         if foco_lista:
@@ -6752,15 +6834,12 @@ def tela_status(nome_status, titulo, texto_ajuda):
 
     st.caption(f"Filtro rápido aplicado: **{filtro_rapido_status}** | Total encontrado: **{len(lista)}**")
 
-    if nome_status in [STATUS_EM_ATENDIMENTO, STATUS_REALIZADO]:
-        nome_base = "Em atendimento" if nome_status == STATUS_EM_ATENDIMENTO else "Atendimento realizado"
-        st.markdown(f"### Busca na base {nome_base}")
-
-        sufixo_chave = "em_atendimento" if nome_status == STATUS_EM_ATENDIMENTO else "realizado"
+    if nome_status == STATUS_EM_ATENDIMENTO:
+        st.markdown("### Busca na base Em atendimento")
 
         busca_base = st.text_input(
             "Buscar atendimento",
-            key=f"busca_{sufixo_chave}",
+            key="busca_em_atendimento",
             placeholder="Digite ID, origem, zona, responsável, assunto, protocolo ou palavra da descrição"
         )
 
@@ -6782,6 +6861,7 @@ def tela_status(nome_status, titulo, texto_ajuda):
             card_triagem(item, f"card_triagem_{item.get('id')}")
         else:
             card_atendimento(item, f"card_{nome_status.replace(' ', '_')}_{item.get('id')}")
+
 
 def tela_base_geral():
     st.subheader("Base geral de atendimentos")
@@ -7613,7 +7693,8 @@ def tela_usuarios():
                 "Operador da seção",
                 secoes_atendimento(),
                 index=secoes_atendimento().index(secao_usuario_atual) if secao_usuario_atual in secoes_atendimento() else 0,
-                key=f"usuario_secao_{email_original}"
+                key=f"usuario_secao_{email_original}",
+                disabled=(perfil_normalizado(novo_perfil) == "Zona Eleitoral")
             )
 
         with col3:
@@ -7629,6 +7710,24 @@ def tela_usuarios():
                 value=usuario.get("validado", False),
                 key=f"usuario_validado_{email_original}"
             )
+
+        zona_usuario_atual = usuario.get("zona_eleitoral") or zona_eleitoral_usuario_logado() if normalizar_email(usuario.get("email")) == normalizar_email((usuario_logado() or {}).get("email")) else usuario.get("zona_eleitoral", "")
+        if perfil_normalizado(novo_perfil) == "Zona Eleitoral":
+            st.markdown("##### Vinculação da Zona Eleitoral")
+            col_z1, col_z2 = st.columns([2, 1])
+            with col_z1:
+                zona_usuario = st.selectbox(
+                    "Zona eleitoral vinculada ao usuário",
+                    opcoes_zonas_nacionais(TRIBUNAL_PADRAO),
+                    index=opcoes_zonas_nacionais(TRIBUNAL_PADRAO).index(zona_usuario_atual) if zona_usuario_atual in opcoes_zonas_nacionais(TRIBUNAL_PADRAO) else 0,
+                    key=f"usuario_zona_eleitoral_{email_original}"
+                )
+            with col_z2:
+                st.caption(
+                    "Para usuário de Zona Eleitoral, este vínculo define quais atendimentos ele poderá visualizar no Portal das Zonas."
+                )
+        else:
+            zona_usuario = ""
 
         st.markdown("##### Senha")
 
@@ -7699,10 +7798,22 @@ def tela_usuarios():
                 st.warning("As senhas não conferem.")
                 return
 
+        if perfil_normalizado(novo_perfil) == "Zona Eleitoral":
+            if not zona_usuario or zona_usuario == "Não informado":
+                st.warning("Para usuário de Zona Eleitoral, informe a zona vinculada.")
+                return
+            email_zona_sugerido = email_zona_eleitoral(zona_usuario)
+            if email_zona_sugerido and normalizar_email(novo_email) != normalizar_email(email_zona_sugerido):
+                st.info(
+                    f"Atenção: o e-mail padrão da {zona_usuario} seria {email_zona_sugerido}. "
+                    "O cadastro será permitido, mas o vínculo de acesso será definido pela zona selecionada."
+                )
+
         usuario["nome"] = novo_nome
         usuario["email"] = novo_email
         usuario["perfil"] = novo_perfil
-        usuario["secao_operador"] = nova_secao_operador
+        usuario["secao_operador"] = "" if perfil_normalizado(novo_perfil) == "Zona Eleitoral" else nova_secao_operador
+        usuario["zona_eleitoral"] = zona_usuario if perfil_normalizado(novo_perfil) == "Zona Eleitoral" else ""
         usuario["ativo"] = ativo
         usuario["validado"] = validado
         usuario["atualizado_em"] = agora_iso()
