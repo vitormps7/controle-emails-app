@@ -46,7 +46,7 @@ except Exception:
 
 st.set_page_config(
     page_title="SIGA-COR",
-    page_icon="<i class="fi fi-rs-bank"></i>",
+    page_icon="⚖️",
     layout="wide"
 )
 
