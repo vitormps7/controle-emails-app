@@ -2174,8 +2174,9 @@ def email_zona_eleitoral(valor):
 
 def descricao_diferenca_base_modelo():
     st.info(
-        "Entendimento/Base de conhecimento guarda a orientação institucional, o fundamento e a memória técnica. "
-        "Texto-padrão/Modelo de resposta guarda uma minuta reutilizável de mensagem para acelerar respostas futuras."
+        "A resposta de um atendimento pode ser transformada em Base de Conhecimento quando representar uma orientação institucional aproveitável em casos futuros. "
+        "Depois de cadastrada, essa base também poderá ser usada pela Zel para gerar minutas controladas. "
+        "Já o texto-padrão/modelo serve apenas como minuta reutilizável de redação, sem substituir a validação técnica da unidade."
     )
 
 
@@ -3763,22 +3764,22 @@ def tela_portal_zonas_eleitorais():
                 "produto_institucional_sugerido": "Avaliar após resposta",
             }
 
-            # A ZEL tenta gerar uma minuta apenas com fonte cadastrada.
+            # A Zel tenta gerar uma minuta apenas com fonte cadastrada.
             # A resposta fica pendente de validação pela unidade responsável.
             try:
                 minuta_zel, fontes_zel_usadas, bases_zel_usadas = gerar_minuta_zel_para_atendimento(item)
                 if fontes_zel_usadas or bases_zel_usadas:
                     item["providencia_adotada"] = minuta_zel
-                    item["situacao_validacao"] = STATUS_VALIDACAO_ZEL
+                    item["situacao_validacao"] = STATUS_VALIDACAO_Zel
                     item["observacoes"] = (
                         (item.get("observacoes") or "")
-                        + f"\n\nZEL: minuta automática gerada e pendente de validação. Fontes: {resumo_fontes_zel(fontes_zel_usadas, bases_zel_usadas)}"
+                        + f"\n\nZel: minuta automática gerada e pendente de validação. Fontes: {resumo_fontes_zel(fontes_zel_usadas, bases_zel_usadas)}"
                     ).strip()
                 else:
                     item["situacao_validacao"] = "Aguardando análise da unidade responsável"
                     item["observacoes"] = (
                         (item.get("observacoes") or "")
-                        + "\n\nZEL: nenhuma fonte cadastrada suficiente foi localizada para resposta automática."
+                        + "\n\nZel: nenhuma fonte cadastrada suficiente foi localizada para resposta automática."
                     ).strip()
             except Exception:
                 pass
@@ -3874,10 +3875,10 @@ def tela_portal_zonas_eleitorais():
 
 
 # ============================================================
-# ZEL - IA CONTROLADA POR FONTES
+# Zel - IA CONTROLADA POR FONTES
 # ============================================================
 
-STATUS_VALIDACAO_ZEL = "Pendente de validação ZEL"
+STATUS_VALIDACAO_Zel = "Pendente de validação Zel"
 
 
 def texto_para_busca_controlada(valor):
@@ -3975,7 +3976,7 @@ def fontes_relevantes_zel(atendimento=None, pergunta_livre="", limite=6):
 def fontes_base_conhecimento_como_fonte_zel(atendimento=None, pergunta_livre="", limite=4):
     """
     Permite usar entendimentos já validados da base de conhecimento como fonte institucional.
-    A ZEL não usa atendimento de outras zonas como fonte; usa apenas fontes_zel e base_conhecimento institucional.
+    A Zel não usa atendimento de outras zonas como fonte; usa apenas fontes_zel e base_conhecimento institucional.
     """
     termos = termos_do_atendimento_para_ia(atendimento, pergunta_livre)
     secao = normalizar_secao((atendimento or {}).get("secao") or (usuario_logado() or {}).get("secao") or "SEPRO")
@@ -4017,7 +4018,7 @@ def codigo_base_ia(base):
 def resumo_fontes_zel(fontes, bases):
     partes = []
     for f in fontes or []:
-        titulo = f.get("titulo") or f.get("referencia") or "Fonte ZEL"
+        titulo = f.get("titulo") or f.get("referencia") or "Fonte Zel"
         partes.append(f"FONTE:{titulo}")
     for b in bases or []:
         partes.append(codigo_base_ia(b))
@@ -4034,18 +4035,18 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
 
     if not fontes and not bases:
         return (
-            "A ZEL não localizou fonte cadastrada suficiente para responder com segurança.\n\n"
+            "A Zel não localizou fonte cadastrada suficiente para responder com segurança.\n\n"
             "Encaminhamento sugerido:\n"
             "1. manter o atendimento em análise pela unidade responsável;\n"
             "2. cadastrar ou validar uma fonte institucional pertinente, se houver;\n"
             "3. submeter a resposta à validação interna antes de encerrar o atendimento.\n\n"
-            "Observação: a ZEL não produz resposta sem fonte cadastrada."
+            "Observação: a Zel não produz resposta sem fonte cadastrada."
         )
 
     partes = []
     partes.append("Prezados(as),")
     partes.append("")
-    partes.append("Em atenção à demanda apresentada, segue minuta de resposta elaborada pela ZEL com base exclusivamente em fonte cadastrada no SIGA-COR.")
+    partes.append("Em atenção à demanda apresentada, segue minuta de resposta elaborada pela Zel com base exclusivamente em fonte cadastrada no SIGA-COR.")
     partes.append("")
     partes.append(f"Assunto: {assunto}")
     partes.append(f"Zona eleitoral: {zona}")
@@ -4059,7 +4060,7 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
         partes.append("")
         partes.append("Fontes cadastradas utilizadas:")
         for idx, f in enumerate(fontes[:5], start=1):
-            titulo = str(f.get("titulo") or "Fonte ZEL").strip()
+            titulo = str(f.get("titulo") or "Fonte Zel").strip()
             referencia = str(f.get("referencia") or "").strip()
             conteudo = str(f.get("conteudo_texto") or "").strip()
             partes.append("")
@@ -4092,7 +4093,7 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
     partes.append("À consideração da unidade responsável, para validação, ajustes e posterior envio à Zona Eleitoral, se aprovado.")
     partes.append("")
     partes.append("Controle:")
-    partes.append("Minuta gerada pela ZEL. A resposta somente deve encerrar o atendimento após validação interna pela SEPRO ou SEOCE.")
+    partes.append("Minuta gerada pela Zel. A resposta somente deve encerrar o atendimento após validação interna pela SEPRO ou SEOCE.")
 
     return "\n".join(partes)
 
@@ -4108,7 +4109,7 @@ def registrar_uso_zel(atendimento_id, acao, resumo):
     try:
         registrar_historico_atendimento(
             atendimento_id,
-            "ZEL",
+            "Zel",
             acao,
             resumo
         )
@@ -4217,14 +4218,14 @@ def painel_gerencial_zona(zona_consulta):
     realizados = len([a for a in lista_zona if a.get("status") == STATUS_REALIZADO])
     pendentes_zel = len([
         a for a in lista_zona
-        if str(a.get("situacao_validacao") or "") == STATUS_VALIDACAO_ZEL
+        if str(a.get("situacao_validacao") or "") == STATUS_VALIDACAO_Zel
     ])
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total da zona", total)
     col2.metric("Em atendimento", em_atendimento)
     col3.metric("Realizados", realizados)
-    col4.metric("Pendentes ZEL", pendentes_zel)
+    col4.metric("Pendentes Zel", pendentes_zel)
 
     st.markdown("### Principais assuntos")
     contagem = {}
@@ -4260,9 +4261,9 @@ def painel_gerencial_zona(zona_consulta):
 
 
 def tela_fontes_zel():
-    st.markdown("### Fontes cadastradas da ZEL")
+    st.markdown("### Fontes cadastradas da Zel")
     st.caption(
-        "A ZEL só pode elaborar minuta com base nas fontes cadastradas nesta área "
+        "A Zel só pode elaborar minuta com base nas fontes cadastradas nesta área "
         "e nos entendimentos institucionais salvos na base de conhecimento."
     )
 
@@ -4298,10 +4299,10 @@ def tela_fontes_zel():
                 value=texto_upload,
                 height=260,
                 key="zel_fonte_conteudo",
-                placeholder="Cole aqui o trecho autorizado que poderá fundamentar respostas da ZEL."
+                placeholder="Cole aqui o trecho autorizado que poderá fundamentar respostas da Zel."
             )
 
-            salvar = st.form_submit_button("Cadastrar fonte da ZEL", type="primary")
+            salvar = st.form_submit_button("Cadastrar fonte da Zel", type="primary")
 
         if salvar:
             if not titulo.strip():
@@ -4321,16 +4322,16 @@ def tela_fontes_zel():
                 nome_arquivo=getattr(arquivo, "name", "") if arquivo else ""
             )
             if resp is not None:
-                st.success("Fonte cadastrada para uso controlado pela ZEL.")
+                st.success("Fonte cadastrada para uso controlado pela Zel.")
                 cache_sessao_limpar()
                 st.rerun()
             else:
                 st.warning("Não foi possível cadastrar a fonte.")
 
     st.divider()
-    st.markdown("### Promover respostas realizadas como fontes da ZEL")
+    st.markdown("### Promover respostas realizadas como fontes da Zel")
     st.caption(
-        "Respostas dadas manualmente pela SEPRO/SEOCE em atendimentos realizados podem virar fonte da ZEL, "
+        "Respostas dadas manualmente pela SEPRO/SEOCE em atendimentos realizados podem virar fonte da Zel, "
         "desde que sejam selecionadas e importadas como fonte validada. A importação não é automática para evitar "
         "que respostas pontuais ou específicas de uma zona virem orientação geral sem curadoria."
     )
@@ -4379,16 +4380,16 @@ def tela_fontes_zel():
                 st.write(atendimento_importar.get("providencia_adotada") or atendimento_importar.get("conclusao") or "")
 
             if atendimento_ja_importado_fonte_zel(atendimento_importar.get("id")):
-                st.info("Este atendimento já foi importado como fonte da ZEL.")
+                st.info("Este atendimento já foi importado como fonte da Zel.")
             else:
-                if st.button("Importar resposta realizada como fonte da ZEL", type="primary", key="zel_importar_resposta_realizada"):
+                if st.button("Importar resposta realizada como fonte da Zel", type="primary", key="zel_importar_resposta_realizada"):
                     cadastrar_fonte_zel_de_atendimento(atendimento_importar)
                     registrar_uso_zel(
                         atendimento_importar.get("id"),
-                        "Resposta promovida a fonte da ZEL",
-                        "A resposta manual validada foi cadastrada como fonte controlada da ZEL."
+                        "Resposta promovida a fonte da Zel",
+                        "A resposta manual validada foi cadastrada como fonte controlada da Zel."
                     )
-                    st.success("Resposta importada como fonte da ZEL.")
+                    st.success("Resposta importada como fonte da Zel.")
                     cache_sessao_limpar()
                     st.rerun()
 
@@ -4396,7 +4397,7 @@ def tela_fontes_zel():
 
     fontes = fontes_zel_rows(incluir_inativas=True)
     if not fontes:
-        st.info("Nenhuma fonte da ZEL cadastrada.")
+        st.info("Nenhuma fonte da Zel cadastrada.")
         return
 
     st.markdown("### Fontes existentes")
@@ -4408,7 +4409,7 @@ def tela_fontes_zel():
     st.metric("Fontes encontradas", len(fontes))
 
     for f in fontes[:80]:
-        titulo = f.get("titulo") or "Fonte ZEL"
+        titulo = f.get("titulo") or "Fonte Zel"
         with st.expander(f"{titulo} | {f.get('secao') or ''} | {f.get('assunto') or ''}"):
             st.caption(f"Tipo: {f.get('tipo_fonte') or 'Não informado'} | Referência: {f.get('referencia') or 'Não informada'}")
             st.write((f.get("conteudo_texto") or "")[:2500])
@@ -4416,19 +4417,19 @@ def tela_fontes_zel():
 
 
 def tela_validacao_zel():
-    st.markdown("### Validação de respostas sugeridas pela ZEL")
+    st.markdown("### Validação de respostas sugeridas pela Zel")
     st.caption(
-        "Atendimentos com resposta gerada pela ZEL devem ser validados pela unidade responsável antes do encerramento."
+        "Atendimentos com resposta gerada pela Zel devem ser validados pela unidade responsável antes do encerramento."
     )
 
     lista = [
         a for a in atendimentos()
-        if str(a.get("situacao_validacao") or "") == STATUS_VALIDACAO_ZEL
-        or "ZEL" in str(a.get("observacoes") or "")
+        if str(a.get("situacao_validacao") or "") == STATUS_VALIDACAO_Zel
+        or "Zel" in str(a.get("observacoes") or "")
     ]
 
     busca = st.text_input(
-        "Buscar pendência ZEL",
+        "Buscar pendência Zel",
         key="zel_busca_validacao",
         placeholder="Digite ID, zona, assunto ou palavra da resposta"
     )
@@ -4438,7 +4439,7 @@ def tela_validacao_zel():
     lista = sorted(lista, key=lambda x: int(x.get("id", 0)), reverse=True)
 
     if not lista:
-        st.info("Nenhuma resposta da ZEL pendente de validação.")
+        st.info("Nenhuma resposta da Zel pendente de validação.")
         return
 
     for a in lista[:50]:
@@ -4472,7 +4473,7 @@ def tela_validacao_zel():
                             item["atualizado_em"] = agora_iso()
                             break
                     salvar_atendimentos(lista_at)
-                    registrar_uso_zel(a.get("id"), "Resposta validada e atendimento encerrado", "Resposta sugerida pela ZEL validada pela unidade responsável.")
+                    registrar_uso_zel(a.get("id"), "Resposta validada e atendimento encerrado", "Resposta sugerida pela Zel validada pela unidade responsável.")
                     st.success("Resposta validada e atendimento encerrado.")
                     st.rerun()
 
@@ -4486,16 +4487,16 @@ def tela_validacao_zel():
                             item["atualizado_em"] = agora_iso()
                             break
                     salvar_atendimentos(lista_at)
-                    registrar_uso_zel(a.get("id"), "Resposta mantida em análise", "Resposta da ZEL ajustada, mas não validada.")
+                    registrar_uso_zel(a.get("id"), "Resposta mantida em análise", "Resposta da Zel ajustada, mas não validada.")
                     st.success("Atendimento mantido em análise.")
                     st.rerun()
 
 
 def tela_zel_ia_controlada():
-    st.subheader("ZEL - IA controlada")
+    st.subheader("Zel - IA controlada")
     st.caption(
         "Módulo interno para auxiliar a SEPRO e a SEOCE na elaboração e validação de respostas. "
-        "A ZEL só responde com base em fontes cadastradas e entendimentos institucionais."
+        "A Zel só usa fontes cadastradas, respostas promovidas como fonte e Bases de Conhecimento validadas."
     )
 
     if usuario_eh_zona_eleitoral():
@@ -4507,14 +4508,14 @@ def tela_zel_ia_controlada():
         return
 
     st.info(
-        "Regra de controle: sem fonte cadastrada ou entendimento institucional relacionado, a ZEL não gera resposta conclusiva."
+        "Regra de controle: sem fonte cadastrada, resposta realizada promovida como fonte ou Base de Conhecimento relacionada, a Zel não gera resposta conclusiva."
     )
 
     aba_atendimento, aba_livre, aba_fontes, aba_validacao = st.tabs([
         "Gerar minuta por atendimento",
         "Consulta controlada",
-        "Fontes da ZEL",
-        "Validar respostas ZEL"
+        "Fontes da Zel",
+        "Validar respostas Zel"
     ])
 
     with aba_atendimento:
@@ -4563,11 +4564,11 @@ def tela_zel_ia_controlada():
                     st.warning("Nenhuma fonte cadastrada suficiente foi localizada.")
                 else:
                     for f in fontes:
-                        st.caption(f"Fonte ZEL: {f.get('titulo') or 'Sem título'} | {f.get('referencia') or 'Sem referência'}")
+                        st.caption(f"Fonte Zel: {f.get('titulo') or 'Sem título'} | {f.get('referencia') or 'Sem referência'}")
                     for b in bases:
                         st.caption(f"Base de conhecimento: {codigo_base_ia(b)} | {b.get('assunto') or b.get('categoria') or 'Sem assunto'}")
 
-                st.markdown("### Minuta da ZEL para validação")
+                st.markdown("### Minuta da Zel para validação")
                 minuta_editada = st.text_area(
                     "Revise antes de usar",
                     value=minuta,
@@ -4582,8 +4583,8 @@ def tela_zel_ia_controlada():
                         for item in lista_atendimentos:
                             if int(item.get("id", 0)) == int(atendimento.get("id", 0)):
                                 item["providencia_adotada"] = minuta_editada
-                                item["situacao_validacao"] = STATUS_VALIDACAO_ZEL
-                                item["observacoes"] = ((item.get("observacoes") or "") + f"\n\nZEL: minuta gerada com fontes: {resumo_fontes_zel(fontes, bases)}").strip()
+                                item["situacao_validacao"] = STATUS_VALIDACAO_Zel
+                                item["observacoes"] = ((item.get("observacoes") or "") + f"\n\nZel: minuta gerada com fontes: {resumo_fontes_zel(fontes, bases)}").strip()
                                 item["atualizado_em"] = agora_iso()
                                 break
                         salvar_atendimentos(lista_atendimentos)
@@ -4596,7 +4597,7 @@ def tela_zel_ia_controlada():
                         st.rerun()
 
                 with col_b:
-                    if st.button("Registrar apenas consulta ZEL", key=f"zel_registrar_{atendimento.get('id')}"):
+                    if st.button("Registrar apenas consulta Zel", key=f"zel_registrar_{atendimento.get('id')}"):
                         registrar_uso_zel(
                             atendimento.get("id"),
                             "Consulta registrada",
@@ -4711,8 +4712,7 @@ def sidebar_menu():
 
     with st.sidebar.expander("Conhecimento e orientações", expanded=True):
         botoes_conhecimento = [
-            ("Portal das Zonas", "Portal das Zonas"),
-            ("ZEL - IA controlada", "ZEL - IA controlada"),
+            ("Zel - IA controlada", "Zel - IA controlada"),
             ("Orientações às Zonas", "Orientações às Zonas"),
         ]
         if usuario_pode_ver_governanca():
@@ -6121,16 +6121,17 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
             )
 
             st.caption(
-                "Ao salvar, você pode transformar este atendimento em entendimento institucional "
-                "ou em texto-padrão reutilizável. Use entendimento para guardar a orientação; use modelo para guardar uma minuta de resposta."
+                "Ao salvar, a resposta deste atendimento pode virar Base de Conhecimento quando servir como orientação institucional para casos futuros. "
+                "A Base de Conhecimento também poderá ser usada pela Zel para gerar minutas controladas. "
+                "Use texto-padrão/modelo apenas para guardar uma minuta reutilizável de resposta."
             )
             gerar_conhecimento = st.checkbox(
-                "Cadastrar como entendimento na base ao salvar",
+                "Transformar resposta em Base de Conhecimento ao salvar",
                 value=False,
                 key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
             )
             gerar_modelo_resposta = st.checkbox(
-                "Cadastrar texto-padrão/modelo ao salvar",
+                "Salvar também como texto-padrão/modelo de resposta",
                 value=False,
                 key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
             )
@@ -11088,9 +11089,13 @@ def main():
         tela_validacao_chefia()
 
     elif escolha == "Portal das Zonas":
-        tela_portal_zonas_eleitorais()
+        if usuario_eh_zona_eleitoral():
+            tela_portal_zonas_eleitorais()
+        else:
+            st.warning("O Portal das Zonas é visível apenas para usuários com perfil Zona Eleitoral.")
+            tela_menu_principal()
 
-    elif escolha == "ZEL - IA controlada":
+    elif escolha == "Zel - IA controlada":
         tela_zel_ia_controlada()
 
     elif escolha == "Orientações às Zonas":
@@ -11174,6 +11179,9 @@ def main():
 
     elif escolha == "Usuários" and usuario_pode_ver_parametros():
         tela_usuarios()
+
+    elif escolha == "Usuários das Zonas" and usuario_pode_ver_parametros():
+        tela_usuarios_zonas()
 
     elif escolha == "Parâmetros nacionais" and usuario_pode_ver_parametros():
         tela_parametros_nacionais()
