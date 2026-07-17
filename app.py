@@ -4642,6 +4642,164 @@ def sidebar_nav_button(label, destino, key_prefix):
         st.rerun()
 
 
+
+
+# ============================================================
+# CONSOLIDAÇÃO - PERMISSÕES, ROTAS E DIAGNÓSTICO
+# ============================================================
+
+def paginas_admin_sistema():
+    return {
+        "Assuntos",
+        "Usuários",
+        "Usuários das Zonas",
+        "Parâmetros nacionais",
+        "Backup e restauração",
+        "Diagnóstico do sistema",
+    }
+
+
+def paginas_exclusivas_zona():
+    return {"Portal das Zonas"}
+
+
+def pagina_permitida_para_usuario(pagina):
+    """
+    Regra central mínima de segurança de navegação.
+    Não substitui as validações de cada tela, mas evita acesso por rota antiga/sessão anterior.
+    """
+    pagina = str(pagina or "Início")
+
+    if usuario_eh_zona_eleitoral():
+        return pagina in paginas_exclusivas_zona()
+
+    if pagina in paginas_exclusivas_zona():
+        return False
+
+    if pagina in paginas_admin_sistema() and not usuario_pode_ver_parametros():
+        return False
+
+    return True
+
+
+def garantir_pagina_permitida(pagina):
+    if usuario_eh_zona_eleitoral():
+        return "Portal das Zonas"
+
+    if not pagina_permitida_para_usuario(pagina):
+        return "Início"
+
+    return pagina
+
+
+def diagnostico_funcao(nome_funcao):
+    return "OK" if callable(globals().get(nome_funcao)) else "Ausente"
+
+
+def diagnostico_tabela_supabase(nome_tabela):
+    try:
+        rows = supabase_get_silencioso(nome_tabela, {"select": "*", "limit": "1"})
+        if rows is None:
+            return "Não verificada"
+        return "OK"
+    except Exception:
+        return "Falha"
+
+
+def tela_diagnostico_sistema():
+    st.subheader("Diagnóstico do sistema")
+    st.caption(
+        "Verificação rápida de rotas, telas essenciais, tabelas e configurações. "
+        "Use esta tela após alterações no código ou no SQL."
+    )
+
+    if not usuario_pode_ver_parametros():
+        st.warning("Diagnóstico disponível apenas para administrador.")
+        return
+
+    st.markdown("### Rotas e telas principais")
+
+    rotas = [
+        ("Início", "tela_menu_principal"),
+        ("Minha área de trabalho", "tela_minha_area_trabalho"),
+        ("Novo atendimento", "tela_novo_atendimento"),
+        ("Em atendimento", "tela_status"),
+        ("Atendimento realizado", "tela_status"),
+        ("Orientações às Zonas", "tela_orientacoes_zonas"),
+        ("Zel - IA controlada", "tela_zel_ia_controlada"),
+        ("Portal das Zonas", "tela_portal_zonas_eleitorais"),
+        ("Usuários internos", "tela_usuarios"),
+        ("Usuários das Zonas", "tela_usuarios_zonas"),
+        ("Assuntos", "tela_assuntos"),
+        ("Parâmetros nacionais", "tela_parametros_nacionais"),
+        ("Backup e restauração", "tela_backup_restauracao"),
+    ]
+
+    dados_rotas = []
+    for nome, funcao in rotas:
+        dados_rotas.append({
+            "Página": nome,
+            "Função": funcao,
+            "Status": diagnostico_funcao(funcao),
+        })
+
+    st.dataframe(pd.DataFrame(dados_rotas), use_container_width=True, hide_index=True)
+
+    st.markdown("### Tabelas essenciais")
+
+    tabelas = [
+        "usuarios",
+        "atendimentos",
+        "assuntos",
+        "base_conhecimento",
+        "modelos_resposta",
+        "fontes_zel",
+        "historico_atendimento",
+        "sessoes",
+    ]
+
+    dados_tabelas = []
+    for tabela in tabelas:
+        dados_tabelas.append({
+            "Tabela": tabela,
+            "Status": diagnostico_tabela_supabase(tabela),
+        })
+
+    st.dataframe(pd.DataFrame(dados_tabelas), use_container_width=True, hide_index=True)
+
+    st.markdown("### Regras de acesso consolidadas")
+    st.info(
+        "Portal das Zonas: exclusivo para perfil Zona Eleitoral. "
+        "Zel: módulo interno da SEPRO/SEOCE. "
+        "Usuários das Zonas: área administrativa. "
+        "Base de Conhecimento: pode alimentar a Zel após validação institucional."
+    )
+
+    st.markdown("### Configurações de e-mail")
+    smtp_host = st.secrets.get("SMTP_HOST", "") if hasattr(st, "secrets") else ""
+    smtp_user = st.secrets.get("SMTP_USER", "") if hasattr(st, "secrets") else ""
+    smtp_password = st.secrets.get("SMTP_PASSWORD", "") if hasattr(st, "secrets") else ""
+    email_remetente = st.secrets.get("EMAIL_REMETENTE", "") if hasattr(st, "secrets") else ""
+
+    email_status = [
+        {"Configuração": "SMTP_HOST", "Status": "OK" if smtp_host else "Não configurado"},
+        {"Configuração": "SMTP_USER", "Status": "OK" if smtp_user else "Não configurado"},
+        {"Configuração": "SMTP_PASSWORD", "Status": "OK" if smtp_password else "Não configurado"},
+        {"Configuração": "EMAIL_REMETENTE", "Status": "OK" if email_remetente else "Não configurado"},
+    ]
+
+    st.dataframe(pd.DataFrame(email_status), use_container_width=True, hide_index=True)
+
+    st.markdown("### Próximas consolidações recomendadas")
+    st.write(
+        "1. Separar o código em módulos menores; "
+        "2. consolidar campos de resposta da Zel fora de observações; "
+        "3. revisar RLS no Supabase; "
+        "4. criar trilha de auditoria específica para fontes usadas pela Zel."
+    )
+
+
+
 def sidebar_menu():
     css_menu_institucional()
 
@@ -4760,6 +4918,7 @@ def sidebar_menu():
                 ("Usuários internos", "Usuários"),
                 ("Usuários das Zonas", "Usuários das Zonas"),
                 ("Parâmetros nacionais", "Parâmetros nacionais"),
+                ("Diagnóstico do sistema", "Diagnóstico do sistema"),
                 ("Backup e restauração", "Backup e restauração"),
             ]
             for label, destino in botoes_admin:
@@ -4785,7 +4944,10 @@ def sidebar_menu():
         cache_sessao_limpar()
         st.rerun()
 
-    return st.session_state.get("pagina_atual", "Início")
+    pagina_atual = st.session_state.get("pagina_atual", "Início")
+    pagina_atual = garantir_pagina_permitida(pagina_atual)
+    st.session_state["pagina_atual"] = pagina_atual
+    return pagina_atual
 
 
 
@@ -11054,6 +11216,18 @@ def main():
     cabecalho()
     escolha = sidebar_menu()
 
+    escolha_original = escolha
+    escolha = garantir_pagina_permitida(escolha)
+
+    if escolha != escolha_original:
+        if usuario_eh_zona_eleitoral():
+            st.session_state["pagina_atual"] = "Portal das Zonas"
+            escolha = "Portal das Zonas"
+        else:
+            st.warning("A página solicitada não está disponível para o seu perfil.")
+            st.session_state["pagina_atual"] = "Início"
+            escolha = "Início"
+
     if usuario_eh_zona_eleitoral() and escolha != "Portal das Zonas":
         escolha = "Portal das Zonas"
         st.session_state["pagina_atual"] = "Portal das Zonas"
@@ -11185,6 +11359,9 @@ def main():
 
     elif escolha == "Parâmetros nacionais" and usuario_pode_ver_parametros():
         tela_parametros_nacionais()
+
+    elif escolha == "Diagnóstico do sistema" and usuario_pode_ver_parametros():
+        tela_diagnostico_sistema()
 
     else:
         tela_menu_principal()
