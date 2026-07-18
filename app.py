@@ -5998,36 +5998,83 @@ def numero_br(valor):
         return "0"
 
 
-def render_visao_executiva(lista, titulo="Resumo executivo"):
-    ind = indicadores_executivos(lista)
 
-    st.markdown(f"<div class='dash-section-title'>{titulo}</div>", unsafe_allow_html=True)
+
+def bloco_tabela_dashboard(titulo, df):
+    """
+    Exibe tabela de dashboard de forma segura.
+    Evita NameError e evita quebra quando o DataFrame estiver vazio.
+    """
+    st.markdown(
+        f"<div class='dash-table-title'>{html.escape(str(titulo))}</div>",
+        unsafe_allow_html=True
+    )
+
+    try:
+        if df is None:
+            st.info("Sem dados para exibir.")
+            return
+
+        if isinstance(df, list):
+            df = pd.DataFrame(df)
+
+        if hasattr(df, "empty") and df.empty:
+            st.info("Sem dados para exibir.")
+            return
+
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    except Exception as e:
+        st.warning(f"Não foi possível exibir esta tabela: {e}")
+
+
+def render_visao_executiva(lista, titulo="Resumo executivo"):
+    try:
+        ind = indicadores_executivos(lista)
+    except Exception:
+        ind = {
+            "triagem": 0,
+            "em_atendimento": 0,
+            "realizados": 0,
+            "urgentes": 0,
+            "prazo_vencido": 0,
+            "sem_responsavel": 0,
+            "meus": 0,
+        }
+
+    st.markdown(f"<div class='dash-section-title'>{html.escape(str(titulo))}</div>", unsafe_allow_html=True)
 
     cards = [
-        ("Triagem", numero_br(ind["triagem"]), "#5B9BD5"),
-        ("Em atendimento", numero_br(ind["em_atendimento"]), "#F2A365"),
-        ("Realizados", numero_br(ind["realizados"]), "#74B24A"),
-        ("Urgentes abertas", numero_br(ind["urgentes"]), "#B91C1C"),
-        ("Prazo vencido", numero_br(ind["prazo_vencido"]), "#991B1B"),
-        ("Sem responsável", numero_br(ind["sem_responsavel"]), "#C2410C"),
-        ("Meus pendentes", numero_br(ind["meus"]), "#7A60A8"),
+        ("Triagem", numero_br(ind.get("triagem", 0)), "#5B9BD5"),
+        ("Em atendimento", numero_br(ind.get("em_atendimento", 0)), "#F2A365"),
+        ("Realizados", numero_br(ind.get("realizados", 0)), "#74B24A"),
+        ("Urgentes abertas", numero_br(ind.get("urgentes", 0)), "#B91C1C"),
+        ("Prazo vencido", numero_br(ind.get("prazo_vencido", 0)), "#991B1B"),
+        ("Sem responsável", numero_br(ind.get("sem_responsavel", 0)), "#C2410C"),
+        ("Meus pendentes", numero_br(ind.get("meus", 0)), "#7A60A8"),
     ]
 
     cols = st.columns(len(cards))
     for col, (label, value, color) in zip(cols, cards):
         with col:
-            render_metric_card(label, value, color)
+            try:
+                render_metric_card(label, value, color)
+            except Exception:
+                st.metric(label, value)
 
-    alertas = dataframe_alertas_gerenciais(lista).head(10)
+    try:
+        alertas = dataframe_alertas_gerenciais(lista).head(10)
+    except Exception:
+        alertas = pd.DataFrame(columns=["ID", "Alerta", "Status", "Seção", "Assunto", "Responsável"])
+
     col_a, col_b = st.columns([1.2, 1.2])
     with col_a:
         bloco_tabela_dashboard("Demandas que exigem atenção", alertas)
     with col_b:
         base = pd.DataFrame([
-            {"Indicador": "Demandas urgentes abertas", "Quantidade": ind["urgentes"]},
-            {"Indicador": "Demandas com prazo vencido", "Quantidade": ind["prazo_vencido"]},
-            {"Indicador": "Demandas sem responsável", "Quantidade": ind["sem_responsavel"]},
-            {"Indicador": "Meus atendimentos pendentes", "Quantidade": ind["meus"]},
+            {"Indicador": "Demandas urgentes abertas", "Quantidade": ind.get("urgentes", 0)},
+            {"Indicador": "Demandas com prazo vencido", "Quantidade": ind.get("prazo_vencido", 0)},
+            {"Indicador": "Demandas sem responsável", "Quantidade": ind.get("sem_responsavel", 0)},
+            {"Indicador": "Meus atendimentos pendentes", "Quantidade": ind.get("meus", 0)},
         ])
         bloco_tabela_dashboard("Resumo de alertas", base)
 
