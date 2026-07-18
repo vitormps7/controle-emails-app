@@ -3150,17 +3150,210 @@ def css_menu_institucional():
                 display:block !important;
             }
 }
-        </style>
+        
+        /* ====================================================
+           Pacote Front-end 1 - SIGA-COR
+           ==================================================== */
+
+        .siga-home-hero {
+            background: linear-gradient(135deg, #052A4F 0%, #0E63B6 58%, #2D8CE0 100%);
+            border-radius: 22px;
+            padding: 24px 28px;
+            color: #FFFFFF;
+            box-shadow: 0 18px 38px rgba(8,42,82,.18);
+            margin: 12px 0 20px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .siga-home-hero:after {
+            content: "";
+            position: absolute;
+            right: -50px;
+            top: -60px;
+            width: 220px;
+            height: 220px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.12);
+        }
+
+        .siga-home-hero-title {
+            font-size: 28px;
+            font-weight: 950;
+            letter-spacing: -.4px;
+            margin-bottom: 6px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .siga-home-hero-sub {
+            max-width: 920px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: rgba(255,255,255,.88);
+            font-weight: 650;
+            position: relative;
+            z-index: 2;
+        }
+
+        .siga-group-title {
+            display:flex;
+            align-items:center;
+            gap: 10px;
+            margin: 22px 0 12px 0;
+            color: #062A4F;
+            font-size: 17px;
+            font-weight: 950;
+            letter-spacing: -.2px;
+        }
+
+        .siga-group-title span {
+            width: 10px;
+            height: 28px;
+            border-radius: 999px;
+            display:inline-block;
+            background: #0E63B6;
+        }
+
+        .siga-group-title.atendimento span { background: #0E63B6; }
+        .siga-group-title.conhecimento span { background: #138A72; }
+        .siga-group-title.gestao span { background: #6D5BD0; }
+        .siga-group-title.admin span { background: #D97706; }
+
+        .siga-card-nav {
+            min-height: 176px !important;
+            border-radius: 18px !important;
+            border: 1px solid #D9E6F5 !important;
+            background: #FFFFFF !important;
+            box-shadow: 0 10px 24px rgba(8,42,82,.06) !important;
+            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+            overflow: hidden;
+        }
+
+        .siga-card-nav:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 32px rgba(8,42,82,.10) !important;
+            border-color: #BFD3EA !important;
+        }
+
+        .siga-card-nav.card-atendimento { border-top: 4px solid #0E63B6 !important; }
+        .siga-card-nav.card-conhecimento { border-top: 4px solid #138A72 !important; }
+        .siga-card-nav.card-gestao { border-top: 4px solid #6D5BD0 !important; }
+        .siga-card-nav.card-admin { border-top: 4px solid #D97706 !important; }
+
+        .siga-card-tag {
+            display:inline-flex;
+            align-items:center;
+            border-radius: 999px;
+            padding: 4px 9px;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: .35px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            background: #EEF6FF;
+            color: #0E63B6;
+        }
+
+        .siga-card-nav.card-conhecimento .siga-card-tag { background: #E7F7F3; color: #10725F; }
+        .siga-card-nav.card-gestao .siga-card-tag { background: #F0EEFF; color: #5A49BA; }
+        .siga-card-nav.card-admin .siga-card-tag { background: #FFF3E1; color: #B45309; }
+
+        .siga-info-panel {
+            background: #FFFFFF;
+            border: 1px solid #DDE8F5;
+            border-left: 5px solid #0E63B6;
+            border-radius: 16px;
+            padding: 16px 18px;
+            box-shadow: 0 8px 18px rgba(8,42,82,.055);
+            margin: 12px 0 14px 0;
+        }
+
+        .siga-info-panel.green { border-left-color: #138A72; }
+        .siga-info-panel.yellow { border-left-color: #D97706; }
+        .siga-info-panel.red { border-left-color: #B91C1C; }
+
+        .siga-info-title {
+            font-weight: 950;
+            color: #062A4F;
+            font-size: 15px;
+            margin-bottom: 6px;
+        }
+
+        .siga-info-text {
+            color: #52677F;
+            font-size: 13px;
+            line-height: 1.55;
+            font-weight: 650;
+        }
+
+        .zona-hero {
+            background: linear-gradient(135deg, #062A4F 0%, #138A72 100%);
+            color: #FFFFFF;
+            border-radius: 22px;
+            padding: 22px 26px;
+            margin: 8px 0 18px 0;
+            box-shadow: 0 18px 38px rgba(8,42,82,.16);
+        }
+
+        .zona-hero-title {
+            font-size: 24px;
+            font-weight: 950;
+            margin-bottom: 5px;
+        }
+
+        .zona-hero-sub {
+            color: rgba(255,255,255,.86);
+            font-weight: 650;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        .zel-banner {
+            background: #FFF8E8;
+            border: 1px solid #F4D28B;
+            border-left: 5px solid #D97706;
+            border-radius: 16px;
+            padding: 15px 17px;
+            margin: 10px 0 18px 0;
+            color: #5F3B00;
+            box-shadow: 0 8px 18px rgba(217,119,6,.08);
+        }
+
+        .zel-banner strong {
+            color: #7A4B00;
+        }
+
+        .siga-mini-metrics [data-testid="stMetric"] {
+            background: #FFFFFF;
+            border: 1px solid #DDE8F5;
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 18px rgba(8,42,82,.055);
+        }
+</style>
         """,
         unsafe_allow_html=True,
     )
 
 
 
-def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key):
+def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key, categoria="atendimento"):
+    categoria = str(categoria or "atendimento").strip().casefold()
+    if categoria not in ("atendimento", "conhecimento", "gestao", "admin"):
+        categoria = "atendimento"
+
+    rotulo = {
+        "atendimento": "Atendimento",
+        "conhecimento": "Conhecimento",
+        "gestao": "Gestão",
+        "admin": "Administração",
+    }.get(categoria, "Atendimento")
+
     st.markdown(
         f"""
-        <div class="siga-card-nav">
+        <div class="siga-card-nav card-{categoria}">
+            <div class="siga-card-tag">{html.escape(rotulo)}</div>
             <div class="siga-card-title"><span class="siga-card-icon">{ui_icon(icone)}</span>{html.escape(str(titulo))}</div>
             <div class="siga-card-desc">{html.escape(str(descricao))}</div>
             <div class="siga-card-arrow">›</div>
@@ -3169,6 +3362,23 @@ def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key):
         unsafe_allow_html=True,
     )
     botao_navegacao(texto_botao, destino, key)
+
+
+def render_grupo_menu(titulo, categoria, cards):
+    if not cards:
+        return
+
+    st.markdown(
+        f'<div class="siga-group-title {html.escape(categoria)}"><span></span>{html.escape(titulo)}</div>',
+        unsafe_allow_html=True
+    )
+
+    colunas = st.columns(min(len(cards), 4))
+    for idx, card in enumerate(cards):
+        with colunas[idx % len(colunas)]:
+            render_card_navegacao(*card, categoria=categoria)
+
+
 
 
 
@@ -3363,28 +3573,57 @@ def tela_menu_principal():
     st.markdown('<div class="siga-section-label">Início</div>', unsafe_allow_html=True)
     aviso_modo_visualizacao()
 
-    cards = [
-        ("workflow", "Minha área de trabalho", "Ver minhas pendências, urgências, prazos vencidos e devoluções.", "Abrir minha área", "Minha área de trabalho", "card_minha_area"),
-        ("plus", "Novo atendimento", "Registrar nova demanda, assunto, origem, prioridade e responsável.", "Criar atendimento", "Novo atendimento", "card_novo_atendimento"),
-        ("chart", "Painel gerencial", "Acompanhar indicadores essenciais e a situação dos atendimentos.", "Abrir painel", "Dashboard", "card_painel_gerencial"),
-        ("compass", "Orientações às Zonas", "Consultar modelos de resposta e base de conhecimento por assunto.", "Abrir orientações", "Orientações às Zonas", "card_orientacoes_zonas"),
+    st.markdown(
+        """
+        <div class="siga-home-hero">
+            <div class="siga-home-hero-title">SIGA-COR</div>
+            <div class="siga-home-hero-sub">
+                Sistema Integrado de Gestão de Atendimentos da Corregedoria. 
+                Controle demandas, consolide memória institucional, acompanhe indicadores e use a Zel de forma controlada para apoiar respostas da SEPRO e da SEOCE.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    cards_atendimento = [
+        ("workflow", "Minha área de trabalho", "Pendências, urgências, prazos vencidos e devoluções sob sua responsabilidade.", "Abrir minha área", "Minha área de trabalho", "card_minha_area"),
+        ("plus", "Novo atendimento", "Registrar nova demanda com assunto, origem, prioridade, zona e responsável.", "Criar atendimento", "Novo atendimento", "card_novo_atendimento"),
+        ("inbox", "Em atendimento", "Acompanhar demandas em análise ou execução pela unidade responsável.", "Abrir atendimentos", "Em atendimento", "card_em_atendimento"),
+        ("check", "Atendimento realizado", "Consultar atendimentos finalizados e respostas já registradas.", "Consultar realizados", "Atendimento realizado", "card_atendimento_realizado"),
     ]
 
-    if usuario_eh_gestor():
-        cards.insert(1, ("shield", "Validação da chefia", "Validar orientações preparadas pela equipe ou devolver para ajuste.", "Validar orientações", "Validação da chefia", "card_validacao_chefia"))
-        cards.append(("file", "Relatórios", "Emitir relatórios gerenciais, auditoria e memória institucional.", "Emitir relatório", "Relatórios e exportação", "card_relatorios"))
+    cards_conhecimento = [
+        ("compass", "Orientações às Zonas", "Consultar Base de Conhecimento, modelos e orientações por assunto.", "Abrir orientações", "Orientações às Zonas", "card_orientacoes_zonas"),
+        ("bolt", "Zel - IA controlada", "Gerar minutas apenas com fontes cadastradas, bases validadas e respostas promovidas.", "Abrir Zel", "Zel - IA controlada", "card_zel"),
+    ]
 
+    cards_gestao = []
     if usuario_pode_ver_inteligencia():
-        cards.insert(3, ("workflow", "Inteligência gerencial", "Analisar recorrências, competências, riscos e oportunidades de orientação.", "Abrir inteligência", "Inteligência gerencial", "card_inteligencia_gerencial"))
+        cards_gestao.append(("workflow", "Inteligência gerencial", "Analisar recorrências, competências, riscos e oportunidades de orientação.", "Abrir inteligência", "Inteligência gerencial", "card_inteligencia_gerencial"))
+    if usuario_eh_gestor():
+        cards_gestao.extend([
+            ("shield", "Validação da chefia", "Validar orientações preparadas pela equipe ou devolver para ajuste.", "Validar orientações", "Validação da chefia", "card_validacao_chefia"),
+            ("chart", "Painel gerencial", "Acompanhar indicadores essenciais e a situação dos atendimentos.", "Abrir painel", "Dashboard", "card_painel_gerencial"),
+            ("file", "Relatórios", "Emitir relatórios gerenciais, auditoria e memória institucional.", "Emitir relatório", "Relatórios e exportação", "card_relatorios"),
+        ])
 
-    colunas = st.columns(min(len(cards), 6))
-    for idx, card in enumerate(cards):
-        with colunas[idx % len(colunas)]:
-            render_card_navegacao(*card)
+    cards_admin = []
+    if usuario_pode_ver_parametros():
+        cards_admin.extend([
+            ("user", "Usuários das Zonas", "Cadastrar e revisar usuários externos vinculados às Zonas Eleitorais.", "Gerenciar zonas", "Usuários das Zonas", "card_usuarios_zonas"),
+            ("shield", "Diagnóstico do sistema", "Verificar rotas, tabelas, configurações e integridade geral.", "Abrir diagnóstico", "Diagnóstico do sistema", "card_diagnostico"),
+        ])
+
+    render_grupo_menu("Atendimento", "atendimento", cards_atendimento)
+    render_grupo_menu("Conhecimento e Zel", "conhecimento", cards_conhecimento)
+    render_grupo_menu("Gestão", "gestao", cards_gestao)
+    render_grupo_menu("Administração", "admin", cards_admin)
 
     st.divider()
 
-    bloco_novos_atendimentos_inicio()
+    with st.expander("Visualização rápida dos atendimentos cadastrados", expanded=False):
+        bloco_novos_atendimentos_inicio()
 
     st.divider()
 
@@ -3533,7 +3772,18 @@ def tela_portal_zonas_eleitorais():
     perfil_zona = usuario_eh_zona_eleitoral()
 
     if perfil_zona and zona_do_usuario:
-        st.info(f"Acesso identificado para a {zona_do_usuario}. Os atendimentos exibidos serão restritos a essa zona, inclusive aqueles cadastrados internamente pela SEPRO ou SEOCE.")
+        st.markdown(
+            f"""
+            <div class="zona-hero">
+                <div class="zona-hero-title">Bem-vindo(a), {html.escape(str(zona_do_usuario))}</div>
+                <div class="zona-hero-sub">
+                    Aqui a Zona Eleitoral pode acompanhar suas demandas, consultar a Base de Conhecimento e registrar novas perguntas à Corregedoria.
+                    A visualização é restrita aos atendimentos vinculados à própria zona.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     elif perfil_zona:
         st.warning(
             "Seu perfil é de Zona Eleitoral, mas o sistema ainda não conseguiu identificar automaticamente a zona vinculada ao usuário. "
@@ -4221,43 +4471,48 @@ def painel_gerencial_zona(zona_consulta):
         if str(a.get("situacao_validacao") or "") == STATUS_VALIDACAO_Zel
     ])
 
+    st.markdown('<div class="siga-mini-metrics">', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total da zona", total)
-    col2.metric("Em atendimento", em_atendimento)
-    col3.metric("Realizados", realizados)
+    col1.metric("Demandas da zona", total)
+    col2.metric("Em análise", em_atendimento)
+    col3.metric("Respondidas", realizados)
     col4.metric("Pendentes Zel", pendentes_zel)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("### Principais assuntos")
-    contagem = {}
-    for a in lista_zona:
-        assunto = a.get("assunto") or "Não informado"
-        contagem[assunto] = contagem.get(assunto, 0) + 1
+    col_a, col_b = st.columns([1, 1])
 
-    if contagem:
-        dados = [
-            {"Assunto": k, "Quantidade": v}
-            for k, v in sorted(contagem.items(), key=lambda x: x[1], reverse=True)[:10]
-        ]
-        st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
-    else:
-        st.info("Ainda não há dados suficientes para consolidar assuntos.")
+    with col_a:
+        st.markdown("### Principais assuntos")
+        contagem = {}
+        for a in lista_zona:
+            assunto = a.get("assunto") or "Não informado"
+            contagem[assunto] = contagem.get(assunto, 0) + 1
 
-    st.markdown("### Últimos atendimentos")
-    recentes = sorted(lista_zona, key=lambda x: int(x.get("id", 0)), reverse=True)[:8]
-    if not recentes:
-        st.info("Nenhum atendimento vinculado a esta zona.")
-    else:
-        linhas = []
-        for a in recentes:
-            linhas.append({
-                "ID": a.get("id"),
-                "Data": data_para_exibir(a.get("data")),
-                "Status": a.get("status"),
-                "Seção": normalizar_secao(a.get("secao")),
-                "Assunto": a.get("assunto") or "Não informado",
-                "Origem": a.get("origem") or "Não informado",
-            })
-        st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
+        if contagem:
+            dados = [
+                {"Assunto": k, "Quantidade": v}
+                for k, v in sorted(contagem.items(), key=lambda x: x[1], reverse=True)[:8]
+            ]
+            st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
+        else:
+            st.info("Ainda não há dados suficientes para consolidar assuntos.")
+
+    with col_b:
+        st.markdown("### Últimos atendimentos")
+        recentes = sorted(lista_zona, key=lambda x: int(x.get("id", 0)), reverse=True)[:8]
+        if not recentes:
+            st.info("Nenhum atendimento vinculado a esta zona.")
+        else:
+            linhas = []
+            for a in recentes:
+                linhas.append({
+                    "ID": a.get("id"),
+                    "Data": data_para_exibir(a.get("data")),
+                    "Status": a.get("status"),
+                    "Seção": normalizar_secao(a.get("secao")),
+                    "Assunto": a.get("assunto") or "Não informado",
+                })
+            st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
 
 
 def tela_fontes_zel():
@@ -4507,8 +4762,15 @@ def tela_zel_ia_controlada():
         st.warning("Seu perfil permite consulta, sem elaboração de respostas assistidas.")
         return
 
-    st.info(
-        "Regra de controle: sem fonte cadastrada, resposta realizada promovida como fonte ou Base de Conhecimento relacionada, a Zel não gera resposta conclusiva."
+    st.markdown(
+        """
+        <div class="zel-banner">
+            <strong>Regra de controle da Zel:</strong><br>
+            A Zel não responde sem fonte. Toda minuta gerada fica pendente de validação humana.
+            O atendimento só deve ser encerrado após conferência da SEPRO ou da SEOCE.
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
     aba_atendimento, aba_livre, aba_fontes, aba_validacao = st.tabs([
@@ -6282,18 +6544,25 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
             )
 
-            st.caption(
-                "Ao salvar, a resposta deste atendimento pode virar Base de Conhecimento quando servir como orientação institucional para casos futuros. "
-                "A Base de Conhecimento também poderá ser usada pela Zel para gerar minutas controladas. "
-                "Use texto-padrão/modelo apenas para guardar uma minuta reutilizável de resposta."
+            st.markdown(
+                """
+                <div class="siga-info-panel green">
+                    <div class="siga-info-title">Aproveitamento institucional da resposta</div>
+                    <div class="siga-info-text">
+                        Use esta área quando a resposta deste atendimento puder ser reaproveitada em casos futuros.
+                        A Base de Conhecimento poderá alimentar a Zel; o Modelo de Resposta serve apenas como minuta reutilizável.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
             )
             gerar_conhecimento = st.checkbox(
-                "Transformar resposta em Base de Conhecimento ao salvar",
+                "Transformar esta resposta em Base de Conhecimento",
                 value=False,
                 key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
             )
             gerar_modelo_resposta = st.checkbox(
-                "Salvar também como texto-padrão/modelo de resposta",
+                "Salvar esta resposta como Modelo de Resposta",
                 value=False,
                 key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
             )
