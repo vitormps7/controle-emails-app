@@ -2048,13 +2048,24 @@ def proximo_id(lista):
 
 
 def status_badge(status):
-    if status == STATUS_CADASTRADO:
-        return '<span class="status-cadastrado">Triagem</span>'
-    if status == STATUS_EM_ATENDIMENTO:
-        return '<span class="status-em">Em atendimento</span>'
-    if status == STATUS_REALIZADO:
-        return '<span class="status-realizado">Atendimento realizado</span>'
-    return f"<b>{status}</b>"
+    texto = str(status or "").strip()
+    texto_cf = texto.casefold()
+
+    if texto == STATUS_CADASTRADO:
+        return '<span class="status-pill triagem">● Triagem</span>'
+    if texto == STATUS_EM_ATENDIMENTO:
+        return '<span class="status-pill em">● Em atendimento</span>'
+    if texto == STATUS_REALIZADO:
+        return '<span class="status-pill realizado">● Atendimento realizado</span>'
+    if "zel" in texto_cf and "pendente" in texto_cf:
+        return '<span class="status-pill zel">● Pendente Zel</span>'
+    if "vencido" in texto_cf or "devolvido" in texto_cf:
+        return f'<span class="status-pill alerta">● {html.escape(texto)}</span>'
+    if not texto:
+        return '<span class="status-pill neutro">● Não informado</span>'
+
+    return f'<span class="status-pill neutro">● {html.escape(texto)}</span>'
+
 
 
 def atendimentos_df(lista=None):
@@ -3330,6 +3341,158 @@ def css_menu_institucional():
             border-radius: 16px;
             padding: 14px 16px;
             box-shadow: 0 8px 18px rgba(8,42,82,.055);
+        }
+
+        /* ====================================================
+           Pacote Front-end 2 - Leitura operacional
+           ==================================================== */
+
+        .atendimento-card {
+            background: #FFFFFF;
+            border: 1px solid #DDE8F5;
+            border-radius: 18px;
+            padding: 0;
+            box-shadow: 0 10px 24px rgba(8,42,82,.065);
+            margin: 12px 0 18px 0;
+            overflow: hidden;
+        }
+
+        .atendimento-card-header {
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap: 16px;
+            padding: 16px 18px;
+            background: linear-gradient(90deg, #F8FBFF 0%, #FFFFFF 100%);
+            border-bottom: 1px solid #E4EDF7;
+        }
+
+        .atendimento-title {
+            font-size: 16px;
+            font-weight: 950;
+            color: #062A4F;
+            line-height: 1.25;
+            margin-bottom: 6px;
+        }
+
+        .atendimento-sub {
+            font-size: 12px;
+            color: #5E738D;
+            font-weight: 700;
+        }
+
+        .atendimento-body {
+            padding: 16px 18px 18px 18px;
+        }
+
+        .atendimento-grid {
+            display:grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .atendimento-field {
+            background: #F8FBFF;
+            border: 1px solid #E2EAF5;
+            border-radius: 14px;
+            padding: 10px 12px;
+        }
+
+        .atendimento-field-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .45px;
+            color: #667E99;
+            font-weight: 900;
+            margin-bottom: 4px;
+        }
+
+        .atendimento-field-value {
+            font-size: 13px;
+            color: #173A5E;
+            font-weight: 760;
+            line-height: 1.35;
+        }
+
+        .atendimento-textbox {
+            background: #FFFFFF;
+            border: 1px solid #E2EAF5;
+            border-radius: 14px;
+            padding: 13px 14px;
+            margin-top: 10px;
+        }
+
+        .atendimento-textbox-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .35px;
+            color: #062A4F;
+            font-weight: 950;
+            margin-bottom: 6px;
+        }
+
+        .atendimento-textbox-content {
+            color: #243F5C;
+            font-size: 13px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+        }
+
+        .status-pill {
+            display:inline-flex;
+            align-items:center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 6px 11px;
+            font-size: 11px;
+            font-weight: 950;
+            letter-spacing: .2px;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+
+        .status-pill.triagem { background:#E8F2FF; color:#0D47A1; border-color:#BFD7F4; }
+        .status-pill.em { background:#FFF4DE; color:#7A4B00; border-color:#F2D28A; }
+        .status-pill.realizado { background:#E8F5E9; color:#1B5E20; border-color:#B9E0BF; }
+        .status-pill.zel { background:#FFF8E8; color:#7A4B00; border-color:#F4D28B; }
+        .status-pill.alerta { background:#FDECEA; color:#B00020; border-color:#F2B8B5; }
+        .status-pill.neutro { background:#F1F5F9; color:#334155; border-color:#CBD5E1; }
+
+        .operational-toolbar {
+            background: #FFFFFF;
+            border: 1px solid #DDE8F5;
+            border-radius: 18px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 18px rgba(8,42,82,.055);
+            margin: 10px 0 16px 0;
+        }
+
+        .section-hint {
+            background: #F8FBFF;
+            border: 1px dashed #C9DAEE;
+            border-radius: 16px;
+            padding: 12px 14px;
+            color: #52677F;
+            font-size: 13px;
+            font-weight: 650;
+            margin: 8px 0 14px 0;
+        }
+
+        @media (max-width: 1100px) {
+            .atendimento-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 720px) {
+            .atendimento-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .atendimento-card-header {
+                display:block;
+            }
         }
 </style>
         """,
@@ -6343,180 +6506,112 @@ def filtros_base(lista):
     return [a for a in lista if a.get("id") in ids_filtrados]
 
 
+def atendimento_campo_html(rotulo, valor):
+    valor = valor if valor not in (None, "") else "Não informado"
+    return f"""
+    <div class="atendimento-field">
+        <div class="atendimento-field-label">{html.escape(str(rotulo))}</div>
+        <div class="atendimento-field-value">{html.escape(str(valor))}</div>
+    </div>
+    """
+
+
+def atendimento_textbox_html(titulo, conteudo):
+    conteudo = str(conteudo or "").strip()
+    if not conteudo:
+        return ""
+    return f"""
+    <div class="atendimento-textbox">
+        <div class="atendimento-textbox-title">{html.escape(str(titulo))}</div>
+        <div class="atendimento-textbox-content">{html.escape(conteudo)}</div>
+    </div>
+    """
+
+
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
     status = atendimento.get("status", STATUS_CADASTRADO)
     atualizado_formatado = formatar_data_hora_brasilia(atendimento.get("atualizado_em"))
     criado_formatado = formatar_data_hora_brasilia(atendimento.get("criado_em"))
-    triado_formatado = formatar_data_hora_brasilia(atendimento.get("triado_em"))
 
+    assunto = atendimento.get("assunto") or "Sem assunto"
+    zona = atendimento.get("zona_eleitoral") or "Zona não informada"
+    secao = normalizar_secao(atendimento.get("secao"))
+    origem = atendimento.get("origem") or "Origem não informada"
 
-    with st.container(border=True):
-        col1, col2, col3 = st.columns([1.2, 2.2, 1.3])
+    grid_html = "\n".join([
+        atendimento_campo_html("ID", atendimento.get("id")),
+        atendimento_campo_html("Data", data_para_exibir(atendimento.get("data"))),
+        atendimento_campo_html("Seção", secao),
+        atendimento_campo_html("Zona", zona),
+        atendimento_campo_html("Responsável", atendimento.get("servidor") or "Não informado"),
+        atendimento_campo_html("Origem", origem),
+        atendimento_campo_html("Fonte", atendimento.get("fonte") or "Não informada"),
+        atendimento_campo_html("Complexidade", atendimento.get("complexidade") or "Não informada"),
+        atendimento_campo_html("Prazo", data_para_exibir(atendimento.get("prazo_limite")) if atendimento.get("prazo_limite") else "Não informado"),
+        atendimento_campo_html("Validação", atendimento.get("situacao_validacao") or "Não requerida"),
+        atendimento_campo_html("Criado em", criado_formatado or "Não informado"),
+        atendimento_campo_html("Atualizado", atualizado_formatado or "Não informado"),
+    ])
 
-        with col1:
-            st.markdown(f"**ID:** {atendimento.get('id')}")
-            st.markdown(f"**Data:** {data_para_exibir(atendimento.get('data'))}")
-            st.markdown(status_badge(status), unsafe_allow_html=True)
-            st.markdown(marcador_visual_atendimento(atendimento), unsafe_allow_html=True)
+    textos_html = "".join([
+        atendimento_textbox_html("Descrição / pergunta", atendimento.get("descricao")),
+        atendimento_textbox_html("Observações", atendimento.get("observacoes")),
+        atendimento_textbox_html("Providência adotada", atendimento.get("providencia_adotada")),
+        atendimento_textbox_html("Conclusão", atendimento.get("conclusao") if usuario_eh_gestor() else ""),
+    ])
 
-        with col2:
-            st.markdown(f"**Assunto:** {atendimento.get('assunto', '')}")
-            st.markdown(f"**Seção:** {normalizar_secao(atendimento.get('secao'))}")
-            st.markdown(f"**Origem:** {atendimento.get('origem', '')}")
-            st.markdown(f"**Zona:** {atendimento.get('zona_eleitoral', '')}")
-            st.markdown(f"**Descrição:** {atendimento.get('descricao', '')}")
-            if usuario_eh_gestor():
-                with st.expander(expander_avancado_rotulo("Identificação institucional"), expanded=False):
-                    st.markdown(f"**Tribunal/UF:** {atendimento.get('tribunal', TRIBUNAL_PADRAO)} / {atendimento.get('uf', UF_PADRAO)}")
-                    st.markdown(f"**Unidade:** {atendimento.get('unidade_responsavel', UNIDADE_CORREGEDORIA_PADRAO)}")
+    st.markdown(
+        f"""
+        <div class="atendimento-card">
+            <div class="atendimento-card-header">
+                <div>
+                    <div class="atendimento-title">{html.escape(str(assunto))}</div>
+                    <div class="atendimento-sub">{html.escape(str(zona))} · {html.escape(str(secao))} · {html.escape(str(origem))}</div>
+                </div>
+                <div>{status_badge(status)}</div>
+            </div>
+            <div class="atendimento-body">
+                <div style="margin-bottom:10px;">{marcador_visual_atendimento(atendimento)}</div>
+                <div class="atendimento-grid">{grid_html}</div>
+                {textos_html}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-        with col3:
-            st.markdown(f"**Servidor(a):** {atendimento.get('servidor', '')}")
-            st.markdown(f"**Fonte:** {atendimento.get('fonte', '')}")
-            st.markdown(f"**Complexidade:** {atendimento.get('complexidade', 'Não informada')}")
-            if atendimento.get("prazo_limite"):
-                st.markdown(f"**Prazo:** {data_para_exibir(atendimento.get('prazo_limite'))}")
-            st.markdown(f"**Validação:** {atendimento.get('situacao_validacao', 'Não requerida')}")
-            st.markdown(f"**Atualizado:** {atualizado_formatado}")
+    if usuario_eh_gestor():
+        with st.expander(expander_avancado_rotulo("Identificação institucional"), expanded=False):
+            st.markdown(f"**Tribunal/UF:** {atendimento.get('tribunal', TRIBUNAL_PADRAO)} / {atendimento.get('uf', UF_PADRAO)}")
+            st.markdown(f"**Unidade:** {atendimento.get('unidade_responsavel', UNIDADE_CORREGEDORIA_PADRAO)}")
 
-        if atendimento.get("observacoes"):
-            st.markdown(f"**Observações:** {atendimento.get('observacoes')}")
-        if atendimento.get("providencia_adotada"):
-            st.markdown(f"**Providência adotada:** {atendimento.get('providencia_adotada')}")
-        if atendimento.get("conclusao") and usuario_eh_gestor():
-            with st.expander("Conclusão histórica — campo legado", expanded=False):
-                st.markdown(atendimento.get("conclusao"))
-
-        if not permitir_edicao or not usuario_pode_editar_atendimentos():
-            if usuario_eh_consulta():
-                st.info("Seu perfil permite consulta, sem edição do atendimento.")
-            return
-
-        st.divider()
-
-        col_a, col_b, col_c, col_d = st.columns([1.1, 1.1, 1.1, 1.2])
-
-        lista = atendimentos()
-
-        def salvar_status(novo_status):
-            for item in lista:
-                if int(item.get("id")) == int(atendimento.get("id")):
-                    antes = item.copy()
-                    item["status"] = novo_status
-                    item["atualizado_em"] = agora_iso()
-                    if novo_status == STATUS_CADASTRADO:
-                        item["servidor"] = "Não informado"
-                    if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
-                        item["data_inicio_atendimento"] = agora_iso()
-                    if novo_status == STATUS_REALIZADO and item.get("requer_validacao") and item.get("situacao_validacao") != "Validado pela chefia":
-                        st.warning("Este atendimento exige validação da chefia antes de ser marcado como realizado.")
-                        st.stop()
-                    if novo_status == STATUS_REALIZADO:
-                        item["data_realizacao"] = hoje_ddmmaaaa()
-                        if not item.get("data_conclusao"):
-                            item["data_conclusao"] = agora_iso()
-                    t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
-                    item["tempo_triagem_horas"] = t_triagem
-                    item["tempo_atendimento_horas"] = t_atendimento
-                    item["tempo_total_horas"] = t_total
-                    salvar_atendimentos(lista)
-                    registrar_diferencas_atendimento(antes, item, "mudança de status")
-                    st.success(f"Atendimento movido para: {novo_status}")
-                    st.rerun()
-
-        with col_a:
-            st.empty()
-
-        with col_b:
-            if status != STATUS_EM_ATENDIMENTO:
-                if st.button("Mover para Em atendimento", key=f"{chave_prefixo}_em_{atendimento.get('id')}"):
-                    salvar_status(STATUS_EM_ATENDIMENTO)
-
-        with col_c:
-            if status != STATUS_REALIZADO:
-                if st.button("Mover para Realizado", key=f"{chave_prefixo}_real_{atendimento.get('id')}"):
-                    salvar_status(STATUS_REALIZADO)
-
-        with col_d:
-            st.empty()
-
-        with st.expander("Editar atendimento", expanded=False):
-            nova_obs = st.text_area(
-                "Observações",
-                value=atendimento.get("observacoes", ""),
-                key=f"{chave_prefixo}_obs_{atendimento.get('id')}"
-            )
+    if permitir_edicao:
+        with st.expander(expander_avancado_rotulo("Editar atendimento"), expanded=False):
+            lista = atendimentos()
+            nova_obs = st.text_area("Observações", value=atendimento.get("observacoes", ""), key=f"{chave_prefixo}_obs_{atendimento.get('id')}")
             novo_status = st.selectbox(
                 "Status",
-                STATUS_OPCOES,
-                index=STATUS_OPCOES.index(status) if status in STATUS_OPCOES else 0,
+                STATUS_ATENDIMENTO,
+                index=STATUS_ATENDIMENTO.index(status) if status in STATUS_ATENDIMENTO else 0,
                 key=f"{chave_prefixo}_status_{atendimento.get('id')}"
             )
-            secao_atual = normalizar_secao(atendimento.get("secao"))
             nova_secao = st.selectbox(
-                "Seção",
+                "Seção responsável",
                 secoes_atendimento(),
-                index=secoes_atendimento().index(secao_atual) if secao_atual in secoes_atendimento() else 0,
+                index=secoes_atendimento().index(normalizar_secao(atendimento.get("secao"))) if normalizar_secao(atendimento.get("secao")) in secoes_atendimento() else 0,
                 key=f"{chave_prefixo}_secao_{atendimento.get('id')}"
             )
-            servidores_disponiveis = nomes_usuarios_ativos() or []
-            servidor_atual = atendimento.get("servidor", "") or "Não informado"
-
-            if servidor_atual not in servidores_disponiveis:
-                servidores_disponiveis = [servidor_atual] + servidores_disponiveis
-
-            if "Não informado" not in servidores_disponiveis:
-                servidores_disponiveis = ["Não informado"] + servidores_disponiveis
-
-            novo_servidor = st.selectbox(
-                "Servidor(a)",
-                servidores_disponiveis,
-                index=servidores_disponiveis.index(servidor_atual) if servidor_atual in servidores_disponiveis else 0,
-                key=f"{chave_prefixo}_serv_{atendimento.get('id')}"
-            )
-
-            lista_assuntos_edicao = assuntos(nova_secao)
-            assunto_atual = atendimento.get("assunto", "") or "Não informado"
-
-            if assunto_atual not in lista_assuntos_edicao:
-                lista_assuntos_edicao = [assunto_atual] + lista_assuntos_edicao
-
+            novo_servidor = st.text_input("Servidor(a) responsável", value=atendimento.get("servidor", ""), key=f"{chave_prefixo}_servidor_{atendimento.get('id')}")
             novo_assunto = st.selectbox(
                 "Assunto",
-                lista_assuntos_edicao,
-                index=lista_assuntos_edicao.index(assunto_atual) if assunto_atual in lista_assuntos_edicao else 0,
+                assuntos(nova_secao),
+                index=assuntos(nova_secao).index(atendimento.get("assunto")) if atendimento.get("assunto") in assuntos(nova_secao) else 0,
                 key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
             )
-
-            fontes_disponiveis = FONTES_ATENDIMENTO if "FONTES_ATENDIMENTO" in globals() else ["Não informado", "E-mail", "Telefone", "WhatsApp", "Outro"]
-            fonte_atual = atendimento.get("fonte", "") or "Não informado"
-            if fonte_atual not in fontes_disponiveis:
-                fontes_disponiveis = [fonte_atual] + fontes_disponiveis
-            novo_fonte = st.selectbox(
-                "Fonte",
-                fontes_disponiveis,
-                index=fontes_disponiveis.index(fonte_atual) if fonte_atual in fontes_disponiveis else 0,
-                key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
-            )
-
-            nova_origem = st.text_input(
-                "Quem originou a demanda/chamada",
-                value=atendimento.get("origem", ""),
-                key=f"{chave_prefixo}_origem_{atendimento.get('id')}"
-            )
-
-            novo_protocolo = st.text_input(
-                "Protocolo ou referência, se houver",
-                value=atendimento.get("protocolo", ""),
-                key=f"{chave_prefixo}_protocolo_{atendimento.get('id')}"
-            )
-
-            nova_descricao = st.text_area(
-                "Descrição da demanda",
-                value=atendimento.get("descricao", ""),
-                key=f"{chave_prefixo}_descricao_{atendimento.get('id')}"
-            )
-
+            novo_fonte = st.text_input("Fonte/canal", value=atendimento.get("fonte", "") or "", key=f"{chave_prefixo}_fonte_{atendimento.get('id')}")
+            nova_origem = st.text_input("Origem", value=atendimento.get("origem", "") or "", key=f"{chave_prefixo}_origem_{atendimento.get('id')}")
+            novo_protocolo = st.text_input("Protocolo", value=atendimento.get("protocolo", "") or "", key=f"{chave_prefixo}_protocolo_{atendimento.get('id')}")
+            nova_descricao = st.text_area("Descrição/pergunta", value=atendimento.get("descricao", "") or "", key=f"{chave_prefixo}_descricao_{atendimento.get('id')}")
             nova_complexidade = st.selectbox(
                 "Complexidade",
                 COMPLEXIDADES_ATENDIMENTO,
@@ -6524,19 +6619,12 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 key=f"{chave_prefixo}_complexidade_{atendimento.get('id')}"
             )
 
-            prazo_atual = parse_data_opcional(atendimento.get("prazo_limite")) or agora_brasilia().date()
-            manter_prazo = st.checkbox(
-                "Definir/manter prazo limite",
-                value=bool(atendimento.get("prazo_limite")),
-                key=f"{chave_prefixo}_tem_prazo_{atendimento.get('id')}"
-            )
-            novo_prazo = st.date_input(
-                "Prazo limite",
-                value=prazo_atual,
-                format="DD/MM/YYYY",
-                help="Marque 'Definir/manter prazo limite' para que esta data seja gravada no atendimento.",
-                key=f"{chave_prefixo}_prazo_{atendimento.get('id')}"
-            )
+            col_prazo1, col_prazo2 = st.columns([1, 2])
+            with col_prazo1:
+                manter_prazo = st.checkbox("Definir prazo", value=bool(atendimento.get("prazo_limite")), key=f"{chave_prefixo}_manter_prazo_{atendimento.get('id')}")
+            with col_prazo2:
+                prazo_atual = parse_data(atendimento.get("prazo_limite")) or agora_brasilia().date()
+                novo_prazo = st.date_input("Prazo limite", value=prazo_atual, format="DD/MM/YYYY", key=f"{chave_prefixo}_prazo_{atendimento.get('id')}")
 
             nova_providencia = st.text_area(
                 "Providência adotada",
@@ -6556,6 +6644,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 """,
                 unsafe_allow_html=True
             )
+
             gerar_conhecimento = st.checkbox(
                 "Transformar esta resposta em Base de Conhecimento",
                 value=False,
@@ -6591,1509 +6680,62 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             item["data_conclusao"] = agora_iso()
                         item["atualizado_em"] = agora_iso()
                         resposta_zona_msg = ""
-                        if novo_status == STATUS_REALIZADO and not item.get("data_realizacao"):
-                            item["data_realizacao"] = hoje_ddmmaaaa()
                         if novo_status == STATUS_REALIZADO and antes.get("status") != STATUS_REALIZADO:
-                            email_zona_ok, email_zona_msg = enviar_email_resposta_zona(item)
-                            resposta_zona_msg = email_zona_msg
+                            ok_resp, msg_resp = enviar_email_resposta_zona(item)
+                            resposta_zona_msg = msg_resp
                             try:
                                 registrar_historico_atendimento(
                                     item.get("id"),
                                     "E-mail automático",
-                                    "Resposta enviada à zona eleitoral" if email_zona_ok else "Falha no envio de resposta à zona eleitoral",
-                                    f"Destinatário: {email_zona_eleitoral(item.get('zona_eleitoral')) or 'não identificado'} | Resultado: {email_zona_msg}"
+                                    "Resposta enviada à Zona Eleitoral",
+                                    msg_resp
                                 )
                             except Exception:
                                 pass
-                        t_triagem, t_atendimento, t_total = calcular_tempos_formais(item)
-                        item["tempo_triagem_horas"] = t_triagem
-                        item["tempo_atendimento_horas"] = t_atendimento
-                        item["tempo_total_horas"] = t_total
-                        salvar_atendimentos(lista)
-                        registrar_diferencas_atendimento(antes, item, "edição")
+
+                        registrar_alteracoes_atendimento(antes, item)
+
                         if gerar_conhecimento:
-                            criar_item_base_conhecimento(item)
+                            criar_base_conhecimento_do_atendimento(item)
+                            registrar_historico_atendimento(
+                                item.get("id"),
+                                "Base de Conhecimento",
+                                "Resposta transformada em Base de Conhecimento",
+                                "A resposta foi cadastrada como orientação institucional e poderá alimentar a Zel."
+                            )
+
                         if gerar_modelo_resposta:
-                            criar_modelo_resposta_do_atendimento(
-                                item,
-                                titulo_modelo=f"Modelo - {item.get('assunto') or 'Atendimento'}",
-                                texto_modelo=item.get("providencia_adotada") or "",
-                                fundamento_normativo=""
+                            criar_modelo_resposta_do_atendimento(item)
+                            registrar_historico_atendimento(
+                                item.get("id"),
+                                "Modelo de Resposta",
+                                "Resposta cadastrada como modelo reutilizável",
+                                "A resposta foi cadastrada como texto-padrão/modelo."
                             )
-                        if novo_status == STATUS_REALIZADO and resposta_zona_msg:
-                            st.success(f"Alterações salvas. Resultado do e-mail à zona: {resposta_zona_msg}")
-                        else:
-                            st.success("Alterações salvas.")
-                        st.rerun()
 
-        with st.expander("Base de conhecimento, histórico e validação" if usuario_eh_gestor() else "Base de conhecimento e comentários"):
-            st.markdown("##### Entendimentos da base para apoiar a resposta")
-            bases_disponiveis = bases_por_assunto_e_secao(atendimento.get("assunto"), atendimento.get("secao"))
+                        break
 
-            if not bases_disponiveis:
-                st.info("Nenhum entendimento da base de conhecimento encontrado para este assunto/seção.")
-            else:
-                opcoes_base = [
-                    f"{codigo_base_conhecimento(b.get('id'))} - {b.get('assunto', 'Não informado')} - {str(b.get('resumo_duvida') or b.get('orientacao_adotada') or '')[:90]}"
-                    for b in bases_disponiveis
-                ]
-                escolha_base = st.selectbox(
-                    "Selecionar entendimento da base",
-                    opcoes_base,
-                    key=f"{chave_prefixo}_base_conhecimento_{atendimento.get('id')}"
-                )
+                salvar_atendimentos(lista)
 
-                base_id = int(escolha_base.split(" - ")[0].replace("BC-", ""))
-                base_item = next((b for b in bases_disponiveis if int(b.get("id")) == base_id), None)
-
-                if base_item:
-                    st.caption(f"Entendimento selecionado: **{codigo_base_conhecimento(base_item.get('id'))}**")
-                    with st.expander("Visualizar entendimento selecionado"):
-                        st.markdown(f"**Resumo da dúvida:** {base_item.get('resumo_duvida', '')}")
-                        st.markdown(f"**Orientação adotada:** {base_item.get('orientacao_adotada', '')}")
-                        if base_item.get("fundamento_normativo"):
-                            st.markdown(f"**Fundamento normativo:** {base_item.get('fundamento_normativo')}")
-
-                    if st.button("Usar este entendimento na resposta", key=f"{chave_prefixo}_usar_base_{atendimento.get('id')}"):
-                        atendimento_atualizado = atendimento.copy()
-                        codigo = codigo_base_conhecimento(base_item.get("id"))
-                        texto_base = base_item.get("orientacao_adotada") or base_item.get("resumo_duvida") or ""
-
-                        trecho = (
-                            f"\\n\\n[Base de conhecimento utilizada: {codigo}]\\n"
-                            f"{texto_base}"
-                        )
-
-                        atual = atendimento_atualizado.get("providencia_adotada") or ""
-                        if trecho.strip() not in atual:
-                            atendimento_atualizado["providencia_adotada"] = (atual.rstrip() + trecho).strip()
-
-                        atendimento_atualizado["atualizado_em"] = agora_iso()
-                        salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "uso de base de conhecimento")
-                        registrar_uso_base_conhecimento(atendimento_atualizado, base_item, "Resposta", texto_base)
-                        st.success(f"Base {codigo} registrada e adicionada à providência adotada.")
-                        st.rerun()
-
-            usos_df = pd.DataFrame(usos_base_conhecimento_atendimento(atendimento.get("id")))
-            if not usos_df.empty:
-                st.markdown("##### Bases já utilizadas neste atendimento")
-                st.dataframe(usos_df, use_container_width=True, hide_index=True)
-
-            if usuario_eh_gestor():
-                st.divider()
-                st.markdown("##### Linha do tempo simplificada")
-                timeline_df = eventos_linha_tempo_atendimento(atendimento)
-                st.dataframe(timeline_df, use_container_width=True, hide_index=True)
-
-            st.divider()
-            st.markdown("##### Cadastrar conhecimento a partir deste atendimento")
-            st.caption("Use esta área quando o atendimento puder gerar um entendimento institucional ou um texto-padrão para respostas futuras.")
-
-            col_conh1, col_conh2 = st.columns(2)
-
-            with col_conh1:
-                if st.button("Cadastrar como entendimento na base", key=f"{chave_prefixo}_btn_criar_bc_{atendimento.get('id')}"):
-                    criar_item_base_conhecimento(atendimento)
-                    st.success("Entendimento cadastrado na base de conhecimento.")
-                    st.rerun()
-
-            with col_conh2:
-                with st.popover("Cadastrar texto-padrão / modelo de resposta"):
-                    titulo_modelo = st.text_input(
-                        "Título do modelo",
-                        value=f"Modelo - {atendimento.get('assunto') or 'Atendimento'}",
-                        key=f"{chave_prefixo}_titulo_modelo_at_{atendimento.get('id')}"
-                    )
-                    texto_padrao = st.text_area(
-                        "Texto do modelo",
-                        value=atendimento.get("providencia_adotada") or atendimento.get("conclusao") or "",
-                        height=180,
-                        key=f"{chave_prefixo}_texto_modelo_at_{atendimento.get('id')}"
-                    )
-                    fundamento_modelo = st.text_area(
-                        "Fundamento normativo, se houver",
-                        key=f"{chave_prefixo}_fund_modelo_at_{atendimento.get('id')}"
-                    )
-                    if st.button("Salvar modelo", key=f"{chave_prefixo}_btn_salvar_modelo_at_{atendimento.get('id')}"):
-                        if not texto_padrao.strip():
-                            st.warning("Informe o texto do modelo.")
-                        else:
-                            criar_modelo_resposta_do_atendimento(
-                                atendimento,
-                                titulo_modelo=titulo_modelo,
-                                texto_modelo=texto_padrao,
-                                fundamento_normativo=fundamento_modelo,
-                            )
-                            st.success("Modelo de resposta cadastrado.")
-                            st.rerun()
-
-            st.divider()
-            st.markdown("##### Comentários internos")
-            comentario = st.text_area(
-                "Novo comentário interno",
-                key=f"{chave_prefixo}_comentario_interno_{atendimento.get('id')}"
-            )
-            if st.button("Registrar comentário", key=f"{chave_prefixo}_btn_comentario_{atendimento.get('id')}"):
-                if not comentario.strip():
-                    st.warning("Informe o comentário.")
+                if resposta_zona_msg:
+                    registrar_mensagem_sistema(resposta_zona_msg, "success")
                 else:
-                    registrar_comentario_atendimento(atendimento.get("id"), comentario.strip())
-                    st.success("Comentário registrado.")
-                    st.rerun()
+                    registrar_mensagem_sistema("Atendimento atualizado com sucesso.", "success")
 
-            comentarios_df = pd.DataFrame(comentarios_atendimento_rows(atendimento.get("id")))
-            if not comentarios_df.empty:
-                st.dataframe(comentarios_df, use_container_width=True, hide_index=True)
-
-            st.markdown("##### Validação pela chefia")
-            st.caption("Use este fluxo quando a conclusão do atendimento depender de conferência pela chefia.")
-            situacao_atual = atendimento.get("situacao_validacao", "Não requerida")
-            st.markdown(f"Situação atual: **{situacao_atual}**")
-
-            col_val1, col_val2, col_val3 = st.columns(3)
-            with col_val1:
-                if usuario_eh_gestor() and st.button("Solicitar validação", key=f"{chave_prefixo}_solicitar_validacao_{atendimento.get('id')}"):
-                    atendimento_atualizado = atendimento.copy()
-                    atendimento_atualizado["requer_validacao"] = True
-                    atendimento_atualizado["situacao_validacao"] = "Pendente de validação"
-                    atendimento_atualizado["atualizado_em"] = agora_iso()
-                    salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "solicitação de validação")
-                    registrar_fluxo_validacao(atendimento_atualizado, "Pendente de validação", "Validação solicitada.")
-                    st.success("Validação solicitada.")
-                    st.rerun()
-
-            with col_val2:
-                if usuario_pode_validar(atendimento):
-                    if st.button("Validar", key=f"{chave_prefixo}_validar_{atendimento.get('id')}"):
-                        atendimento_atualizado = atendimento.copy()
-                        atendimento_atualizado["requer_validacao"] = True
-                        atendimento_atualizado["situacao_validacao"] = "Validado pela chefia"
-                        atendimento_atualizado["validado_por"] = email_usuario_logado()
-                        atendimento_atualizado["validado_em"] = agora_iso()
-                        atendimento_atualizado["atualizado_em"] = agora_iso()
-                        salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "validação pela chefia")
-                        registrar_fluxo_validacao(atendimento_atualizado, "Validado pela chefia", "Atendimento validado pela chefia.")
-                        st.success("Atendimento validado.")
-                        st.rerun()
-
-            with col_val3:
-                if usuario_pode_validar(atendimento):
-                    if st.button("Devolver para ajuste", key=f"{chave_prefixo}_devolver_validacao_{atendimento.get('id')}"):
-                        atendimento_atualizado = atendimento.copy()
-                        atendimento_atualizado["requer_validacao"] = True
-                        atendimento_atualizado["situacao_validacao"] = "Devolvido para ajuste"
-                        atendimento_atualizado["atualizado_em"] = agora_iso()
-                        salvar_alteracao_atendimento_unitaria(atendimento_atualizado, "devolução para ajuste")
-                        registrar_fluxo_validacao(atendimento_atualizado, "Devolvido para ajuste", "Atendimento devolvido para ajuste.")
-                        st.success("Atendimento devolvido para ajuste.")
-                        st.rerun()
-
-            fluxos_df = pd.DataFrame(fluxos_validacao_rows(atendimento.get("id")))
-            if not fluxos_df.empty:
-                st.markdown("Histórico de validação")
-                st.dataframe(fluxos_df, use_container_width=True, hide_index=True)
-
-            st.markdown("##### Linha do tempo do atendimento")
-            historico_df = pd.DataFrame(historico_atendimento_rows(atendimento.get("id")))
-            if historico_df.empty:
-                st.info("Nenhum evento de histórico registrado ainda.")
-            else:
-                st.dataframe(historico_df, use_container_width=True, hide_index=True)
-
-            st.divider()
-            st.markdown("##### Registrar comunicação")
-            tipo_com = st.selectbox(
-                "Tipo de comunicação",
-                ["E-mail", "Telefone", "WhatsApp", "Reunião", "Outro"],
-                key=f"{chave_prefixo}_tipo_com_{atendimento.get('id')}"
-            )
-            resumo_com = st.text_area(
-                "Resumo da comunicação",
-                key=f"{chave_prefixo}_resumo_com_{atendimento.get('id')}"
-            )
-            if st.button("Registrar comunicação", key=f"{chave_prefixo}_btn_com_{atendimento.get('id')}"):
-                if not resumo_com.strip():
-                    st.warning("Informe o resumo da comunicação.")
-                else:
-                    registrar_comunicacao(atendimento.get("id"), tipo_com, resumo_com.strip())
-                    st.success("Comunicação registrada.")
-                    st.rerun()
-
-            st.markdown("##### Anexos por link")
-            nome_anexo = st.text_input("Nome do documento/anexo", key=f"{chave_prefixo}_nome_anexo_{atendimento.get('id')}")
-            url_anexo = st.text_input("URL do documento/anexo", key=f"{chave_prefixo}_url_anexo_{atendimento.get('id')}")
-            if st.button("Registrar anexo", key=f"{chave_prefixo}_btn_anexo_{atendimento.get('id')}"):
-                if not nome_anexo.strip() or not url_anexo.strip():
-                    st.warning("Informe nome e URL do anexo.")
-                else:
-                    registrar_anexo(atendimento.get("id"), nome_anexo.strip(), url_anexo.strip())
-                    st.success("Anexo registrado.")
-                    st.rerun()
-
-            if atendimento.get("status") == STATUS_REALIZADO:
-                st.markdown("##### Reabrir atendimento")
-                motivo_reabertura = st.text_area("Motivo da reabertura", key=f"{chave_prefixo}_motivo_reabrir_{atendimento.get('id')}")
-                if st.button("Reabrir atendimento", key=f"{chave_prefixo}_btn_reabrir_{atendimento.get('id')}"):
-                    if not motivo_reabertura.strip():
-                        st.warning("Informe o motivo da reabertura.")
-                    else:
-                        lista_reabrir = atendimentos()
-                        for item in lista_reabrir:
-                            if int(item.get("id")) == int(atendimento.get("id")):
-                                antes = item.copy()
-                                registrar_reabertura(item, motivo_reabertura.strip())
-                                item["status"] = STATUS_EM_ATENDIMENTO
-                                item["data_conclusao"] = ""
-                                item["data_realizacao"] = ""
-                                item["realizado_em"] = ""
-                                item["atualizado_em"] = agora_iso()
-                                salvar_atendimentos(lista_reabrir)
-                                registrar_diferencas_atendimento(antes, item, "reabertura")
-                                st.success("Atendimento reaberto.")
-                                st.rerun()
-
-            st.markdown("##### Comunicações registradas")
-            st.dataframe(pd.DataFrame(comunicacoes_atendimento(atendimento.get("id"))), use_container_width=True, hide_index=True)
-
-            st.markdown("##### Anexos registrados")
-            st.dataframe(pd.DataFrame(anexos_atendimento(atendimento.get("id"))), use_container_width=True, hide_index=True)
-
-            st.markdown("##### Auditoria do atendimento")
-            st.dataframe(pd.DataFrame(auditoria_atendimento(atendimento.get("id"))), use_container_width=True, hide_index=True)
-
-
-        if eh_admin():
-            with st.expander("Excluir atendimento"):
-                st.warning("Esta ação excluirá definitivamente este atendimento da base.")
-                confirmar_exclusao = st.checkbox(
-                    f"Confirmo a exclusão do atendimento nº {atendimento.get('id')}",
-                    key=f"{chave_prefixo}_conf_excluir_{atendimento.get('id')}"
-                )
-                if st.button("Excluir atendimento", key=f"{chave_prefixo}_excluir_{atendimento.get('id')}", type="secondary"):
-                    if not confirmar_exclusao:
-                        st.warning("Marque a confirmação antes de excluir.")
-                    else:
-                        if excluir_atendimento_por_id(atendimento.get("id")):
-                            st.success("Atendimento excluído com sucesso.")
-                            st.rerun()
-                        else:
-                            st.error("Atendimento não encontrado para exclusão.")
-
-
-
-def obter_data_hora_atendimento(valor):
-    """
-    Converte datas/horas do sistema para datetime.
-    Aceita formatos ISO e dd/mm/aaaa hh:mm.
-    """
-    if valor is None:
-        return None
-
-    texto = str(valor).strip()
-    if not texto:
-        return None
-
-    for formato in ("%d/%m/%Y %H:%M", "%d/%m/%Y"):
-        try:
-            dt = datetime.strptime(texto, formato)
-            if formato == "%d/%m/%Y":
-                dt = datetime.combine(dt.date(), datetime.min.time())
-            return dt.replace(tzinfo=FUSO_HORARIO_BRASILIA)
-        except Exception:
-            pass
-
-    try:
-        texto_iso = texto.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(texto_iso)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=FUSO_HORARIO_BRASILIA)
-        return dt.astimezone(FUSO_HORARIO_BRASILIA)
-    except Exception:
-        return None
-
-
-def calcular_horas_entre_triagem_realizacao(atendimento):
-    """
-    Calcula o tempo, em horas, entre a triagem e a realização.
-    Marco inicial: criado_em/data_hora_triagem/data.
-    Marco final: realizado_em/concluido_em/atualizado_em.
-    """
-    inicio = (
-        obter_data_hora_atendimento(atendimento.get("criado_em"))
-        or obter_data_hora_atendimento(atendimento.get("data_hora_triagem"))
-        or obter_data_hora_atendimento(atendimento.get("data"))
-    )
-
-    fim = (
-        obter_data_hora_atendimento(atendimento.get("realizado_em"))
-        or obter_data_hora_atendimento(atendimento.get("concluido_em"))
-        or obter_data_hora_atendimento(atendimento.get("atualizado_em"))
-    )
-
-    if not inicio or not fim:
-        return None
-
-    horas = (fim - inicio).total_seconds() / 3600
-    if horas < 0:
-        return None
-
-    return horas
-
-
-def formatar_tempo_horas(horas):
-    if horas is None:
-        return "Não calculado"
-
-    try:
-        horas = float(horas)
-    except Exception:
-        return "Não calculado"
-
-    if horas < 1:
-        minutos = round(horas * 60)
-        return f"{minutos} min"
-
-    dias = int(horas // 24)
-    resto_horas = int(round(horas % 24))
-
-    if dias > 0:
-        return f"{dias}d {resto_horas}h"
-
-    return f"{horas:.1f}h".replace(".", ",")
-
-
-def dataframe_tempo_medio_por_fonte(lista_atendimentos):
-    registros = []
-
-    for atendimento in lista_atendimentos:
-        if atendimento.get("status") != STATUS_REALIZADO:
-            continue
-
-        fonte = atendimento.get("fonte") or "Não informado"
-        horas = calcular_horas_entre_triagem_realizacao(atendimento)
-
-        if horas is None:
-            continue
-
-        registros.append({
-            "Fonte": fonte,
-            "Tempo em horas": horas,
-            "ID": atendimento.get("id"),
-        })
-
-    if not registros:
-        return pd.DataFrame(columns=["Tipo/Fonte", "Atendimentos realizados", "Tempo médio"])
-
-    df_tempo = pd.DataFrame(registros)
-    ordem_fontes = ["Telefone", "E-mail", "WhatsApp", "Outro"]
-    linhas = []
-
-    for fonte in ordem_fontes:
-        base = df_tempo[df_tempo["Fonte"].astype(str).str.casefold() == fonte.casefold()]
-        if base.empty:
-            continue
-        media = base["Tempo em horas"].mean()
-        linhas.append({
-            "Tipo/Fonte": fonte,
-            "Atendimentos realizados": len(base),
-            "Tempo médio": formatar_tempo_horas(media),
-        })
-
-    fontes_mapeadas = {f.casefold() for f in ordem_fontes}
-    for fonte in sorted(df_tempo["Fonte"].dropna().astype(str).unique(), key=lambda x: x.casefold()):
-        if fonte.casefold() in fontes_mapeadas:
-            continue
-        base = df_tempo[df_tempo["Fonte"] == fonte]
-        media = base["Tempo em horas"].mean()
-        linhas.append({
-            "Tipo/Fonte": fonte,
-            "Atendimentos realizados": len(base),
-            "Tempo médio": formatar_tempo_horas(media),
-        })
-
-    return pd.DataFrame(linhas)
-
-
-def aplicar_filtro_tempo_atendimento(lista_atendimentos, faixa):
-    if not faixa or faixa == "Todos":
-        return lista_atendimentos
-
-    resultado = []
-
-    for atendimento in lista_atendimentos:
-        horas = calcular_horas_entre_triagem_realizacao(atendimento)
-
-        if horas is None:
-            if faixa == "Sem tempo calculado":
-                resultado.append(atendimento)
-            continue
-
-        if faixa == "Até 24 horas" and horas <= 24:
-            resultado.append(atendimento)
-        elif faixa == "De 1 a 3 dias" and 24 < horas <= 72:
-            resultado.append(atendimento)
-        elif faixa == "De 3 a 7 dias" and 72 < horas <= 168:
-            resultado.append(atendimento)
-        elif faixa == "Acima de 7 dias" and horas > 168:
-            resultado.append(atendimento)
-
-    return resultado
-
-
-def numero_br(valor):
-    try:
-        return f"{int(valor):,}".replace(",", ".")
-    except Exception:
-        return "0"
-
-
-def percentual_br(valor):
-    try:
-        return f"{float(valor):.2f}%".replace(".", ",")
-    except Exception:
-        return "0,00%"
-
-
-def normalizar_fonte(valor):
-    texto = str(valor or "").strip().lower()
-    if texto in ["e-mail", "email", "e mail"]:
-        return "E-mail"
-    if texto == "telefone":
-        return "Telefone"
-    if texto == "whatsapp":
-        return "WhatsApp"
-    if not texto:
-        return "Sem fonte"
-    return str(valor).strip()
-
-
-def tabela_dashboard_html(df_tabela):
-    if df_tabela is None or df_tabela.empty:
-        return '<div style="padding:10px;font-size:13px;color:#475569;">Nenhum registro encontrado.</div>'
-
-    cabecalhos = ''.join(
-        f'<th class="{"num" if i == len(df_tabela.columns) - 1 else ""}">{col}</th>'
-        for i, col in enumerate(df_tabela.columns)
-    )
-
-    linhas = []
-    for _, row in df_tabela.iterrows():
-        tds = []
-        for i, val in enumerate(row):
-            classe = 'num' if i == len(df_tabela.columns) - 1 else ''
-            tds.append(f'<td class="{classe}">{val}</td>')
-        linhas.append('<tr>' + ''.join(tds) + '</tr>')
-
-    return '<table class="dash-table"><thead><tr>' + cabecalhos + '</tr></thead><tbody>' + ''.join(linhas) + '</tbody></table>'
-
-
-def bloco_tabela_dashboard(titulo, df_tabela):
-    st.markdown(
-        f'<div class="dash-table-wrap"><div class="dash-table-title">{titulo}</div>{tabela_dashboard_html(df_tabela)}</div>',
-        unsafe_allow_html=True,
-    )
-
-
-def obter_serie_mensal(df):
-    if df is None or df.empty or 'Data' not in df.columns:
-        return pd.DataFrame(columns=['MesRef', 'Mes', 'Total'])
-
-    datas = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
-    serie = pd.DataFrame({'DataCalc': datas})
-    serie = serie.dropna(subset=['DataCalc'])
-    if serie.empty:
-        return pd.DataFrame(columns=['MesRef', 'Mes', 'Total'])
-
-    serie['MesRef'] = serie['DataCalc'].dt.to_period('M').astype(str)
-    serie['Mes'] = serie['DataCalc'].dt.strftime('%m/%Y')
-    resumo = serie.groupby(['MesRef', 'Mes']).size().reset_index(name='Total')
-    return resumo.sort_values('MesRef')
-
-
-
-
-# ============================================================
-# DASHBOARD SEGREGADO POR SEÇÃO
-# ============================================================
-
-def lista_por_secao(lista, secao):
-    return [a for a in lista if normalizar_secao(a.get("secao")) == secao]
-
-
-def df_por_secao_rapido(lista, secao):
-    base = lista_por_secao(lista, secao)
-    if not base:
-        return pd.DataFrame()
-    df = pd.DataFrame(base)
-    mapa = {
-        "status": "Status",
-        "fonte": "Fonte",
-        "assunto": "Assunto",
-        "zona_eleitoral": "Zona eleitoral",
-        "servidor": "Servidor(a)",
-    }
-    for origem, destino in mapa.items():
-        if origem in df.columns:
-            df[destino] = df[origem]
-        elif destino not in df.columns:
-            df[destino] = ""
-    return df
-
-
-def dataframe_status_por_secao(lista, secao):
-    df_secao = df_por_secao_rapido(lista, secao)
-    if df_secao.empty:
-        return pd.DataFrame(columns=["Situação", "Qtd."])
-
-    tabela = df_secao["Status"].fillna("Não informado").replace("", "Não informado").value_counts().reset_index()
-    tabela.columns = ["Situação", "Qtd."]
-    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
-    return tabela
-
-
-def dataframe_fontes_por_secao(lista, secao):
-    df_secao = df_por_secao_rapido(lista, secao)
-    if df_secao.empty:
-        return pd.DataFrame(columns=["Fonte", "Qtd."])
-
-    fontes = df_secao["Fonte"].apply(normalizar_fonte)
-    tabela = fontes.fillna("Não informado").replace("", "Não informado").value_counts().reset_index()
-    tabela.columns = ["Fonte", "Qtd."]
-    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
-    return tabela
-
-
-def dataframe_top_assuntos_por_secao(lista, secao, limite=5):
-    df_secao = df_por_secao_rapido(lista, secao)
-    if df_secao.empty:
-        return pd.DataFrame(columns=["Assunto", "Qtd."])
-
-    tabela = (
-        df_secao["Assunto"]
-        .fillna("Não informado")
-        .replace("", "Não informado")
-        .value_counts()
-        .head(limite)
-        .reset_index()
-    )
-    tabela.columns = ["Assunto", "Qtd."]
-    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
-    return tabela
-
-
-def dataframe_top_zonas_por_secao(lista, secao, limite=5):
-    df_secao = df_por_secao_rapido(lista, secao)
-    if df_secao.empty or "Zona eleitoral" not in df_secao.columns:
-        return pd.DataFrame(columns=["Zona eleitoral", "Qtd."])
-
-    tabela = (
-        df_secao["Zona eleitoral"]
-        .fillna("Não informado")
-        .replace("", "Não informado")
-        .value_counts()
-        .head(limite)
-        .reset_index()
-    )
-    tabela.columns = ["Zona eleitoral", "Qtd."]
-    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
-    return tabela
-
-
-def dataframe_top_servidores_por_secao(lista, secao, limite=5):
-    df_secao = df_por_secao_rapido(lista, secao)
-    if df_secao.empty:
-        return pd.DataFrame(columns=["Servidor(a)", "Qtd."])
-
-    tabela = (
-        df_secao["Servidor(a)"]
-        .fillna("Não informado")
-        .replace("", "Não informado")
-        .value_counts()
-        .head(limite)
-        .reset_index()
-    )
-    tabela.columns = ["Servidor(a)", "Qtd."]
-    tabela["Qtd."] = tabela["Qtd."].map(numero_br)
-    return tabela
-
-
-def metricas_secao(lista, secao):
-    base = lista_por_secao(lista, secao)
-    total = len(base)
-    realizados = sum(1 for a in base if a.get("status") == STATUS_REALIZADO)
-    triagem = sum(1 for a in base if a.get("status") == STATUS_CADASTRADO)
-    em_atendimento = sum(1 for a in base if a.get("status") == STATUS_EM_ATENDIMENTO)
-    pendentes = total - realizados
-    alertas = len(dataframe_alertas_gerenciais(base))
-    sem_resp = sum(1 for a in base if atendimento_sem_responsavel(a))
-    urgentes = sum(1 for a in base if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente")
-    percentual = (realizados / total * 100) if total else 0
-
-    return {
-        "total": total,
-        "triagem": triagem,
-        "em_atendimento": em_atendimento,
-        "realizados": realizados,
-        "pendentes": pendentes,
-        "alertas": alertas,
-        "sem_responsavel": sem_resp,
-        "urgentes": urgentes,
-        "percentual_realizado": percentual,
-    }
-
-
-
-
-
-def bloco_grafico_pizza_dashboard(titulo, df, coluna_rotulo, coluna_valor, altura=3.6):
-    st.markdown(f"<div class='table-box'><div class='table-box-title'>{titulo}</div>", unsafe_allow_html=True)
-
-    if df is None or df.empty or coluna_rotulo not in df.columns or coluna_valor not in df.columns:
-        st.info("Sem dados para exibir.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    dados = df.copy()[[coluna_rotulo, coluna_valor]].dropna()
-    if dados.empty:
-        st.info("Sem dados para exibir.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    dados[coluna_rotulo] = dados[coluna_rotulo].astype(str)
-    dados[coluna_valor] = pd.to_numeric(dados[coluna_valor], errors="coerce").fillna(0)
-    dados = dados[dados[coluna_valor] > 0]
-
-    if dados.empty:
-        st.info("Sem dados para exibir.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    if not MATPLOTLIB_DISPONIVEL:
-        st.dataframe(dados, use_container_width=True, hide_index=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    fig, ax = plt.subplots(figsize=(6.0, altura))
-    wedges, _, _ = ax.pie(
-        dados[coluna_valor],
-        startangle=90,
-        labels=None,
-        autopct=lambda p: f"{p:.1f}%" if p >= 4 else "",
-        pctdistance=0.76,
-        wedgeprops={"linewidth": 1.0, "edgecolor": "white"},
-        textprops={"fontsize": 9},
-    )
-    ax.axis("equal")
-    ax.legend(
-        wedges,
-        [f"{rot} ({int(val)})" for rot, val in zip(dados[coluna_rotulo], dados[coluna_valor])],
-        title=coluna_rotulo,
-        loc="center left",
-        bbox_to_anchor=(1.0, 0.5),
-        fontsize=9,
-        title_fontsize=10,
-        frameon=False,
-    )
-    fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-
-
-def bloco_grafico_linha_dashboard(titulo, df, coluna_x, coluna_y, coluna_grupo=None, altura=3.8):
-    st.markdown(f"<div class='table-box'><div class='table-box-title'>{titulo}</div>", unsafe_allow_html=True)
-
-    if df is None or df.empty or coluna_x not in df.columns or coluna_y not in df.columns:
-        st.info("Sem dados para exibir.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    dados = df.copy()
-    dados[coluna_y] = pd.to_numeric(dados[coluna_y], errors="coerce").fillna(0)
-    dados = dados[dados[coluna_y] > 0]
-
-    if dados.empty:
-        st.info("Sem dados para exibir.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    if not MATPLOTLIB_DISPONIVEL:
-        st.dataframe(dados, use_container_width=True, hide_index=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    try:
-        dados["_ordem_mes"] = pd.to_datetime("01/" + dados[coluna_x].astype(str), format="%d/%m/%Y", errors="coerce")
-        dados = dados.sort_values("_ordem_mes")
-    except Exception:
-        dados = dados.sort_values(coluna_x)
-
-    fig, ax = plt.subplots(figsize=(7.4, altura))
-
-    if coluna_grupo and coluna_grupo in dados.columns:
-        for grupo, sub in dados.groupby(coluna_grupo):
-            sub = sub.sort_values("_ordem_mes") if "_ordem_mes" in sub.columns else sub.sort_values(coluna_x)
-            ax.plot(sub[coluna_x].astype(str), sub[coluna_y], marker="o", linewidth=2.6, label=str(grupo))
-            for x, y in zip(sub[coluna_x].astype(str), sub[coluna_y]):
-                ax.annotate(str(int(y)), (x, y), textcoords="offset points", xytext=(0, 7), ha="center", fontsize=8)
-        ax.legend(loc="best", frameon=False, fontsize=9)
-    else:
-        ax.plot(dados[coluna_x].astype(str), dados[coluna_y], marker="o", linewidth=2.6)
-        for x, y in zip(dados[coluna_x].astype(str), dados[coluna_y]):
-            ax.annotate(str(int(y)), (x, y), textcoords="offset points", xytext=(0, 7), ha="center", fontsize=8)
-
-    ax.set_xlabel("")
-    ax.set_ylabel("Total")
-    ax.set_title(titulo, fontsize=11, fontweight="bold", pad=14)
-    ax.grid(True, axis="y", alpha=0.25)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="x", labelrotation=0)
-    fig.tight_layout()
-
-    st.pyplot(fig, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-def render_dashboard_secao(lista, secao):
-    """Renderiza o bloco gerencial completo de uma seção."""
-    m = metricas_secao(lista, secao)
-
-    st.markdown(f"<div class='dash-section-title'>{secao}</div>", unsafe_allow_html=True)
-
-    cards = [
-        ("Total", numero_br(m.get("total", 0)), "#174A7C"),
-        ("Triagem", numero_br(m.get("triagem", 0)), "#5B9BD5"),
-        ("Em atendimento", numero_br(m.get("em_atendimento", 0)), "#F2A365"),
-        ("Realizados", numero_br(m.get("realizados", 0)), "#74B24A"),
-        ("Pendentes", numero_br(m.get("pendentes", 0)), "#C2410C"),
-        ("% realizado", percentual_br(m.get("percentual_realizado", 0)), "#7A60A8"),
-    ]
-
-    cols = st.columns(len(cards))
-    for col, (label, value, color) in zip(cols, cards):
-        with col:
-            render_metric_card(label, value, color)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        bloco_tabela_dashboard(
-            f"{secao} - Situação dos atendimentos",
-            dataframe_status_por_secao(lista, secao),
-        )
-    with col2:
-        bloco_tabela_dashboard(
-            f"{secao} - Fontes de entrada",
-            dataframe_fontes_por_secao(lista, secao),
-        )
-
-    col3, col4, col5 = st.columns(3)
-    with col3:
-        bloco_tabela_dashboard(
-            f"{secao} - Principais assuntos",
-            dataframe_top_assuntos_por_secao(lista, secao, limite=5),
-        )
-    with col4:
-        bloco_tabela_dashboard(
-            f"{secao} - Zonas com maior demanda",
-            dataframe_top_zonas_por_secao(lista, secao, limite=5),
-        )
-    with col5:
-        bloco_tabela_dashboard(
-            f"{secao} - Atendimentos por servidor(a)",
-            dataframe_top_servidores_por_secao(lista, secao, limite=5),
-        )
-
-    alertas = dataframe_alertas_gerenciais(lista_por_secao(lista, secao)).head(8)
-    bloco_tabela_dashboard(f"{secao} - Demandas que exigem atenção", alertas)
-
-
-
-
-
-
-
-def classificar_eixo_competencia(assunto, descricao=""):
-    """
-    Classificação gerencial não vinculante para apoiar a leitura das atribuições
-    da COORZE, SEOCE e SEPRO, sem criar novas colunas no banco.
-    """
-    texto = f"{assunto or ''} {descricao or ''}".casefold()
-
-    if any(t in texto for t in [
-        "cadastro", "alistamento", "título", "titulo", "eleitor", "eleitoral", "biometria",
-        "elo", "infodip", "ase", "revisão", "revisao", "atendimento ao eleitor"
-    ]):
-        return "Cadastro eleitoral e atendimento ao eleitor"
-
-    if any(t in texto for t in [
-        "pje", "processo", "sentença", "sentenca", "cumprimento", "classe processual",
-        "petição", "peticao", "tramitação", "tramitacao", "depósito judicial",
-        "deposito judicial", "sisbajud", "renajud", "sniper", "bnmp", "alvará", "alvara",
-        "prestação de contas", "prestacao de contas", "partidária", "partidaria"
-    ]):
-        return "Orientação processual e processos originários"
-
-    if any(t in texto for t in [
-        "sistema", "portal", "intranet", "internet", "conteúdo", "conteudo",
-        "publicação", "publicacao", "página", "pagina", "web"
-    ]):
-        return "Portal, sistemas e conteúdos institucionais"
-
-    if any(t in texto for t in [
-        "capacitação", "capacitacao", "treinamento", "curso", "oficina", "webinário",
-        "webinario", "boas práticas", "boas praticas"
-    ]):
-        return "Capacitação e disseminação de conhecimento"
-
-    if any(t in texto for t in [
-        "resolução", "resolucao", "provimento", "portaria", "normativo", "norma",
-        "recomendação", "recomendacao", "orientação", "orientacao", "manual", "cartilha",
-        "roteiro", "modelo"
-    ]):
-        return "Atos normativos, orientações e instrumentos de apoio"
-
-    if any(t in texto for t in [
-        "diagnóstico", "diagnostico", "levantamento", "indicador", "relatório", "relatorio",
-        "monitoramento", "acompanhamento", "projeto", "programa"
-    ]):
-        return "Diagnóstico, monitoramento e desenvolvimento das zonas"
-
-    return "Demais demandas de orientação"
-
-
-def unidade_sugerida_por_eixo(eixo):
-    if eixo == "Cadastro eleitoral e atendimento ao eleitor":
-        return "SEOCE"
-    if eixo == "Orientação processual e processos originários":
-        return "SEPRO"
-    if eixo in [
-        "Portal, sistemas e conteúdos institucionais",
-        "Capacitação e disseminação de conhecimento",
-        "Atos normativos, orientações e instrumentos de apoio",
-        "Diagnóstico, monitoramento e desenvolvimento das zonas",
-    ]:
-        return "COORZE / unidade técnica"
-    return "COORZE"
-
-
-def dataframe_eixos_competencia(lista):
-    linhas = []
-    for a in lista or []:
-        assunto = a.get("assunto") or a.get("Assunto") or "Não informado"
-        descricao = a.get("descricao") or a.get("Descrição") or a.get("observacoes") or ""
-        eixo = classificar_eixo_competencia(assunto, descricao)
-        linhas.append({
-            "Eixo de competência": eixo,
-            "Unidade sugerida": unidade_sugerida_por_eixo(eixo),
-            "Qtd.": 1,
-        })
-
-    if not linhas:
-        return pd.DataFrame(columns=["Eixo de competência", "Unidade sugerida", "Qtd."])
-
-    df = pd.DataFrame(linhas)
-    resumo = df.groupby(["Eixo de competência", "Unidade sugerida"]).size().reset_index(name="Qtd.")
-    return resumo.sort_values("Qtd.", ascending=False)
-
-
-def dataframe_recomendacoes_gerenciais(lista):
-    """
-    Gera recomendações automáticas a partir da concentração de demandas,
-    sem substituir análise da chefia.
-    """
-    linhas = []
-
-    top_assuntos = dataframe_top_assuntos_gerencial(lista, 8)
-    if not top_assuntos.empty:
-        total = len(lista or [])
-        for _, row in top_assuntos.iterrows():
-            assunto = row.get("Assunto", "Não informado")
-            qtd = int(row.get("Qtd.", 0) or 0)
-            proporcao = (qtd / total * 100) if total else 0
-            eixo = classificar_eixo_competencia(assunto)
-
-            if qtd >= 10 or proporcao >= 8:
-                providencia = "Avaliar elaboração ou atualização de orientação, modelo de resposta ou item da base de conhecimento."
-                if eixo == "Cadastro eleitoral e atendimento ao eleitor":
-                    providencia = "Avaliar orientação SEOCE, roteiro operacional ou comunicado sobre cadastro/atendimento ao eleitor."
-                elif eixo == "Orientação processual e processos originários":
-                    providencia = "Avaliar orientação SEPRO, fluxo processual, modelo de despacho ou guia operacional."
-                elif eixo == "Capacitação e disseminação de conhecimento":
-                    providencia = "Avaliar ação de capacitação, oficina ou material de boas práticas."
-                elif eixo == "Portal, sistemas e conteúdos institucionais":
-                    providencia = "Avaliar atualização do portal da Corregedoria, intranet ou página de apoio às zonas."
-
-                linhas.append({
-                    "Prioridade": "Alta" if qtd >= 20 or proporcao >= 15 else "Média",
-                    "Achado": f"Recorrência do assunto: {assunto}",
-                    "Eixo": eixo,
-                    "Unidade": unidade_sugerida_por_eixo(eixo),
-                    "Providência sugerida": providencia,
-                    "Qtd.": qtd,
-                })
-
-    vencidos = len([a for a in lista or [] if prazo_vencido(a)])
-    if vencidos:
-        linhas.append({
-            "Prioridade": "Alta",
-            "Achado": "Existem demandas com prazo vencido",
-            "Eixo": "Diagnóstico, monitoramento e desenvolvimento das zonas",
-            "Unidade": "COORZE",
-            "Providência sugerida": "Avaliar redistribuição, reforço de acompanhamento e definição de plano de saneamento.",
-            "Qtd.": vencidos,
-        })
-
-    sem_resp = len([
-        a for a in lista or []
-        if atendimento_aberto(a) and not str(a.get("servidor") or "").strip()
-    ])
-    if sem_resp:
-        linhas.append({
-            "Prioridade": "Alta",
-            "Achado": "Demandas abertas sem responsável",
-            "Eixo": "Planejamento, coordenação e supervisão",
-            "Unidade": "COORZE",
-            "Providência sugerida": "Promover triagem imediata e designação de responsável.",
-            "Qtd.": sem_resp,
-        })
-
-    if not linhas:
-        linhas.append({
-            "Prioridade": "Informativa",
-            "Achado": "Não foram identificados alertas críticos no recorte atual",
-            "Eixo": "Gestão",
-            "Unidade": "COORZE",
-            "Providência sugerida": "Manter acompanhamento periódico dos indicadores.",
-            "Qtd.": 0,
-        })
-
-    return pd.DataFrame(linhas)
-
-
-def dataframe_matriz_competencias():
-    return pd.DataFrame([
-        {
-            "Unidade": "COORZE",
-            "Foco": "Planejamento, coordenação, supervisão, uniformização, diagnóstico, capacitação e portal",
-            "Como o SIGA-COR apoia": "Painel consolidado, inteligência gerencial, leitura executiva, alertas e relatórios de acompanhamento."
-        },
-        {
-            "Unidade": "SEOCE",
-            "Foco": "Cadastro Eleitoral, atendimento ao eleitor, rotinas cartorárias e cronogramas operacionais",
-            "Como o SIGA-COR apoia": "Classificação de demandas de cadastro, recorrências, dúvidas das zonas e indicação de necessidade de orientação."
-        },
-        {
-            "Unidade": "SEPRO",
-            "Foco": "Legislação eleitoral e partidária, prática processual, processos originários e procedimentos administrativos",
-            "Como o SIGA-COR apoia": "Base de conhecimento, modelos de resposta, histórico de orientações, assuntos processuais recorrentes e relatórios técnicos."
-        },
-    ])
-
-
-def bloco_competencias_coorze():
-    st.markdown(
-        """
-        <div style="
-            background:#FFFFFF;
-            border:1px solid #DDE8F5;
-            border-left:6px solid #0E63B6;
-            border-radius:16px;
-            padding:16px 18px;
-            box-shadow:0 8px 18px rgba(8,42,82,.055);
-            margin:12px 0 18px 0;
-            color:#173A5E;
-            line-height:1.55;
-        ">
-            <div style="font-size:14px;font-weight:950;color:#082A52;margin-bottom:6px;">
-                Enquadramento institucional da leitura gerencial
-            </div>
-            A inteligência abaixo cruza os registros do SIGA-COR com os eixos de atuação da COORZE, SEOCE e SEPRO,
-            apoiando a identificação de demandas recorrentes, necessidades de orientação, capacitação, atualização de
-            conteúdos, aperfeiçoamento de rotinas e acompanhamento das zonas eleitorais.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def tela_inteligencia_gerencial():
-    aviso_modo_visualizacao()
-    st.title("Inteligência Gerencial")
-    st.caption("Leitura estratégica dos atendimentos, recorrências, gargalos, riscos operacionais e aderência às atribuições da COORZE, SEOCE e SEPRO.")
-    st.info("Painel estratégico da COORZE: leitura automática, recorrências, eixos de competência, riscos, zonas demandantes e recomendações gerenciais.")
-
-    lista = filtros_base(atendimentos())
-
-    bloco_competencias_coorze()
-    bloco_leitura_executiva(gerar_leitura_executiva(lista))
-
-    total = len(lista or [])
-    realizados = len([a for a in lista if a.get("status") == STATUS_REALIZADO])
-    pendentes = total - realizados
-    taxa = (realizados / total * 100) if total else 0
-    vencidos = len([a for a in lista if prazo_vencido(a)])
-    urgentes = len([
-        a for a in lista
-        if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente"
-    ])
-
-    st.markdown("<div class='dash-section-title'>Indicadores estratégicos</div>", unsafe_allow_html=True)
-    k1, k2, k3, k4, k5 = st.columns(5)
-    with k1:
-        render_metric_card("Total", numero_br(total), "#174A7C")
-    with k2:
-        render_metric_card("Realizados", numero_br(realizados), "#2E7D32")
-    with k3:
-        render_metric_card("Pendentes", numero_br(pendentes), "#F2994A")
-    with k4:
-        render_metric_card("% realizado", percentual_br(taxa), "#6F42C1")
-    with k5:
-        render_metric_card("Prazo vencido", numero_br(vencidos), "#B00020" if vencidos else "#174A7C")
-
-    st.markdown("<div class='dash-section-title'>Recorrências e concentração de demanda</div>", unsafe_allow_html=True)
-
-    top_assuntos_raw = dataframe_top_assuntos_gerencial(lista, 8)
-    top_servidores_raw = dataframe_top_servidores_normalizado(lista, 8)
-    top_zonas_raw = dataframe_top_zonas_gerencial(lista, 8)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        bloco_grafico_pizza_dashboard("Assuntos mais recorrentes", top_assuntos_raw, "Assunto", "Qtd.")
-    with c2:
-        bloco_grafico_pizza_dashboard("Distribuição por servidor(a)", top_servidores_raw, "Servidor(a)", "Qtd.")
-
-    c3, c4 = st.columns([1.35, 1])
-    with c3:
-        bloco_grafico_linha_dashboard(
-            "Evolução mensal por seção",
-            dataframe_evolucao_mensal_por_secao(lista).head(12),
-            "Mês",
-            "Total",
-            "Seção",
-        )
-    with c4:
-        bloco_tabela_dashboard(
-            "Riscos e alertas operacionais",
-            dataframe_para_tabela_br(dataframe_prazos_gerencial(lista)),
-        )
-
-    st.markdown("<div class='dash-section-title'>Zonas e assuntos críticos</div>", unsafe_allow_html=True)
-    z1, z2 = st.columns(2)
-    with z1:
-        bloco_grafico_pizza_dashboard("Zonas mais demandantes", top_zonas_raw, "Zona eleitoral", "Qtd.")
-    with z2:
-        alertas = dataframe_alertas_gerenciais(lista)
-        bloco_tabela_dashboard("Demandas que exigem atenção", alertas.head(10) if not alertas.empty else alertas)
-
-
-    st.markdown("<div class='dash-section-title'>Aderência às competências COORZE / SEOCE / SEPRO</div>", unsafe_allow_html=True)
-
-    eixos = dataframe_eixos_competencia(lista)
-    recomendacoes = dataframe_recomendacoes_gerenciais(lista)
-
-    ec1, ec2 = st.columns([1.15, 1])
-    with ec1:
-        bloco_grafico_pizza_dashboard("Demandas por eixo de competência", eixos, "Eixo de competência", "Qtd.")
-    with ec2:
-        bloco_tabela_dashboard("Recomendações automáticas de gestão", dataframe_para_tabela_br(recomendacoes.head(8)))
-
-    with st.expander("Matriz institucional de competências", expanded=False):
-        bloco_tabela_dashboard("COORZE, SEOCE e SEPRO - matriz de atuação", dataframe_matriz_competencias())
-
-    if usuario_pode_ver_governanca():
-        st.markdown("### Converter recomendação em plano de ação")
-        recomendacoes_plano = dataframe_recomendacoes_gerenciais(lista)
-        if recomendacoes_plano.empty:
-            st.info("Não há recomendações para converter.")
-        else:
-            opcoes_rec = [
-                f"{idx} - {row.get('Prioridade')} - {row.get('Achado')}"
-                for idx, row in recomendacoes_plano.iterrows()
-            ]
-            escolha_rec = st.selectbox("Selecionar recomendação", opcoes_rec, key="converter_rec_plano")
-            idx_rec = int(str(escolha_rec).split(" - ")[0])
-            rec = recomendacoes_plano.loc[idx_rec]
-            if st.button("Criar plano de ação a partir da recomendação", key="btn_converter_rec_plano"):
-                criar_plano_acao_de_achado(
-                    rec.get("Achado", ""),
-                    rec.get("Providência sugerida", ""),
-                    rec.get("Unidade", "COORZE"),
-                    rec.get("Prioridade", "Normal"),
-                    "Inteligência gerencial"
-                )
-                st.success("Plano de ação criado.")
                 st.rerun()
-
-    with st.expander("Tabelas de apoio da inteligência gerencial", expanded=False):
-        a1, a2, a3 = st.columns(3)
-        with a1:
-            bloco_tabela_dashboard("Top assuntos", dataframe_para_tabela_br(top_assuntos_raw))
-        with a2:
-            bloco_tabela_dashboard("Top servidores", dataframe_para_tabela_br(top_servidores_raw))
-        with a3:
-            bloco_tabela_dashboard("Top zonas", dataframe_para_tabela_br(top_zonas_raw))
-
-
-
-def tela_dashboard():
-    aviso_modo_visualizacao()
-    st.subheader("Dashboard")
-
-    lista = filtros_base(atendimentos())
-    lista, filtro_rapido_dashboard = render_filtros_rapidos(lista, "dashboard")
-    df = atendimentos_df(lista)
-
-    total = len(df)
-    realizados = int((df["Status"] == STATUS_REALIZADO).sum()) if not df.empty else 0
-    pendentes = int(((df["Status"] == STATUS_CADASTRADO) | (df["Status"] == STATUS_EM_ATENDIMENTO)).sum()) if not df.empty else 0
-    percentual = (realizados / total * 100) if total else 0
-
-    datas_parse = pd.to_datetime(df["Data"], dayfirst=True, errors="coerce") if not df.empty else pd.Series(dtype="datetime64[ns]")
-
-    periodo_ini = ""
-    periodo_fim = ""
-    if not df.empty and datas_parse.notna().any():
-        periodo_ini = datas_parse.min().strftime("%d/%m/%Y")
-        periodo_fim = datas_parse.max().strftime("%d/%m/%Y")
-
-    usuarios_online = usuarios_logados()
-
-    secoes_disponiveis = secoes_atendimento()
-    contagem_secoes = {
-        secao: len(lista_por_secao(lista, secao))
-        for secao in secoes_disponiveis
-    }
-
-    st.markdown(
-        f"<div class='dashboard-subinfo'>Base: registros do sistema | Filtro rápido: {filtro_rapido_dashboard} | Registros: {numero_br(total)} | Período válido: {periodo_ini or '-'} a {periodo_fim or '-'} | Atualizado em: {agora_texto_brasilia()}</div>",
-        unsafe_allow_html=True,
-    )
-
-    render_visao_executiva(lista, "Resumo executivo")
-
-    st.markdown("<div class='dash-section-title'>Visão consolidada da Corregedoria</div>", unsafe_allow_html=True)
-
-    metricas_gerais = [
-        ("Total geral", numero_br(total), "#174A7C"),
-        ("Realizados", numero_br(realizados), "#74B24A"),
-        ("Pendentes", numero_br(pendentes), "#F2A365"),
-        ("% realizado", percentual_br(percentual), "#7A60A8"),
-        ("Usuários ativos agora", numero_br(len(usuarios_online)), "#0F766E"),
-    ]
-
-    for secao in secoes_disponiveis:
-        cor = "#174A7C" if secao == "SEPRO" else "#7A60A8"
-        metricas_gerais.append((f"{secao} - registros", numero_br(contagem_secoes.get(secao, 0)), cor))
-
-    cols = st.columns(len(metricas_gerais))
-    for col, (label, value, color) in zip(cols, metricas_gerais):
-        with col:
-            render_metric_card(label, value, color)
-
-    resumo_secao = dataframe_resumo_por_secao(lista)
-    alertas_gerais = dataframe_alertas_gerenciais(lista)
-    qualidade_geral = dataframe_qualidade_base(lista)
-    evolucao_secao = dataframe_evolucao_mensal_por_secao(lista)
-
-    c1, c2 = st.columns([1, 1.4])
-    with c1:
-        bloco_tabela_dashboard("Resumo comparativo por seção", resumo_secao)
-        bloco_tabela_dashboard("Qualidade cadastral geral", qualidade_geral)
-    with c2:
-        bloco_tabela_dashboard("Alertas gerenciais gerais", alertas_gerais.head(10))
-        bloco_grafico_linha_dashboard(
-            "Evolução mensal por seção",
-            evolucao_secao.head(12),
-            "Mês",
-            "Total",
-            "Seção",
-        )
-        with st.expander("Ver tabela de apoio - evolução mensal por seção", expanded=False):
-            evolucao_secao_tabela = evolucao_secao.head(12).copy()
-            if "Total" in evolucao_secao_tabela.columns:
-                evolucao_secao_tabela["Total"] = evolucao_secao_tabela["Total"].map(numero_br)
-            bloco_tabela_dashboard("Evolução mensal por seção", evolucao_secao_tabela)
-
-    st.markdown(
-        "<div class='mini-note'><b>Leitura gerencial:</b> a visão consolidada apresenta apenas o panorama geral. A análise operacional deve ser feita nos painéis segregados de SEPRO e SEOCE abaixo.</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.divider()
-
-    st.markdown("<div class='dash-section-title'>Visão segregada por unidade</div>", unsafe_allow_html=True)
-
-    tabs = st.tabs(secoes_disponiveis)
-    for aba, secao in zip(tabs, secoes_disponiveis):
-        with aba:
-            render_dashboard_secao(lista, secao)
-
-    st.divider()
-
-    st.markdown("<div class='dash-section-title'>Quadros gerais complementares</div>", unsafe_allow_html=True)
-
-    situacao = pd.DataFrame(columns=["Situação", "Qtd."])
-    fonte_tbl = pd.DataFrame(columns=["Fonte", "Qtd."])
-    top_servidores = pd.DataFrame(columns=["Servidor(a)", "Qtd."])
-    top_servidores_raw = pd.DataFrame(columns=["Servidor(a)", "Qtd."])
-    top_assuntos = pd.DataFrame(columns=["Assunto", "Qtd."])
-    top_assuntos_raw = pd.DataFrame(columns=["Assunto", "Qtd."])
-    top_zonas = pd.DataFrame(columns=["Zona eleitoral", "Qtd."])
-    meses_maior = pd.DataFrame(columns=["Mês", "Total"])
-    ultimos_meses = pd.DataFrame(columns=["Mês", "Total"])
-
-    fontes_norm = df["Fonte"].apply(normalizar_fonte) if not df.empty else pd.Series(dtype="object")
-    mensal = obter_serie_mensal(df)
-
-    if not df.empty:
-        situacao = df["Status"].fillna("Não informado").replace("", "Não informado").value_counts().reset_index()
-        situacao.columns = ["Situação", "Qtd."]
-        situacao["Qtd."] = situacao["Qtd."].map(numero_br)
-
-        fonte_tbl = fontes_norm.value_counts().reset_index()
-        fonte_tbl.columns = ["Fonte", "Qtd."]
-        fonte_tbl["Qtd."] = fonte_tbl["Qtd."].map(numero_br)
-
-        temp_servidores = df["Servidor(a)"].fillna("Não informado").replace("", "Não informado").apply(normalizar_nome_gerencial)
-        top_servidores_raw = temp_servidores.value_counts().head(8).reset_index()
-        top_servidores_raw.columns = ["Servidor(a)", "Qtd."]
-        top_servidores = top_servidores_raw.copy()
-        top_servidores["Qtd."] = top_servidores["Qtd."].map(numero_br)
-
-        top_assuntos_raw = df["Assunto"].fillna("Não informado").replace("", "Não informado").value_counts().head(8).reset_index()
-        top_assuntos_raw.columns = ["Assunto", "Qtd."]
-        top_assuntos = top_assuntos_raw.copy()
-        top_assuntos["Qtd."] = top_assuntos["Qtd."].map(numero_br)
-
-        if "Zona eleitoral" in df.columns:
-            top_zonas = (
-                df["Zona eleitoral"]
-                .fillna("Não informado")
-                .replace("", "Não informado")
-                .value_counts()
-                .head(5)
-                .reset_index()
-            )
-            top_zonas.columns = ["Zona eleitoral", "Qtd."]
-            top_zonas["Qtd."] = top_zonas["Qtd."].map(numero_br)
-
-        if not mensal.empty:
-            meses_maior = mensal.sort_values(["Total", "MesRef"], ascending=[False, False]).head(5)[["Mes", "Total"]].copy()
-            meses_maior["Total"] = meses_maior["Total"].map(numero_br)
-            ultimos_meses = mensal.sort_values("MesRef", ascending=False).head(8)[["Mes", "Total"]].copy()
-            ultimos_meses["Total"] = ultimos_meses["Total"].map(numero_br)
-
-    situacao_usuario = pd.DataFrame(columns=["Servidor(a)", "Triagem", "Em atendimento", "Atendimento realizado", "Total"])
-    if not df.empty:
-        base_usuario = df.copy()
-        base_usuario["Servidor(a)"] = base_usuario["Servidor(a)"].fillna("Não informado").replace("", "Não informado")
-        situacao_usuario = pd.crosstab(base_usuario["Servidor(a)"], base_usuario["Status"]).reset_index()
-
-        for coluna in STATUS_OPCOES:
-            if coluna not in situacao_usuario.columns:
-                situacao_usuario[coluna] = 0
-
-        situacao_usuario["Total"] = situacao_usuario[STATUS_OPCOES].sum(axis=1)
-        situacao_usuario = situacao_usuario.sort_values("Total", ascending=False)
-
-        situacao_usuario = situacao_usuario[
-            ["Servidor(a)", STATUS_CADASTRADO, STATUS_EM_ATENDIMENTO, STATUS_REALIZADO, "Total"]
-        ].rename(columns={
-            STATUS_CADASTRADO: "Triagem",
-            STATUS_EM_ATENDIMENTO: "Em atendimento",
-            STATUS_REALIZADO: "Atendimento realizado",
-        })
-
-        for coluna in ["Triagem", "Em atendimento", "Atendimento realizado", "Total"]:
-            situacao_usuario[coluna] = situacao_usuario[coluna].map(numero_br)
-
-    bloco_tabela_dashboard("Situação dos atendimentos por usuário - geral", situacao_usuario)
-
-    area1, area2, area3 = st.columns([2.2, 2.2, 0.9])
-    with area1:
-        bloco_tabela_dashboard("Situação geral", situacao)
-    with area2:
-        bloco_tabela_dashboard("Fonte do atendimento - geral", fonte_tbl)
-    with area3:
-        bloco_tabela_dashboard("Meses com maior volume - geral", meses_maior)
-
-    area4, area5, area6 = st.columns([2.2, 2.2, 0.9])
-    with area4:
-        bloco_grafico_pizza_dashboard("Top servidores - geral", top_servidores_raw, "Servidor(a)", "Qtd.")
-        with st.expander("Ver tabela de apoio", expanded=False):
-            bloco_tabela_dashboard("Top servidores - geral", top_servidores)
-    with area5:
-        bloco_grafico_pizza_dashboard("Top assuntos - geral", top_assuntos_raw, "Assunto", "Qtd.")
-        with st.expander("Ver tabela de apoio", expanded=False):
-            bloco_tabela_dashboard("Top assuntos - geral", top_assuntos)
-    with area6:
-        bloco_tabela_dashboard("Últimos meses - geral", ultimos_meses)
-
-    st.markdown(
-        "<div class='mini-note'><b>Nota:</b> o dashboard agora separa a análise por unidade, preservando uma visão consolidada apenas para comparação geral da Corregedoria.</div>",
-        unsafe_allow_html=True,
-    )
-
-
-def tela_novo_atendimento():
-    exibir_mensagem_sistema()
-    st.subheader("Novo atendimento")
-    aviso_modo_visualizacao()
-    st.caption("Cadastro rápido: informe apenas data, origem da demanda, zona eleitoral e responsável. Os demais campos serão preenchidos na fase Em atendimento.")
-
-    if not usuario_pode_editar_atendimentos():
-        st.warning("Seu perfil permite consulta, sem criação de atendimento.")
-        return
-
-    with st.form("form_novo_atendimento_simplificado"):
-        col1, col2 = st.columns(2)
-        with col1:
-            data_atendimento = st.date_input(
-                "Data do atendimento",
-                value=agora_brasilia().date(),
-                format="DD/MM/YYYY",
-                key="novo_atendimento_data_simplificado"
-            )
-            origem = st.text_input(
-                "Quem originou a demanda/chamada",
-                key="novo_atendimento_origem_simplificado"
-            )
-
-        with col2:
-            zona = st.selectbox(
-                "Zona eleitoral",
-                opcoes_zonas_nacionais(TRIBUNAL_PADRAO),
-                key="novo_atendimento_zona_simplificado"
-            )
-
-            servidores = nomes_usuarios_ativos() or []
-            usuario = usuario_logado() or {}
-            nome_usuario = usuario.get("nome") or usuario.get("email") or "Não informado"
-
-            if nome_usuario not in servidores:
-                servidores = [nome_usuario] + servidores
-
-            if "Não informado" not in servidores:
-                servidores = ["Não informado"] + servidores
-
-            servidor = st.selectbox(
-                "Responsável",
-                servidores,
-                index=servidores.index(nome_usuario) if nome_usuario in servidores else 0,
-                key="novo_atendimento_responsavel_simplificado"
-            )
-
-        secao_padrao = normalizar_secao((usuario_logado() or {}).get("secao") or "SEPRO")
-        lista_assuntos = assuntos(secao_padrao)
-        assunto = st.selectbox(
-            f"Assunto ({secao_padrao})",
-            lista_assuntos,
-            index=lista_assuntos.index("Não informado") if "Não informado" in lista_assuntos else 0,
-            key="novo_atendimento_assunto_simplificado"
-        )
-
-        enviar = st.form_submit_button("Cadastrar e enviar para Em atendimento", type="primary")
-
-    if enviar:
-        if not origem.strip():
-            st.warning("Informe quem originou a demanda/chamada.")
-            return
-
-        lista = atendimentos()
-        novo_id = proximo_id(lista)
-
-        item = {
-            "id": novo_id,
-            "data": data_atendimento.strftime("%d/%m/%Y"),
-            "status": STATUS_EM_ATENDIMENTO,
-            "secao": secao_padrao,
-            "tribunal": TRIBUNAL_PADRAO,
-            "uf": UF_PADRAO,
-            "unidade_responsavel": UNIDADE_CORREGEDORIA_PADRAO,
-            "requer_validacao": False,
-            "situacao_validacao": "Não requerida",
-            "validado_por": "",
-            "validado_em": "",
-            "servidor": servidor,
-            "fonte": "Não informado",
-            "assunto": assunto or "Não informado",
-            "zona_eleitoral": zona,
-            "origem": origem.strip(),
-            "prioridade": "Não informado",
-            "complexidade": "Não informada",
-            "prazo_limite": "",
-            "protocolo": "",
-            "descricao": "",
-            "observacoes": "",
-            "providencia_adotada": "",
-            "conclusao": "",
-            "data_realizacao": "",
-            "criado_por": email_usuario_logado(),
-            "criado_em": agora_iso(),
-            "atualizado_em": agora_iso(),
-            "data_inicio_atendimento": agora_iso(),
-            "data_conclusao": "",
-            "tempo_triagem_horas": 0,
-            "tempo_atendimento_horas": None,
-            "tempo_total_horas": None,
-            "triado_por": email_usuario_logado(),
-            "triado_em": agora_iso(),
-            "natureza_demanda": "Orientação procedimental ordinária",
-            "eixo_competencia": "",
-            "unidade_sugerida": "",
-            "exige_validacao_tecnica": False,
-            "unidade_tecnica_validadora": "Não necessária",
-            "status_validacao_tecnica": "Não necessária",
-            "exige_coajuc": False,
-            "motivo_escalonamento": "",
-            "potencial_uniformizacao": "Baixo",
-            "produto_institucional_sugerido": "Não sugerido",
-        }
-
-        lista.append(item)
-        salvar_atendimentos(lista)
-
-        email_ok, email_msg = enviar_email_demanda_cadastrada_unidade(item)
-
-        try:
-            registrar_historico_atendimento(
-                novo_id,
-                "Cadastro rápido",
-                "Atendimento cadastrado diretamente em Em atendimento",
-                f"Origem: {origem.strip()} | Zona: {zona} | Assunto: {assunto or 'Não informado'} | Responsável: {servidor}"
-            )
-            registrar_historico_atendimento(
-                novo_id,
-                "E-mail automático",
-                "Comunicação interna de cadastramento",
-                f"Destinatário: {email_interno_secao(item.get('secao'))} | Resultado: {email_msg}"
-            )
-        except Exception:
-            pass
-
-        if email_ok:
-            registrar_mensagem_sistema(
-                "success",
-                f"Atendimento nº {novo_id} cadastrado, enviado para Em atendimento e comunicado por e-mail à unidade. {email_msg}"
-            )
-        else:
-            registrar_mensagem_sistema(
-                "warning",
-                f"Atendimento nº {novo_id} cadastrado e enviado para Em atendimento. "
-                f"O e-mail automático para a unidade não foi enviado. Detalhe: {email_msg}"
-            )
-
-        ir_para_pagina("Em atendimento")
-        st.rerun()
-
 
 
 def tela_status(nome_status, titulo, texto_ajuda):
     exibir_mensagem_sistema()
     st.subheader(titulo)
-    st.caption(texto_ajuda)
+    st.markdown(
+        f"""
+        <div class="section-hint">
+            {html.escape(str(texto_ajuda))}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     lista_base_status = [a for a in filtros_base(atendimentos()) if a.get("status") == nome_status]
 
