@@ -6071,11 +6071,81 @@ def tela_meus_atendimentos():
 # PAINEL GERENCIAL - CÁLCULOS SEM NOVAS COLUNAS NO BANCO
 # ============================================================
 
+
+
+def obter_data_hora_atendimento(valor):
+    """
+    Converte valores de data/hora do atendimento para datetime.
+    Aceita ISO, dd/mm/aaaa, dd/mm/aaaa hh:mm e valores já datetime/date.
+    Retorna None quando não conseguir interpretar.
+    """
+    if valor is None or valor == "":
+        return None
+
+    if isinstance(valor, datetime):
+        return valor
+
+    if isinstance(valor, date):
+        return datetime.combine(valor, datetime.min.time())
+
+    texto = str(valor).strip().replace("\n", " ").replace("\r", " ")
+    if not texto:
+        return None
+
+    try:
+        if texto.endswith("Z"):
+            texto = texto[:-1] + "+00:00"
+
+        texto_iso = texto
+        if " " in texto_iso and "T" not in texto_iso and "-" in texto_iso[:10]:
+            texto_iso = texto_iso.replace(" ", "T", 1)
+
+        dt = datetime.fromisoformat(texto_iso)
+        if dt.tzinfo is not None:
+            return dt.astimezone(FUSO_HORARIO_BRASILIA).replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+
+    for fmt in (
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y",
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d/%m/%y",
+    ):
+        try:
+            return datetime.strptime(texto[:19], fmt)
+        except Exception:
+            pass
+
+    try:
+        dt = pd.to_datetime(texto, dayfirst=True, errors="coerce")
+        if pd.isna(dt):
+            return None
+        return dt.to_pydatetime()
+    except Exception:
+        return None
+
+
 def dias_desde_data_hora(valor):
     dt = obter_data_hora_atendimento(valor)
     if not dt:
-        return None
-    return max(0, int((agora_brasilia() - dt).total_seconds() // 86400))
+        return 0
+
+    try:
+        agora = agora_brasilia()
+        if getattr(dt, "tzinfo", None) is None:
+            dt_ref = dt.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+        else:
+            dt_ref = dt.astimezone(FUSO_HORARIO_BRASILIA)
+        return max(0, (agora - dt_ref).days)
+    except Exception:
+        try:
+            return max(0, (datetime.now() - dt.replace(tzinfo=None)).days)
+        except Exception:
+            return 0
 
 
 def horas_entre_datas(inicio_valor, fim_valor):
