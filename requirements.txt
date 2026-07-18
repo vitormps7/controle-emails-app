@@ -1,8 +1,8 @@
 streamlit
 pandas
-numpy
-requests
-openpyxl
-reportlab
-matplotlib
 supabase
+plotly
+openpyxl
+pypdf
+PyPDF2
+python-docx
