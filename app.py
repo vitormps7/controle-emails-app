@@ -890,6 +890,34 @@ def usuario_app_para_db(u):
 # FUNÇÕES DE GOVERNANÇA, AUDITORIA E HISTÓRICO
 # ============================================================
 
+
+def supabase_insert_diagnostico(tabela, rows):
+    """
+    Insere registros no Supabase retornando detalhes do erro.
+    Usado em pontos sensíveis, como cadastro de fontes da Zel,
+    para não falhar silenciosamente.
+    """
+    if not rows:
+        return False, "Nenhum registro para inserir.", []
+
+    try:
+        resp = requests.post(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            data=json.dumps(rows, ensure_ascii=False),
+            timeout=30,
+        )
+
+        if resp.status_code >= 400:
+            detalhe = resp.text or f"HTTP {resp.status_code}"
+            return False, detalhe, []
+
+        dados = resp.json() if resp.text else []
+        return True, "Registro inserido com sucesso.", dados
+    except Exception as e:
+        return False, str(e), []
+
+
 def supabase_insert_silencioso(tabela, rows):
     if not rows:
         return []
@@ -4704,13 +4732,14 @@ def texto_arquivo_upload_zel(uploaded_file):
 
 def cadastrar_fonte_zel(titulo, secao, assunto, tipo_fonte, referencia, conteudo_texto, nome_arquivo="", origem_atendimento_id=None):
     usuario = usuario_logado() or {}
+
     row = {
-        "titulo": titulo.strip(),
+        "titulo": str(titulo or "").strip(),
         "secao": normalizar_secao(secao),
         "assunto": assunto or "Não informado",
-        "tipo_fonte": tipo_fonte,
+        "tipo_fonte": tipo_fonte or "Outro",
         "referencia": referencia or "",
-        "conteudo_texto": conteudo_texto.strip(),
+        "conteudo_texto": str(conteudo_texto or "").strip(),
         "nome_arquivo": nome_arquivo or "",
         "origem_atendimento_id": origem_atendimento_id,
         "ativo": True,
@@ -4720,9 +4749,33 @@ def cadastrar_fonte_zel(titulo, secao, assunto, tipo_fonte, referencia, conteudo
         "criado_em": agora_iso(),
         "atualizado_em": agora_iso(),
     }
-    return supabase_insert_silencioso("fontes_zel", [row])
 
+    # Primeira tentativa: estrutura completa.
+    ok, msg, dados = supabase_insert_diagnostico("fontes_zel", [row])
+    if ok:
+        return dados if dados is not None else []
 
+    # Fallback: se a coluna origem_atendimento_id não existir,
+    # salva sem essa coluna para não impedir o cadastro manual de fonte.
+    msg_texto = str(msg or "").casefold()
+    if "origem_atendimento_id" in msg_texto or "column" in msg_texto or "schema cache" in msg_texto:
+        row_sem_origem = dict(row)
+        row_sem_origem.pop("origem_atendimento_id", None)
+        ok2, msg2, dados2 = supabase_insert_diagnostico("fontes_zel", [row_sem_origem])
+        if ok2:
+            st.warning(
+                "Fonte cadastrada, mas a coluna origem_atendimento_id não foi encontrada no banco. "
+                "Execute o SQL complementar depois para permitir rastrear fontes criadas a partir de atendimentos."
+            )
+            return dados2 if dados2 is not None else []
+
+        st.error("Não foi possível cadastrar a fonte da Zel.")
+        st.code(str(msg2))
+        return None
+
+    st.error("Não foi possível cadastrar a fonte da Zel.")
+    st.code(str(msg))
+    return None
 
 
 def atendimento_realizado_pode_virar_fonte_zel(a):
