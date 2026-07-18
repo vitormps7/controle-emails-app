@@ -28,6 +28,16 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.utils import ImageReader
 
 
+
+# ============================================================
+# SIGA-COR - VERSÃO CONSOLIDADA
+# ============================================================
+VERSAO_SIGA_COR = "SIGA-COR 2026.07 - pacote consolidado"
+DESCRICAO_VERSAO_SIGA_COR = (
+    "Consolidação de front end, permissões, Portal da Zona, Zel, "
+    "curadoria de fontes, upload documental e diagnóstico operacional."
+)
+
 # ============================================================
 # LOCALIZACAO PT-BR
 # ============================================================
@@ -3775,7 +3785,9 @@ def tela_menu_principal():
     if usuario_pode_ver_parametros():
         cards_admin.extend([
             ("user", "Usuários das Zonas", "Cadastrar e revisar usuários externos vinculados às Zonas Eleitorais.", "Gerenciar zonas", "Usuários das Zonas", "card_usuarios_zonas"),
-            ("shield", "Diagnóstico do sistema", "Verificar rotas, tabelas, configurações e integridade geral.", "Abrir diagnóstico", "Diagnóstico do sistema", "card_diagnostico"),
+            ("shield", "Diagnóstico do sistema",
+        "Regras do SIGA-COR",
+        "Regras do SIGA-COR", "Verificar rotas, tabelas, configurações e integridade geral.", "Abrir diagnóstico", "Diagnóstico do sistema", "card_diagnostico"),
         ])
 
     render_grupo_menu("Atendimento", "atendimento", cards_atendimento)
@@ -4531,6 +4543,109 @@ def registrar_uso_zel(atendimento_id, acao, resumo):
         pass
 
 
+def extrair_texto_pdf_bytes(data):
+    """
+    Extrai texto de PDF usando bibliotecas opcionais.
+    Prioridade: pypdf, PyPDF2.
+    Retorna texto vazio se o PDF for imagem/scaneado ou se a biblioteca não estiver disponível.
+    """
+    if not data:
+        return ""
+
+    # pypdf
+    try:
+        from pypdf import PdfReader
+        import io
+        reader = PdfReader(io.BytesIO(data))
+        partes = []
+        for page in reader.pages:
+            try:
+                partes.append(page.extract_text() or "")
+            except Exception:
+                pass
+        return "\n\n".join([p.strip() for p in partes if p and p.strip()]).strip()
+    except Exception:
+        pass
+
+    # PyPDF2
+    try:
+        from PyPDF2 import PdfReader
+        import io
+        reader = PdfReader(io.BytesIO(data))
+        partes = []
+        for page in reader.pages:
+            try:
+                partes.append(page.extract_text() or "")
+            except Exception:
+                pass
+        return "\n\n".join([p.strip() for p in partes if p and p.strip()]).strip()
+    except Exception:
+        return ""
+
+
+def extrair_texto_docx_bytes(data):
+    """
+    Extrai texto de DOCX usando python-docx, se disponível.
+    """
+    if not data:
+        return ""
+
+    try:
+        import io
+        from docx import Document
+        doc = Document(io.BytesIO(data))
+        partes = []
+        for p in doc.paragraphs:
+            texto = (p.text or "").strip()
+            if texto:
+                partes.append(texto)
+
+        for tabela in doc.tables:
+            for row in tabela.rows:
+                celulas = []
+                for cell in row.cells:
+                    t = (cell.text or "").strip()
+                    if t:
+                        celulas.append(t)
+                if celulas:
+                    partes.append(" | ".join(celulas))
+
+        return "\n".join(partes).strip()
+    except Exception:
+        return ""
+
+
+def extrair_texto_doc_bytes(data):
+    """
+    Tenta extrair texto de DOC antigo.
+    DOC é formato binário legado; depende de bibliotecas externas.
+    Se não houver suporte no ambiente, retorna vazio e o usuário deve colar o texto manualmente.
+    """
+    if not data:
+        return ""
+
+    # textract, quando disponível no ambiente
+    try:
+        import tempfile
+        import os
+        import textract
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+
+        try:
+            texto = textract.process(tmp_path).decode("utf-8", errors="ignore")
+            return texto.strip()
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+    except Exception:
+        return ""
+
+
 def texto_arquivo_upload_zel(uploaded_file):
     if uploaded_file is None:
         return ""
@@ -4543,12 +4658,46 @@ def texto_arquivo_upload_zel(uploaded_file):
     except Exception:
         return ""
 
-    if ext in ("txt", "md", "csv", "json", "sql", "py", "html"):
+    # Garante que o arquivo possa ser relido se necessário pelo Streamlit.
+    try:
+        uploaded_file.seek(0)
+    except Exception:
+        pass
+
+    if ext in ("txt", "md", "csv", "json", "sql", "py", "html", "htm"):
         for enc in ("utf-8", "latin-1", "cp1252"):
             try:
                 return data.decode(enc)
             except Exception:
                 pass
+        return ""
+
+    if ext == "pdf":
+        texto = extrair_texto_pdf_bytes(data)
+        if not texto:
+            st.warning(
+                "Não consegui extrair texto deste PDF. Isso pode ocorrer em PDF escaneado/imagem "
+                "ou quando a biblioteca de leitura de PDF não está instalada. Cole o trecho autorizado manualmente no campo de conteúdo."
+            )
+        return texto
+
+    if ext == "docx":
+        texto = extrair_texto_docx_bytes(data)
+        if not texto:
+            st.warning(
+                "Não consegui extrair texto deste DOCX. Verifique se o arquivo contém texto selecionável "
+                "ou cole o trecho autorizado manualmente no campo de conteúdo."
+            )
+        return texto
+
+    if ext == "doc":
+        texto = extrair_texto_doc_bytes(data)
+        if not texto:
+            st.warning(
+                "O formato DOC antigo depende de conversores externos que podem não estar disponíveis no Streamlit Cloud. "
+                "Prefira salvar o documento como DOCX ou PDF com texto selecionável, ou cole manualmente o trecho autorizado."
+            )
+        return texto
 
     return ""
 
@@ -4679,14 +4828,53 @@ def painel_gerencial_zona(zona_consulta):
             st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
 
 
+def limitar_texto_fonte_zel(texto, limite=120000):
+    """
+    Limita o tamanho da fonte cadastrada para preservar desempenho da busca controlada.
+    A fonte continua útil, mas evita que um PDF/manual muito grande deixe a consulta pesada.
+    """
+    texto = str(texto or "").strip()
+    if len(texto) <= limite:
+        return texto, False
+    return texto[:limite].strip(), True
+
+
+def resumo_texto_fonte_zel(texto):
+    texto = str(texto or "").strip()
+    palavras = len(texto.split()) if texto else 0
+    caracteres = len(texto)
+    return caracteres, palavras
+
+
 def tela_fontes_zel():
-    st.markdown("### Fontes cadastradas da Zel")
-    st.caption(
-        "A Zel só pode elaborar minuta com base nas fontes cadastradas nesta área "
-        "e nos entendimentos institucionais salvos na base de conhecimento."
+    st.markdown("### Curadoria de fontes da Zel")
+    st.markdown(
+        """
+        <div class="siga-info-panel green">
+            <div class="siga-info-title">Como a Zel usa as fontes</div>
+            <div class="siga-info-text">
+                A Zel só deve gerar minuta quando houver fonte cadastrada, resposta validada promovida ou Base de Conhecimento relacionada.
+                Antes de salvar, revise o texto extraído do documento. PDF escaneado pode não ter texto selecionável; DOC antigo pode exigir conversão para DOCX.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    with st.expander("Cadastrar nova fonte", expanded=True):
+    fontes_ativas = fontes_zel_rows(incluir_inativas=False)
+    fontes_todas = fontes_zel_rows(incluir_inativas=True)
+
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1.metric("Fontes ativas", len(fontes_ativas))
+    col_m2.metric("Fontes cadastradas", len(fontes_todas))
+    col_m3.metric("Base institucional", len(base_conhecimento_rows(incluir_superadas=False)))
+
+    with st.expander("Cadastrar nova fonte documental", expanded=True):
+        st.caption(
+            "Cadastre apenas trechos autorizados e úteis para respostas futuras. "
+            "A fonte deve ser objetiva, revisada e relacionada a um assunto da SEPRO ou da SEOCE."
+        )
+
         with st.form("form_cadastrar_fonte_zel"):
             col1, col2 = st.columns(2)
             with col1:
@@ -4696,7 +4884,7 @@ def tela_fontes_zel():
             with col2:
                 tipo_fonte = st.selectbox(
                     "Tipo de fonte",
-                    ["Norma", "Manual", "Despacho", "Entendimento", "Cartilha", "E-mail institucional", "Outro"],
+                    ["Norma", "Manual", "Despacho", "Entendimento", "Cartilha", "E-mail institucional", "Resposta validada de atendimento", "Outro"],
                     key="zel_fonte_tipo"
                 )
                 referencia = st.text_input(
@@ -4706,19 +4894,43 @@ def tela_fontes_zel():
                 )
 
             arquivo = st.file_uploader(
-                "Upload de fonte textual",
-                type=["txt", "md", "csv", "json", "sql", "py", "html"],
-                key="zel_upload_fonte"
+                "Upload de fonte documental",
+                type=["txt", "md", "csv", "json", "sql", "py", "html", "htm", "pdf", "docx", "doc"],
+                key="zel_upload_fonte",
+                help="Aceita TXT, PDF com texto selecionável, DOCX e DOC. Para PDF escaneado ou DOC antigo sem suporte no ambiente, cole o texto manualmente."
             )
 
             texto_upload = texto_arquivo_upload_zel(arquivo) if arquivo else ""
 
+            if arquivo:
+                ext = str(getattr(arquivo, "name", "") or "").lower().split(".")[-1]
+                chars, palavras = resumo_texto_fonte_zel(texto_upload)
+                st.caption(f"Arquivo carregado: {getattr(arquivo, 'name', '')} | Extensão: {ext.upper()} | Texto extraído: {chars} caracteres / {palavras} palavras")
+
+                if not texto_upload.strip():
+                    st.warning(
+                        "Nenhum texto foi extraído automaticamente. Cole manualmente o trecho autorizado no campo abaixo "
+                        "ou converta o arquivo para DOCX/PDF com texto selecionável."
+                    )
+                else:
+                    with st.expander("Prévia do texto extraído", expanded=False):
+                        st.write(texto_upload[:5000])
+
             conteudo = st.text_area(
-                "Conteúdo da fonte",
+                "Conteúdo autorizado da fonte",
                 value=texto_upload,
-                height=260,
+                height=300,
                 key="zel_fonte_conteudo",
-                placeholder="Cole aqui o trecho autorizado que poderá fundamentar respostas da Zel."
+                placeholder="Cole aqui o trecho autorizado que poderá fundamentar respostas da Zel. Se o upload for PDF/DOC/DOCX com texto extraível, este campo será preenchido automaticamente."
+            )
+
+            chars_final, palavras_final = resumo_texto_fonte_zel(conteudo)
+            st.caption(f"Conteúdo que será salvo: {chars_final} caracteres / {palavras_final} palavras.")
+
+            ciente = st.checkbox(
+                "Confirmo que revisei o conteúdo e que esta fonte pode fundamentar minutas da Zel.",
+                value=False,
+                key="zel_fonte_ciencia_curadoria"
             )
 
             salvar = st.form_submit_button("Cadastrar fonte da Zel", type="primary")
@@ -4730,6 +4942,16 @@ def tela_fontes_zel():
             if not conteudo.strip():
                 st.warning("Informe o conteúdo textual da fonte.")
                 return
+            if not ciente:
+                st.warning("Confirme a curadoria da fonte antes de salvar.")
+                return
+
+            conteudo_final, truncado = limitar_texto_fonte_zel(conteudo)
+            if truncado:
+                st.warning(
+                    "O texto era muito extenso e foi limitado para preservar o desempenho. "
+                    "Considere dividir manuais grandes em fontes menores por assunto."
+                )
 
             resp = cadastrar_fonte_zel(
                 titulo=titulo,
@@ -4737,7 +4959,7 @@ def tela_fontes_zel():
                 assunto=assunto,
                 tipo_fonte=tipo_fonte,
                 referencia=referencia,
-                conteudo_texto=conteudo,
+                conteudo_texto=conteudo_final,
                 nome_arquivo=getattr(arquivo, "name", "") if arquivo else ""
             )
             if resp is not None:
@@ -4801,16 +5023,24 @@ def tela_fontes_zel():
             if atendimento_ja_importado_fonte_zel(atendimento_importar.get("id")):
                 st.info("Este atendimento já foi importado como fonte da Zel.")
             else:
+                confirmar_importacao = st.checkbox(
+                    "Confirmo que esta resposta pode ser reaproveitada como fonte geral da Zel.",
+                    value=False,
+                    key="zel_confirmar_importacao_resposta"
+                )
                 if st.button("Importar resposta realizada como fonte da Zel", type="primary", key="zel_importar_resposta_realizada"):
-                    cadastrar_fonte_zel_de_atendimento(atendimento_importar)
-                    registrar_uso_zel(
-                        atendimento_importar.get("id"),
-                        "Resposta promovida a fonte da Zel",
-                        "A resposta manual validada foi cadastrada como fonte controlada da Zel."
-                    )
-                    st.success("Resposta importada como fonte da Zel.")
-                    cache_sessao_limpar()
-                    st.rerun()
+                    if not confirmar_importacao:
+                        st.warning("Confirme a curadoria antes de importar a resposta.")
+                    else:
+                        cadastrar_fonte_zel_de_atendimento(atendimento_importar)
+                        registrar_uso_zel(
+                            atendimento_importar.get("id"),
+                            "Resposta promovida a fonte da Zel",
+                            "A resposta manual validada foi cadastrada como fonte controlada da Zel."
+                        )
+                        st.success("Resposta importada como fonte da Zel.")
+                        cache_sessao_limpar()
+                        st.rerun()
 
     st.divider()
 
@@ -4820,19 +5050,43 @@ def tela_fontes_zel():
         return
 
     st.markdown("### Fontes existentes")
-    termo = st.text_input("Buscar fonte", key="zel_busca_fonte")
+    col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+    with col_f1:
+        termo = st.text_input("Buscar fonte", key="zel_busca_fonte")
+    with col_f2:
+        filtro_secao = st.selectbox("Filtrar seção", ["Todas", "SEPRO", "SEOCE"], key="zel_filtro_secao_fontes")
+    with col_f3:
+        filtro_situacao = st.selectbox("Situação", ["Todas", "Ativas", "Inativas"], key="zel_filtro_situacao_fontes")
+
     if termo.strip():
         t = termo.strip().casefold()
         fontes = [f for f in fontes if t in fonte_zel_para_texto(f).casefold()]
+
+    if filtro_secao != "Todas":
+        fontes = [f for f in fontes if normalizar_secao(f.get("secao")) == filtro_secao]
+
+    if filtro_situacao == "Ativas":
+        fontes = [f for f in fontes if f.get("ativo", True) and f.get("validado", True)]
+    elif filtro_situacao == "Inativas":
+        fontes = [f for f in fontes if not f.get("ativo", True) or not f.get("validado", True)]
 
     st.metric("Fontes encontradas", len(fontes))
 
     for f in fontes[:80]:
         titulo = f.get("titulo") or "Fonte Zel"
-        with st.expander(f"{titulo} | {f.get('secao') or ''} | {f.get('assunto') or ''}"):
-            st.caption(f"Tipo: {f.get('tipo_fonte') or 'Não informado'} | Referência: {f.get('referencia') or 'Não informada'}")
-            st.write((f.get("conteudo_texto") or "")[:2500])
-            st.caption(f"Ativa: {'Sim' if f.get('ativo', True) else 'Não'} | Validada: {'Sim' if f.get('validado', True) else 'Não'}")
+        conteudo_fonte = f.get("conteudo_texto") or ""
+        chars, palavras = resumo_texto_fonte_zel(conteudo_fonte)
+        situacao = "Ativa e validada" if f.get("ativo", True) and f.get("validado", True) else "Inativa ou não validada"
+
+        with st.expander(f"{titulo} | {f.get('secao') or ''} | {f.get('assunto') or ''} | {situacao}"):
+            col_info1, col_info2, col_info3 = st.columns(3)
+            col_info1.caption(f"Tipo: {f.get('tipo_fonte') or 'Não informado'}")
+            col_info2.caption(f"Arquivo: {f.get('nome_arquivo') or 'Não informado'}")
+            col_info3.caption(f"Tamanho: {chars} caracteres / {palavras} palavras")
+            st.caption(f"Referência: {f.get('referencia') or 'Não informada'}")
+            st.write(conteudo_fonte[:3500])
+            if len(conteudo_fonte) > 3500:
+                st.caption("Prévia limitada aos primeiros 3.500 caracteres.")
 
 
 def tela_validacao_zel():
@@ -5132,6 +5386,41 @@ def diagnostico_tabela_supabase(nome_tabela):
         return "Falha"
 
 
+
+def tela_regras_siga_cor():
+    st.subheader("Regras do SIGA-COR")
+    st.caption("Resumo institucional das principais regras de funcionamento do sistema.")
+
+    st.markdown(
+        """
+        <div class="siga-info-panel green">
+            <div class="siga-info-title">Glossário operacional</div>
+            <div class="siga-info-text">
+                <b>Resposta do atendimento:</b> solução dada ao caso concreto.<br>
+                <b>Base de Conhecimento:</b> orientação institucional reaproveitável em casos futuros.<br>
+                <b>Modelo de Resposta:</b> minuta textual reutilizável, sem substituir a análise técnica.<br>
+                <b>Fonte da Zel:</b> documento, resposta validada ou base autorizada para fundamentar minutas.<br>
+                <b>Zel:</b> apoio controlado à elaboração de minutas, sempre sujeito à validação humana.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("### Regras de segurança")
+    st.write(
+        "1. O Portal da Zona é exclusivo para usuários com perfil Zona Eleitoral. "
+        "2. A Zel não responde sem fonte relacionada. "
+        "3. Toda minuta da Zel deve ficar pendente de validação humana. "
+        "4. Respostas de atendimentos não viram orientação geral automaticamente. "
+        "5. A Base de Conhecimento deve conter orientação institucional revisada."
+    )
+
+    st.markdown("### Fluxo recomendado")
+    st.info(
+        "Atendimento → resposta técnica → validação/curadoria → Base de Conhecimento ou Fonte da Zel → nova minuta controlada → validação humana."
+    )
+
 def tela_diagnostico_sistema():
     st.subheader("Diagnóstico do sistema")
     st.caption(
@@ -5345,6 +5634,7 @@ def sidebar_menu():
                 ("Usuários das Zonas", "Usuários das Zonas"),
                 ("Parâmetros nacionais", "Parâmetros nacionais"),
                 ("Diagnóstico do sistema", "Diagnóstico do sistema"),
+                ("Regras do SIGA-COR", "Regras do SIGA-COR"),
                 ("Backup e restauração", "Backup e restauração"),
             ]
             for label, destino in botoes_admin:
@@ -10405,6 +10695,9 @@ def main():
 
     elif escolha == "Diagnóstico do sistema" and usuario_pode_ver_parametros():
         tela_diagnostico_sistema()
+
+    elif escolha == "Regras do SIGA-COR" and usuario_pode_ver_parametros():
+        tela_regras_siga_cor()
 
     else:
         tela_menu_principal()
