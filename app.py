@@ -4291,7 +4291,8 @@ def tela_portal_zonas_eleitorais():
 # Zel - IA CONTROLADA POR FONTES
 # ============================================================
 
-STATUS_VALIDACAO_Zel = "Pendente de validação Zel"
+STATUS_VALIDACAO_ZEL = "Pendente de validação Zel"
+STATUS_VALIDACAO_Zel = STATUS_VALIDACAO_ZEL
 
 
 def texto_para_busca_controlada(valor):
@@ -5981,6 +5982,20 @@ def render_metric_card(label, value, color="#174A7C"):
         unsafe_allow_html=True,
     )
 
+
+
+
+
+def numero_br(valor):
+    """
+    Formata números inteiros no padrão brasileiro para exibição em métricas.
+    Evita NameError em painéis executivos.
+    """
+    try:
+        n = int(valor or 0)
+        return f"{n:,}".replace(",", ".")
+    except Exception:
+        return "0"
 
 
 def render_visao_executiva(lista, titulo="Resumo executivo"):
