@@ -6,3 +6,5 @@ openpyxl
 pypdf
 PyPDF2
 python-docx
+reportlab
+requests
