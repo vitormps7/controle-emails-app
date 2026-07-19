@@ -4830,13 +4830,14 @@ def resumo_fontes_zel(fontes, bases):
 # ============================================================
 # ============================================================
 # ============================================================
-# ZEL - AGENTE CONTROLADA COM INTENÇÃO DA PERGUNTA
-# Versão: zel_agente_intencao_v8
+# ============================================================
+# ZEL - AGENTE CONTROLADA COM RESPOSTA ÚTIL OU BLOQUEIO
+# Versão: zel_resposta_util_v9
 # ============================================================
 
-ZEL_SCORE_MINIMO_EVIDENCIA = 22
+ZEL_SCORE_MINIMO_EVIDENCIA = 18
 ZEL_SCORE_MINIMO_PRAZO = 35
-ZEL_MAX_EVIDENCIAS = 4
+ZEL_MAX_EVIDENCIAS = 5
 
 
 def zel_normalizar_texto(texto):
@@ -4854,7 +4855,7 @@ def zel_tokens_pergunta(pergunta):
         "entre", "dentro", "fora", "esse", "essa", "este", "esta", "isso", "isto",
         "mais", "menos", "muito", "pouco", "deve", "pode", "ser", "sao", "são",
         "das", "dos", "uma", "umas", "uns", "com", "sem", "por", "que", "eleitoral",
-        "eleitorais", "pra", "está", "esta", "seria", "fazer", "administrativa"
+        "eleitorais", "pra", "está", "esta", "seria", "fazer", "após", "apos"
     }
     tokens = []
     for p in texto.split():
@@ -4865,18 +4866,22 @@ def zel_tokens_pergunta(pergunta):
     extras = []
     joined = " ".join(tokens + [texto])
 
-    if "administr" in joined:
-        extras += ["administrativo-eleitoral", "administrativo eleitoral", "esfera administrativa", "lançamento automático", "lancamento automatico"]
+    if "transito" in joined or "trânsito" in joined:
+        extras += ["trânsito em julgado", "transito em julgado", "irrecorrível", "irrecorrivel", "definitivo"]
+    if "pagamento" in joined or "pagar" in joined or "pago" in joined:
+        extras += ["pagamento", "pagar", "recolhimento", "recolher", "baixa", "quitação", "quitacao"]
     if "multa" in joined:
         extras += ["multa", "multas", "sanção pecuniária", "sanções pecuniárias"]
+    if "administr" in joined:
+        extras += ["administrativo-eleitoral", "administrativo eleitoral", "esfera administrativa", "multa administrativo-eleitoral"]
+    if "judicial" in joined or "sentença" in joined or "sentenca" in joined:
+        extras += ["multa judicial eleitoral", "cumprimento definitivo de sentença", "sentença", "sentenca"]
     if "intima" in joined:
         extras += ["intimação", "intimado", "intimada", "intimar"]
-    if "pagamento" in joined or "pagar" in joined:
-        extras += ["pagamento", "pagar", "recolhimento", "recolher"]
     if "prazo" in joined:
         extras += ["prazo", "dias", "úteis", "uteis"]
-    if "execu" in joined or "cobran" in joined:
-        extras += ["execução", "execucao", "cobrança", "cobranca", "devedor"]
+    if "execu" in joined or "cobran" in joined or "cumprimento" in joined:
+        extras += ["execução", "execucao", "cumprimento", "cobrança", "cobranca", "devedor"]
     if "parcel" in joined:
         extras += ["parcelamento", "parcelar", "parcelas", "requerimento"]
     if "que é" in joined or "o que e" in joined or "conceito" in joined or "defina" in joined or "significa" in joined:
@@ -4886,14 +4891,14 @@ def zel_tokens_pergunta(pergunta):
         if e not in tokens:
             tokens.append(e)
 
-    return tokens[:55]
+    return tokens[:65]
 
 
 def zel_dividir_blocos_normativos(texto):
     texto = str(texto or "").replace("\r", "\n")
     texto = re.sub(r"\n{3,}", "\n\n", texto)
     padrao = re.compile(
-        r"(?=^\s*(?:T[ÍI]TULO|CAP[ÍI]TULO|SE[ÇC][ÃA]O|SUBSE[ÇC][ÃA]O|Art\.?\s*\d+[º°]?|§\s*\d+|Parágrafo único))",
+        r"(?=^\s*(?:LIVRO|T[ÍI]TULO|CAP[ÍI]TULO|SE[ÇC][ÃA]O|SUBSE[ÇC][ÃA]O|Art\.?\s*\d+[º°]?|§\s*\d+|Parágrafo único))",
         re.IGNORECASE | re.MULTILINE
     )
     partes = [p.strip() for p in padrao.split(texto) if p and p.strip()]
@@ -4922,10 +4927,13 @@ def zel_agente_identificar_intencao(pergunta):
     if "diferen" in p or "disting" in p or "compar" in p:
         return "diferenciacao"
 
-    if "prazo" in p or "intima" in p or "pagamento" in p or "quantos dias" in p:
+    if "prazo" in p or "intima" in p or "quantos dias" in p:
         return "prazo"
 
-    if "como" in p or "proced" in p or "execu" in p or "cobran" in p or "tramita" in p:
+    if ("o que fazer" in p or "providencia" in p or "providência" in p or "após" in p or "apos" in p) and ("multa" in p or "pagamento" in p or "transito" in p or "trânsito" in p):
+        return "providencia_pos_pagamento_ou_transito"
+
+    if "como" in p or "proced" in p or "execu" in p or "cobran" in p or "tramita" in p or "cumprimento" in p:
         return "procedimento"
 
     if "parcel" in p:
@@ -4945,14 +4953,17 @@ def zel_agente_classificar(atendimento=None, pergunta_livre=""):
     risco = "medio"
     exige_prazo_expresso = intencao == "prazo"
 
-    if "multa" in texto and "administr" in texto:
-        tema = "multa_administrativa"
-        risco = "alto"
-    elif "multa" in texto and ("judicial" in texto or "sentenca" in texto or "sentença" in texto):
+    if "multa" in texto and ("judicial" in texto or "sentenca" in texto or "sentença" in texto or "cumprimento" in texto or "trânsito" in texto or "transito" in texto):
         tema = "multa_judicial"
+        risco = "alto"
+    elif "multa" in texto and "administr" in texto:
+        tema = "multa_administrativa"
         risco = "alto"
     elif "parcel" in texto and "multa" in texto:
         tema = "parcelamento_multa"
+        risco = "alto"
+    elif "multa" in texto:
+        tema = "multa"
         risco = "alto"
     elif "cadin" in texto:
         tema = "cadin"
@@ -5004,15 +5015,20 @@ def zel_pontuar_bloco(bloco, contexto):
             if zel_normalizar_texto(t) in bloco_norm:
                 score += 16
 
+    if intencao == "providencia_pos_pagamento_ou_transito":
+        for t in ["pagamento", "compensação bancária", "compensacao bancaria", "baixada", "baixa", "extinção", "extincao", "trânsito em julgado", "transito em julgado", "cumprimento definitivo", "art. 12", "art. 25", "art. 26", "art. 31"]:
+            if zel_normalizar_texto(t) in bloco_norm:
+                score += 16
+
     if tema == "multa_administrativa":
         if "multa" not in bloco_norm or "administr" not in bloco_norm:
-            score -= 20
+            score -= 10
         for t in ["multa administrativo-eleitoral", "administrativo-eleitoral", "administrativo eleitoral", "esfera administrativa", "lançamento automático", "lancamento automatico"]:
             if zel_normalizar_texto(t) in bloco_norm:
                 score += 14
 
-    if tema == "multa_judicial":
-        for t in ["multa judicial", "cumprimento definitivo de sentença", "sentença", "sentenca"]:
+    if tema in ("multa_judicial", "multa"):
+        for t in ["multa judicial", "cumprimento definitivo de sentença", "sentença", "sentenca", "trânsito em julgado", "transito em julgado", "irrecorrível", "irrecorrivel"]:
             if zel_normalizar_texto(t) in bloco_norm:
                 score += 12
 
@@ -5027,15 +5043,14 @@ def zel_pontuar_bloco(bloco, contexto):
                 score += 14
 
     if intencao == "procedimento" or "execu" in pergunta_norm or "cobran" in pergunta_norm:
-        for t in ["execução", "execucao", "cobrança", "cobranca", "livro ii", "título i", "titulo i", "devedor"]:
+        for t in ["execução", "execucao", "cobrança", "cobranca", "livro ii", "título i", "titulo i", "devedor", "cumprimento"]:
             if zel_normalizar_texto(t) in bloco_norm:
                 score += 8
 
-    # Penaliza começo genérico, exceto em pergunta conceitual, pois o art. 2º pode ser exatamente a resposta.
-    if intencao != "conceito" and contexto.get("risco") == "alto" and (
+    if intencao not in ("conceito", "providencia_pos_pagamento_ou_transito") and contexto.get("risco") == "alto" and (
         "disposições gerais" in bloco_norm or "art. 1º" in bloco_norm or "art. 2º" in bloco_norm
     ):
-        score -= 35
+        score -= 25
 
     return score
 
@@ -5095,7 +5110,6 @@ def zel_base_row_validada(row):
 def zel_agente_buscar_evidencias(contexto, fontes=None, bases=None, limite=ZEL_MAX_EVIDENCIAS):
     candidatos = []
 
-    # Base de Conhecimento tem prioridade como memória institucional.
     for b in bases or []:
         if not zel_base_row_validada(b):
             continue
@@ -5178,7 +5192,7 @@ def zel_agente_bloquear(motivo):
         "A Zel não encontrou fundamento validado suficiente para responder com segurança.\n\n"
         f"Motivo do bloqueio: {motivo}\n\n"
         "Encaminhamento sugerido:\n"
-        "1. não enviar resposta automática;\n"
+        "1. não gravar resposta automática;\n"
         "2. verificar se a Base de Conhecimento ou o documento de apoio contém o trecho específico da pergunta;\n"
         "3. cadastrar ou ajustar a Base de Conhecimento com orientação validada;\n"
         "4. submeter a demanda à análise manual da unidade responsável.\n\n"
@@ -5204,11 +5218,18 @@ def zel_agente_redigir(contexto, evidencias):
         return (
             "Multa administrativo-eleitoral é a sanção pecuniária imposta em razão de descumprimento de obrigação eleitoral, "
             "decorrente de decisão administrativa ou de lançamento automático em sistema da Justiça Eleitoral, quando não mais passível de recurso na esfera administrativa.\n\n"
-            "Em termos práticos, ela se diferencia da multa judicial eleitoral porque nasce de procedimento ou registro administrativo da Justiça Eleitoral, e sua cobrança ocorre pela via de execução própria das multas administrativo-eleitorais.\n\n"
+            "Em termos práticos, ela se diferencia da multa judicial eleitoral porque nasce de decisão ou registro administrativo da Justiça Eleitoral, e sua cobrança segue o rito próprio das multas administrativo-eleitorais.\n\n"
             "Definição extraída da base validada: " + definicao + "."
         )
 
-    if intencao == "diferenciacao" and tema in ("multa_administrativa", "multa_judicial"):
+    if intencao == "providencia_pos_pagamento_ou_transito":
+        return (
+            "Após o trânsito em julgado da decisão que determinou o pagamento de multa, a providência depende do enquadramento da multa e da fase em que o processo se encontra.\n\n"
+            "Com base nos fundamentos localizados, a unidade deve verificar se a multa é judicial eleitoral ou administrativo-eleitoral, confirmar se houve pagamento e compensação bancária, e então adotar a providência correspondente: registrar/baixar a multa quando quitada, certificar a situação nos autos e, se não houver pagamento ou se ainda houver saldo, prosseguir com os atos de cobrança ou cumprimento previstos na base validada.\n\n"
+            "A resposta final deve indicar expressamente o fundamento aplicado ao caso concreto antes do envio à Zona."
+        )
+
+    if intencao == "diferenciacao" and tema in ("multa_administrativa", "multa_judicial", "multa"):
         return (
             "A base validada diferencia a multa administrativo-eleitoral da multa judicial eleitoral. "
             "A multa administrativo-eleitoral decorre de decisão administrativa ou lançamento automático em sistema da Justiça Eleitoral, quando não há mais recurso administrativo. "
@@ -5223,10 +5244,10 @@ def zel_agente_redigir(contexto, evidencias):
             "A Zel não fixa prazo por analogia, memória ou inferência; apenas reproduz prazo localizado em base validada."
         )
 
-    if intencao == "procedimento" and tema == "multa_administrativa":
+    if intencao == "procedimento" and tema in ("multa_administrativa", "multa_judicial", "multa"):
         return (
-            "Com base no fundamento validado localizado, a multa administrativo-eleitoral definitivamente constituída deve seguir o rito de execução próprio previsto na base validada.\n\n"
-            "Resposta sugerida: confirmar a definitividade da multa na esfera administrativa, identificar corretamente o devedor, observar os atos de intimação/cobrança previstos na base validada e adotar as providências executivas cabíveis em caso de inadimplemento."
+            "Com base no fundamento validado localizado, a cobrança da multa deve seguir o rito correspondente ao seu enquadramento jurídico.\n\n"
+            "Resposta sugerida: confirmar se a multa é administrativo-eleitoral ou judicial eleitoral, verificar a definitividade da decisão, identificar corretamente o devedor, conferir pagamento/compensação e adotar os atos de cobrança, baixa ou cumprimento previstos na base validada."
         )
 
     if intencao == "parcelamento" or tema == "parcelamento_multa":
@@ -5274,6 +5295,17 @@ def zel_agente_executar(atendimento=None, pergunta_livre="", fontes=None, bases=
     }
 
 
+def zel_resposta_util(resposta):
+    texto = str(resposta or "").strip()
+    if not texto:
+        return False
+    if texto.startswith("A Zel não encontrou fundamento validado suficiente"):
+        return False
+    if len(texto) < 80:
+        return False
+    return True
+
+
 def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None, bases=None):
     fontes = fontes or []
     bases = bases or []
@@ -5296,6 +5328,15 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
     )
     contexto = execucao["contexto"]
     evidencias = execucao["evidencias"]
+    resposta = execucao["resposta"]
+
+    if not zel_resposta_util(resposta):
+        return (
+            "A Zel bloqueou a geração da resposta porque não conseguiu produzir minuta útil com fundamento validado suficiente.\n\n"
+            f"Motivo: {execucao.get('motivo')}\n\n"
+            "Providência recomendada: revisar a pergunta, cadastrar Base de Conhecimento específica ou encaminhar para análise manual da unidade responsável.\n\n"
+            "Versão da lógica Zel: zel_resposta_util_v9."
+        )
 
     partes = [
         "Prezados(as),",
@@ -5315,7 +5356,7 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
         f"Exige prazo expresso: {'sim' if contexto.get('exige_prazo_expresso') else 'não'}",
         "",
         "Resposta sugerida:",
-        execucao["resposta"],
+        resposta,
         "",
         "Fundamento validado utilizado pela Zel:",
         zel_agente_resumir_evidencias(evidencias),
@@ -5328,11 +5369,11 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
         "- a Zel ignora registros inativos, não validados ou superados;",
         "- a Zel não cria conceito, prazo, rito, requisito ou conclusão jurídica sem fundamento validado correspondente;",
         "- pergunta sobre prazo exige localização expressa de número de dias em base validada;",
-        "- se a evidência for insuficiente, a resposta é bloqueada para análise manual.",
+        "- se a resposta útil não puder ser produzida, a minuta é bloqueada.",
         "",
         "Controle:",
         "Minuta gerada pela Zel. A resposta somente deve encerrar o atendimento após validação interna pela SEPRO ou SEOCE.",
-        "Versão da lógica Zel: zel_agente_intencao_v8."
+        "Versão da lógica Zel: zel_resposta_util_v9."
     ]
     return "\n".join(partes)
 
@@ -5465,6 +5506,7 @@ def painel_gerencial_zona(zona_consulta):
     col2.metric("Em análise", em_atendimento)
     col3.metric("Respondidas", realizados)
     col4.metric("Pendentes Zel", pendentes_zel)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     col_a, col_b = st.columns([1, 1])
 
@@ -7547,6 +7589,8 @@ def componente_zel_no_atendimento(atendimento):
                 if st.button("Gravar resposta validada", type="primary", key=f"zel_validar_resposta_final_{atendimento_id}"):
                     if not str(resposta_editada or "").strip():
                         st.warning("A resposta está vazia.")
+                    elif "zel_resposta_util" in globals() and not zel_resposta_util(resposta_editada):
+                        st.warning("A Zel não produziu resposta útil validável. Revise a base de conhecimento ou encaminhe para análise manual.")
                     else:
                         ok, msg = validar_minuta_zel_em_atendimento(
                             atendimento_id,
@@ -7582,107 +7626,241 @@ def componente_zel_no_atendimento(atendimento):
 
 
 
+
 def limpar_html_residual_card(texto):
     """
-    Remove resíduos de HTML que eventualmente apareçam no card como texto visível.
-    Corrige especialmente fechamentos </div> que podem sobrar de templates visuais.
+    Remove resíduos de HTML que eventualmente apareçam como texto visível nos cards.
+    Preserva o conteúdo do atendimento e remove apenas marcações residuais.
     """
     texto = str(texto or "")
     texto = texto.replace("</div>", "")
     texto = texto.replace("<div>", "")
+    texto = texto.replace("&lt;/div&gt;", "")
+    texto = texto.replace("&lt;div&gt;", "")
     texto = re.sub(r"(?im)^\s*</?div[^>]*>\s*$", "", texto)
+    texto = re.sub(r"(?im)^\s*&lt;/?div[^&]*&gt;\s*$", "", texto)
     texto = re.sub(r"\n{3,}", "\n\n", texto)
     return texto.strip()
 
 
 
+def renderizar_html_card_seguro(html_card):
+    """
+    Renderiza o HTML do card sem transformar fechamento de tag em bloco de código.
+    Preferência: st.html, quando disponível no Streamlit.
+    Fallback: st.markdown com unsafe_allow_html.
+    """
+    try:
+        if hasattr(st, "html"):
+            st.html(html_card)
+        else:
+            st.markdown(html_card, unsafe_allow_html=True)
+    except Exception:
+        st.markdown(html_card, unsafe_allow_html=True)
+
+
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
-    """
-    Card de atendimento reconstruído sem HTML quebrado.
-    Corrige definitivamente a exibição residual de </div>.
-    """
     atendimento = dict(atendimento or {})
+    for _campo_html in ['descricao', 'observacoes', 'providencia_adotada', 'conclusao']:
+        if _campo_html in atendimento:
+            atendimento[_campo_html] = limpar_html_residual_card(atendimento.get(_campo_html))
+    status = atendimento.get("status", STATUS_CADASTRADO)
+    atualizado_formatado = formatar_data_hora_brasilia(atendimento.get("atualizado_em"))
+    criado_formatado = formatar_data_hora_brasilia(atendimento.get("criado_em"))
 
-    for _campo_html in ["descricao", "observacoes", "providencia_adotada", "conclusao"]:
-        atendimento[_campo_html] = limpar_html_residual_card(atendimento.get(_campo_html, ""))
+    assunto = atendimento.get("assunto") or "Sem assunto"
+    zona = atendimento.get("zona_eleitoral") or "Zona não informada"
+    secao = normalizar_secao(atendimento.get("secao"))
+    origem = atendimento.get("origem") or "Origem não informada"
 
-    atendimento_id = atendimento.get("id", "")
-    status = atendimento.get("status") or "Não informado"
-    responsavel = atendimento.get("servidor") or atendimento.get("responsavel") or "Não informado"
+    grid_html = "\n".join([
+        atendimento_campo_html("ID", atendimento.get("id")),
+        atendimento_campo_html("Data", data_para_exibir(atendimento.get("data"))),
+        atendimento_campo_html("Seção", secao),
+        atendimento_campo_html("Zona", zona),
+        atendimento_campo_html("Responsável", atendimento.get("servidor") or "Não informado"),
+        atendimento_campo_html("Origem", origem),
+        atendimento_campo_html("Fonte", atendimento.get("fonte") or "Não informada"),
+        atendimento_campo_html("Complexidade", atendimento.get("complexidade") or "Não informada"),
+        atendimento_campo_html("Prazo", data_para_exibir(atendimento.get("prazo_limite")) if atendimento.get("prazo_limite") else "Não informado"),
+        atendimento_campo_html("Validação", atendimento.get("situacao_validacao") or "Não requerida"),
+        atendimento_campo_html("Criado em", criado_formatado or "Não informado"),
+        atendimento_campo_html("Atualizado", atualizado_formatado or "Não informado"),
+    ])
 
-    if responsavel == "Não informado":
-        st.markdown('<span class="badge-warn">Sem responsável</span>', unsafe_allow_html=True)
+    textos_html = "".join([
+        atendimento_textbox_html("Descrição / pergunta", atendimento.get("descricao")),
+        atendimento_textbox_html("Observações", atendimento.get("observacoes")),
+        atendimento_textbox_html("Providência adotada", atendimento.get("providencia_adotada")),
+        atendimento_textbox_html("Conclusão", atendimento.get("conclusao") if usuario_eh_gestor() else ""),
+    ])
 
-    with st.container(border=True):
-        cols1 = st.columns(4)
-        with cols1[0]:
-            st.markdown("###### ID")
-            st.markdown(f"**{atendimento_id}**")
-        with cols1[1]:
-            st.markdown("###### DATA")
-            st.markdown(f"**{atendimento.get('data') or 'Não informada'}**")
-        with cols1[2]:
-            st.markdown("###### SEÇÃO")
-            st.markdown(f"**{normalizar_secao(atendimento.get('secao'))}**")
-        with cols1[3]:
-            st.markdown("###### ZONA")
-            st.markdown(f"**{atendimento.get('zona_eleitoral') or 'Zona não informada'}**")
+    html_card = f"""
+        <div class="atendimento-card">
+            <div class="atendimento-card-header">
+                <div>
+                    <div class="atendimento-title">{html.escape(str(assunto))}</div>
+                    <div class="atendimento-sub">{html.escape(str(zona))} · {html.escape(str(secao))} · {html.escape(str(origem))}</div>
+                </div>
+                <div>{status_badge(status)}</div>
+            </div>
+            <div class="atendimento-body">
+                <div style="margin-bottom:10px;">{marcador_visual_atendimento(atendimento)}</div>
+                <div class="atendimento-grid">{grid_html}</div>
+                {textos_html}
+            </div>
+        </div>
+        """
+    renderizar_html_card_seguro(html_card)
 
-        cols2 = st.columns(4)
-        with cols2[0]:
-            st.markdown("###### RESPONSÁVEL")
-            st.markdown(f"**{responsavel}**")
-        with cols2[1]:
-            st.markdown("###### ORIGEM")
-            st.markdown(f"**{atendimento.get('origem') or atendimento.get('fonte') or 'Não informada'}**")
-        with cols2[2]:
-            st.markdown("###### ASSUNTO")
-            st.markdown(f"**{atendimento.get('assunto') or 'Não informado'}**")
-        with cols2[3]:
-            st.markdown("###### STATUS")
-            st.markdown(f"**{status}**")
+    try:
+        componente_zel_no_atendimento(atendimento)
+    except NameError:
+        pass
 
-        cols3 = st.columns(4)
-        with cols3[0]:
-            st.markdown("###### PRAZO")
-            st.markdown(f"**{atendimento.get('prazo_limite') or 'Não informado'}**")
-        with cols3[1]:
-            st.markdown("###### VALIDAÇÃO")
-            st.markdown(f"**{atendimento.get('situacao_validacao') or 'Não requerida'}**")
-        with cols3[2]:
-            st.markdown("###### CRIADO EM")
-            st.markdown(f"**{formatar_data_hora_curta(atendimento.get('criado_em')) if 'formatar_data_hora_curta' in globals() else atendimento.get('criado_em', '')}**")
-        with cols3[3]:
-            st.markdown("###### ATUALIZADO")
-            st.markdown(f"**{formatar_data_hora_curta(atendimento.get('atualizado_em')) if 'formatar_data_hora_curta' in globals() else atendimento.get('atualizado_em', '')}**")
+    if usuario_eh_gestor():
+        with st.expander(expander_avancado_rotulo("Identificação institucional"), expanded=False):
+            st.markdown(f"**Tribunal/UF:** {atendimento.get('tribunal', TRIBUNAL_PADRAO)} / {atendimento.get('uf', UF_PADRAO)}")
+            st.markdown(f"**Unidade:** {atendimento.get('unidade_responsavel', UNIDADE_CORREGEDORIA_PADRAO)}")
 
-        st.markdown("###### DESCRIÇÃO / PERGUNTA")
-        st.write(atendimento.get("descricao") or "Não informada.")
+    if permitir_edicao:
+        with st.expander(expander_avancado_rotulo("Editar atendimento"), expanded=False):
+            lista = atendimentos()
+            nova_obs = st.text_area("Observações", value=atendimento.get("observacoes", ""), key=f"{chave_prefixo}_obs_{atendimento.get('id')}")
+            novo_status = st.selectbox(
+                "Status",
+                STATUS_ATENDIMENTO,
+                index=STATUS_ATENDIMENTO.index(status) if status in STATUS_ATENDIMENTO else 0,
+                key=f"{chave_prefixo}_status_{atendimento.get('id')}"
+            )
+            nova_secao = st.selectbox(
+                "Seção responsável",
+                secoes_atendimento(),
+                index=secoes_atendimento().index(normalizar_secao(atendimento.get("secao"))) if normalizar_secao(atendimento.get("secao")) in secoes_atendimento() else 0,
+                key=f"{chave_prefixo}_secao_{atendimento.get('id')}"
+            )
+            novo_servidor = st.text_input("Servidor(a) responsável", value=atendimento.get("servidor", ""), key=f"{chave_prefixo}_servidor_{atendimento.get('id')}")
+            novo_assunto = st.selectbox(
+                "Assunto",
+                assuntos(nova_secao),
+                index=assuntos(nova_secao).index(atendimento.get("assunto")) if atendimento.get("assunto") in assuntos(nova_secao) else 0,
+                key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
+            )
+            novo_fonte = st.text_input("Fonte/canal", value=atendimento.get("fonte", "") or "", key=f"{chave_prefixo}_fonte_{atendimento.get('id')}")
+            nova_origem = st.text_input("Origem", value=atendimento.get("origem", "") or "", key=f"{chave_prefixo}_origem_{atendimento.get('id')}")
+            novo_protocolo = st.text_input("Protocolo", value=atendimento.get("protocolo", "") or "", key=f"{chave_prefixo}_protocolo_{atendimento.get('id')}")
+            nova_descricao = st.text_area("Descrição/pergunta", value=atendimento.get("descricao", "") or "", key=f"{chave_prefixo}_descricao_{atendimento.get('id')}")
+            nova_complexidade = st.selectbox(
+                "Complexidade",
+                COMPLEXIDADES_ATENDIMENTO,
+                index=COMPLEXIDADES_ATENDIMENTO.index(normalizar_complexidade(atendimento.get("complexidade"))) if normalizar_complexidade(atendimento.get("complexidade")) in COMPLEXIDADES_ATENDIMENTO else 0,
+                key=f"{chave_prefixo}_complexidade_{atendimento.get('id')}"
+            )
 
-        obs = atendimento.get("observacoes") or ""
-        if obs:
-            with st.expander("Observações internas", expanded=False):
-                st.write(obs)
+            col_prazo1, col_prazo2 = st.columns([1, 2])
+            with col_prazo1:
+                manter_prazo = st.checkbox("Definir prazo", value=bool(atendimento.get("prazo_limite")), key=f"{chave_prefixo}_manter_prazo_{atendimento.get('id')}")
+            with col_prazo2:
+                prazo_atual = parse_data(atendimento.get("prazo_limite")) or agora_brasilia().date()
+                novo_prazo = st.date_input("Prazo limite", value=prazo_atual, format="DD/MM/YYYY", key=f"{chave_prefixo}_prazo_{atendimento.get('id')}")
 
-        providencia = atendimento.get("providencia_adotada") or ""
-        if providencia:
-            with st.expander("Providência / resposta", expanded=False):
-                st.write(providencia)
+            nova_providencia = st.text_area(
+                "Providência adotada",
+                value=atendimento.get("providencia_adotada", "") or atendimento.get("conclusao", ""),
+                key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
+            )
 
-        try:
-            componente_zel_no_atendimento(atendimento)
-        except NameError:
-            pass
+            st.markdown(
+                """
+                <div class="siga-info-panel green">
+                    <div class="siga-info-title">Aproveitamento institucional da resposta</div>
+                    <div class="siga-info-text">
+                        Use esta área quando a resposta deste atendimento puder ser reaproveitada em casos futuros.
+                        A Base de Conhecimento poderá alimentar a Zel; o Modelo de Resposta serve apenas como minuta reutilizável.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-        if usuario_eh_gestor():
-            with st.expander("Identificação institucional — campos avançados", expanded=False):
-                st.write(f"Tribunal: {atendimento.get('tribunal') or TRIBUNAL_PADRAO}")
-                st.write(f"UF: {atendimento.get('uf') or UF_PADRAO}")
-                st.write(f"Unidade responsável: {atendimento.get('unidade_responsavel') or UNIDADE_CORREGEDORIA_PADRAO}")
+            gerar_conhecimento = st.checkbox(
+                "Transformar esta resposta em Base de Conhecimento",
+                value=False,
+                key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
+            )
+            gerar_modelo_resposta = st.checkbox(
+                "Salvar esta resposta como Modelo de Resposta",
+                value=False,
+                key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
+            )
 
-            with st.expander("Editar atendimento — campos avançados", expanded=False):
-                st.caption("Edição avançada permanece disponível nas rotinas próprias de atendimento.")
+            if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
+                for item in lista:
+                    if int(item.get("id")) == int(atendimento.get("id")):
+                        item["observacoes"] = nova_obs
+                        antes = item.copy()
+                        item["status"] = novo_status
+                        item["secao"] = nova_secao
+                        item["servidor"] = novo_servidor
+                        item["assunto"] = novo_assunto
+                        item["fonte"] = novo_fonte
+                        item["origem"] = nova_origem
+                        item["protocolo"] = novo_protocolo
+                        item["descricao"] = nova_descricao
+                        item["complexidade"] = nova_complexidade
+                        item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
+                        item["providencia_adotada"] = nova_providencia
+                        if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
+                            item["data_inicio_atendimento"] = agora_iso()
+                        if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
+                            item["realizado_em"] = agora_iso()
+                        if novo_status == STATUS_REALIZADO and not item.get("data_conclusao"):
+                            item["data_conclusao"] = agora_iso()
+                        item["atualizado_em"] = agora_iso()
+                        resposta_zona_msg = ""
+                        if novo_status == STATUS_REALIZADO and antes.get("status") != STATUS_REALIZADO:
+                            ok_resp, msg_resp = enviar_email_resposta_zona(item)
+                            resposta_zona_msg = msg_resp
+                            try:
+                                registrar_historico_atendimento(
+                                    item.get("id"),
+                                    "E-mail automático",
+                                    "Resposta enviada à Zona Eleitoral",
+                                    msg_resp
+                                )
+                            except Exception:
+                                pass
 
+                        registrar_alteracoes_atendimento(antes, item)
+
+                        if gerar_conhecimento:
+                            criar_base_conhecimento_do_atendimento(item)
+                            registrar_historico_atendimento(
+                                item.get("id"),
+                                "Base de Conhecimento",
+                                "Resposta transformada em Base de Conhecimento",
+                                "A resposta foi cadastrada como orientação institucional e poderá alimentar a Zel."
+                            )
+
+                        if gerar_modelo_resposta:
+                            criar_modelo_resposta_do_atendimento(item)
+                            registrar_historico_atendimento(
+                                item.get("id"),
+                                "Modelo de Resposta",
+                                "Resposta cadastrada como modelo reutilizável",
+                                "A resposta foi cadastrada como texto-padrão/modelo."
+                            )
+
+                        break
+
+                salvar_atendimentos(lista)
+
+                if resposta_zona_msg:
+                    registrar_mensagem_sistema(resposta_zona_msg, "success")
+                else:
+                    registrar_mensagem_sistema("Atendimento atualizado com sucesso.", "success")
+
+                st.rerun()
 
 def tela_status(nome_status, titulo, texto_ajuda):
     exibir_mensagem_sistema()
