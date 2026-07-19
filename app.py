@@ -1466,6 +1466,54 @@ def atendimento_db_para_app(row):
     }
 
 
+
+def normalizar_situacao_validacao(valor):
+    """
+    Normaliza situação de validação para respeitar a constraint do Supabase.
+    Valores permitidos:
+    - Não requerida
+    - Pendente de validação
+    - Validado pela chefia
+    - Devolvido para ajuste
+    """
+    texto = str(valor or "").strip()
+
+    if not texto:
+        return "Não requerida"
+
+    mapa = {
+        "validada pela unidade responsável": "Validado pela chefia",
+        "validado pela unidade responsável": "Validado pela chefia",
+        "validada pela unidade responsavel": "Validado pela chefia",
+        "validado pela unidade responsavel": "Validado pela chefia",
+        "validada": "Validado pela chefia",
+        "validado": "Validado pela chefia",
+        "pendente de validação zel": "Pendente de validação",
+        "pendente zel": "Pendente de validação",
+        "em análise pela unidade responsável": "Pendente de validação",
+        "em analise pela unidade responsavel": "Pendente de validação",
+        "aguardando análise da unidade responsável": "Pendente de validação",
+        "aguardando analise da unidade responsavel": "Pendente de validação",
+        "não requerida": "Não requerida",
+        "nao requerida": "Não requerida",
+        "devolvido para ajuste": "Devolvido para ajuste",
+        "devolvida para ajuste": "Devolvido para ajuste",
+    }
+
+    chave = texto.casefold()
+    if chave in mapa:
+        return mapa[chave]
+
+    permitidas = ["Não requerida", "Pendente de validação", "Validado pela chefia", "Devolvido para ajuste"]
+    for p in permitidas:
+        if texto == p:
+            return p
+
+    return "Pendente de validação"
+
+
+
+
 def atendimento_app_para_db(a):
     dados = {
         "id": a.get("id"),
@@ -1476,7 +1524,7 @@ def atendimento_app_para_db(a):
         "uf": a.get("uf") or UF_PADRAO,
         "unidade_responsavel": a.get("unidade_responsavel") or UNIDADE_CORREGEDORIA_PADRAO,
         "requer_validacao": bool(a.get("requer_validacao", False)),
-        "situacao_validacao": a.get("situacao_validacao") or "Não requerida",
+        "situacao_validacao": normalizar_situacao_validacao(a.get("situacao_validacao") or "Não requerida"),
         "validado_por": a.get("validado_por") or None,
         "validado_em": data_hora_db(a.get("validado_em")) if a.get("validado_em") else None,
         "servidor": a.get("servidor") or "Não informado",
@@ -2043,6 +2091,40 @@ def nomes_usuarios_ativos():
         if nome:
             nomes.append(nome)
     return sorted(set(nomes))
+
+
+
+def servidores_por_secao_dropdown(secao, atual=""):
+    """
+    Lista usuários ativos/validados cadastrados para a seção informada.
+    Usada no campo Servidor responsável da fase Em atendimento.
+    """
+    secao_norm = normalizar_secao(secao)
+    atual = str(atual or "").strip()
+    opcoes = ["Não informado"]
+
+    try:
+        for u in usuarios_ativos_validados():
+            nome = str(u.get("nome") or u.get("email") or "").strip()
+            if not nome:
+                continue
+
+            secao_usuario = normalizar_secao(u.get("secao_operador") or u.get("secao") or "")
+            perfil = perfil_normalizado(u.get("perfil") or "")
+
+            # Administradores podem aparecer como opção geral; operadores/chefias entram pela seção.
+            if secao_usuario == secao_norm or perfil in ("Administrador geral", "Administrador"):
+                if nome not in opcoes:
+                    opcoes.append(nome)
+    except Exception:
+        pass
+
+    if atual and atual not in opcoes:
+        opcoes.insert(1, atual)
+
+    return opcoes
+
+
 
 
 def proximo_id(lista):
@@ -4577,7 +4659,7 @@ def tela_portal_zonas_eleitorais():
                         + f"\n\nZel: minuta automática gerada e pendente de validação. Fontes: {resumo_fontes_zel(fontes_zel_usadas, bases_zel_usadas)}"
                     ).strip()
                 else:
-                    item["situacao_validacao"] = "Aguardando análise da unidade responsável"
+                    item["situacao_validacao"] = "Pendente de validação"
                     item["observacoes"] = (
                         (item.get("observacoes") or "")
                         + "\n\nZel: nenhuma fonte cadastrada suficiente foi localizada para resposta automática."
@@ -4679,7 +4761,7 @@ def tela_portal_zonas_eleitorais():
 # Zel - IA CONTROLADA POR FONTES
 # ============================================================
 
-STATUS_VALIDACAO_ZEL = "Pendente de validação Zel"
+STATUS_VALIDACAO_ZEL = "Pendente de validação"
 STATUS_VALIDACAO_Zel = STATUS_VALIDACAO_ZEL
 
 
@@ -5726,7 +5808,7 @@ def validar_minuta_zel_em_atendimento(atendimento_id, resposta, gerar_base=True,
     for item in lista_at:
         if int(item.get("id", 0)) == int(atendimento_id):
             item["providencia_adotada"] = str(resposta or "").strip()
-            item["situacao_validacao"] = "Validada pela unidade responsável"
+            item["situacao_validacao"] = "Validado pela chefia"
             item["validado_por"] = email_usuario_logado()
             item["validado_em"] = agora_iso()
             item["atualizado_em"] = agora_iso()
@@ -5742,6 +5824,7 @@ def validar_minuta_zel_em_atendimento(atendimento_id, resposta, gerar_base=True,
     if not atendimento_validado:
         return False, "Atendimento não localizado."
 
+    atendimento_validado["situacao_validacao"] = normalizar_situacao_validacao(atendimento_validado.get("situacao_validacao"))
     salvar_atendimentos(lista_at)
 
     if gerar_base:
@@ -5849,7 +5932,7 @@ def tela_validacao_zel():
                     for item in lista_at:
                         if int(item.get("id", 0)) == int(a.get("id", 0)):
                             item["providencia_adotada"] = resposta
-                            item["situacao_validacao"] = "Em análise pela unidade responsável"
+                            item["situacao_validacao"] = "Pendente de validação"
                             item["atualizado_em"] = agora_iso()
                             break
                     salvar_atendimentos(lista_at)
@@ -7739,7 +7822,13 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 index=secoes_atendimento().index(normalizar_secao(atendimento.get("secao"))) if normalizar_secao(atendimento.get("secao")) in secoes_atendimento() else 0,
                 key=f"{chave_prefixo}_secao_{atendimento.get('id')}"
             )
-            novo_servidor = st.text_input("Servidor(a) responsável", value=atendimento.get("servidor", ""), key=f"{chave_prefixo}_servidor_{atendimento.get('id')}")
+            opcoes_servidor = servidores_por_secao_dropdown(nova_secao, atendimento.get("servidor", ""))
+            novo_servidor = st.selectbox(
+                "Servidor(a) responsável",
+                opcoes_servidor,
+                index=opcoes_servidor.index(atendimento.get("servidor")) if atendimento.get("servidor") in opcoes_servidor else 0,
+                key=f"{chave_prefixo}_servidor_{atendimento.get('id')}"
+            )
             novo_assunto = st.selectbox(
                 "Assunto",
                 assuntos(nova_secao),
@@ -7816,6 +7905,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                             item["realizado_em"] = agora_iso()
                         if novo_status == STATUS_REALIZADO and not item.get("data_conclusao"):
                             item["data_conclusao"] = agora_iso()
+                        item["situacao_validacao"] = normalizar_situacao_validacao(item.get("situacao_validacao"))
                         item["atualizado_em"] = agora_iso()
                         resposta_zona_msg = ""
                         if novo_status == STATUS_REALIZADO and antes.get("status") != STATUS_REALIZADO:
