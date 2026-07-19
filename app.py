@@ -3812,14 +3812,289 @@ def tela_menu_principal():
 
 
 
+
+def zonas_eleitorais_dropdown():
+    """
+    Lista de zonas eleitorais para uso em dropdown no cadastro de atendimento.
+    Mantém opção livre mínima e tenta aproveitar zonas já existentes nos atendimentos.
+    """
+    zonas = ["Não informada"]
+
+    try:
+        existentes = []
+        for a in atendimentos():
+            z = str(a.get("zona_eleitoral") or "").strip()
+            if z and z not in ("Não informada", "Nao informada"):
+                existentes.append(z)
+        zonas.extend(sorted(set(existentes), key=lambda x: x.casefold()))
+    except Exception:
+        pass
+
+    zonas_padrao = [
+        "001ª Zona Eleitoral",
+        "002ª Zona Eleitoral",
+        "003ª Zona Eleitoral",
+        "004ª Zona Eleitoral",
+        "005ª Zona Eleitoral",
+        "006ª Zona Eleitoral",
+        "007ª Zona Eleitoral",
+        "008ª Zona Eleitoral",
+        "009ª Zona Eleitoral",
+        "010ª Zona Eleitoral",
+        "011ª Zona Eleitoral",
+        "012ª Zona Eleitoral",
+        "013ª Zona Eleitoral",
+        "014ª Zona Eleitoral",
+        "015ª Zona Eleitoral",
+        "016ª Zona Eleitoral",
+        "017ª Zona Eleitoral",
+        "018ª Zona Eleitoral",
+        "019ª Zona Eleitoral",
+        "020ª Zona Eleitoral",
+        "021ª Zona Eleitoral",
+        "022ª Zona Eleitoral",
+        "023ª Zona Eleitoral",
+        "024ª Zona Eleitoral",
+        "025ª Zona Eleitoral",
+        "026ª Zona Eleitoral",
+        "027ª Zona Eleitoral",
+        "028ª Zona Eleitoral",
+        "029ª Zona Eleitoral",
+        "030ª Zona Eleitoral",
+        "031ª Zona Eleitoral",
+        "032ª Zona Eleitoral",
+        "033ª Zona Eleitoral",
+        "034ª Zona Eleitoral",
+        "035ª Zona Eleitoral",
+        "036ª Zona Eleitoral",
+        "037ª Zona Eleitoral",
+        "038ª Zona Eleitoral",
+        "039ª Zona Eleitoral",
+        "040ª Zona Eleitoral",
+        "041ª Zona Eleitoral",
+        "042ª Zona Eleitoral",
+        "043ª Zona Eleitoral",
+        "044ª Zona Eleitoral",
+        "045ª Zona Eleitoral",
+        "046ª Zona Eleitoral",
+        "047ª Zona Eleitoral",
+        "048ª Zona Eleitoral",
+        "049ª Zona Eleitoral",
+        "050ª Zona Eleitoral",
+        "051ª Zona Eleitoral",
+        "052ª Zona Eleitoral",
+        "053ª Zona Eleitoral",
+        "054ª Zona Eleitoral",
+        "055ª Zona Eleitoral",
+        "056ª Zona Eleitoral",
+        "057ª Zona Eleitoral",
+        "058ª Zona Eleitoral",
+        "059ª Zona Eleitoral",
+        "060ª Zona Eleitoral",
+        "061ª Zona Eleitoral",
+        "062ª Zona Eleitoral",
+        "063ª Zona Eleitoral",
+        "064ª Zona Eleitoral",
+        "065ª Zona Eleitoral",
+        "066ª Zona Eleitoral",
+        "067ª Zona Eleitoral",
+        "068ª Zona Eleitoral",
+        "069ª Zona Eleitoral",
+        "070ª Zona Eleitoral",
+        "071ª Zona Eleitoral",
+        "072ª Zona Eleitoral",
+        "073ª Zona Eleitoral",
+        "074ª Zona Eleitoral",
+        "075ª Zona Eleitoral",
+        "076ª Zona Eleitoral",
+        "077ª Zona Eleitoral",
+        "078ª Zona Eleitoral",
+        "079ª Zona Eleitoral",
+        "080ª Zona Eleitoral",
+        "081ª Zona Eleitoral",
+        "082ª Zona Eleitoral",
+        "083ª Zona Eleitoral",
+        "084ª Zona Eleitoral",
+        "085ª Zona Eleitoral",
+        "086ª Zona Eleitoral",
+        "087ª Zona Eleitoral",
+        "088ª Zona Eleitoral",
+        "089ª Zona Eleitoral",
+        "090ª Zona Eleitoral",
+        "091ª Zona Eleitoral",
+        "092ª Zona Eleitoral",
+        "093ª Zona Eleitoral",
+        "094ª Zona Eleitoral",
+        "095ª Zona Eleitoral",
+        "096ª Zona Eleitoral",
+        "097ª Zona Eleitoral",
+        "098ª Zona Eleitoral",
+        "099ª Zona Eleitoral",
+        "100ª Zona Eleitoral",
+        "101ª Zona Eleitoral",
+        "102ª Zona Eleitoral",
+        "103ª Zona Eleitoral",
+        "104ª Zona Eleitoral",
+        "105ª Zona Eleitoral",
+        "106ª Zona Eleitoral",
+        "107ª Zona Eleitoral",
+        "108ª Zona Eleitoral",
+        "109ª Zona Eleitoral",
+        "110ª Zona Eleitoral",
+        "111ª Zona Eleitoral",
+        "112ª Zona Eleitoral",
+        "113ª Zona Eleitoral",
+        "114ª Zona Eleitoral",
+        "115ª Zona Eleitoral",
+        "116ª Zona Eleitoral",
+        "117ª Zona Eleitoral",
+        "118ª Zona Eleitoral",
+        "119ª Zona Eleitoral",
+        "120ª Zona Eleitoral",
+        "121ª Zona Eleitoral",
+        "122ª Zona Eleitoral",
+        "123ª Zona Eleitoral",
+        "124ª Zona Eleitoral",
+        "125ª Zona Eleitoral",
+        "126ª Zona Eleitoral",
+        "127ª Zona Eleitoral",
+        "128ª Zona Eleitoral",
+        "129ª Zona Eleitoral",
+        "130ª Zona Eleitoral",
+        "131ª Zona Eleitoral",
+        "132ª Zona Eleitoral",
+        "133ª Zona Eleitoral",
+        "134ª Zona Eleitoral",
+        "135ª Zona Eleitoral",
+        "136ª Zona Eleitoral",
+        "137ª Zona Eleitoral",
+        "138ª Zona Eleitoral",
+        "139ª Zona Eleitoral",
+        "140ª Zona Eleitoral",
+        "141ª Zona Eleitoral",
+        "142ª Zona Eleitoral",
+        "143ª Zona Eleitoral",
+        "144ª Zona Eleitoral",
+        "145ª Zona Eleitoral",
+        "146ª Zona Eleitoral",
+        "147ª Zona Eleitoral",
+        "148ª Zona Eleitoral",
+        "149ª Zona Eleitoral",
+        "150ª Zona Eleitoral",
+        "151ª Zona Eleitoral",
+        "152ª Zona Eleitoral",
+        "153ª Zona Eleitoral",
+        "154ª Zona Eleitoral",
+        "155ª Zona Eleitoral",
+        "156ª Zona Eleitoral",
+        "157ª Zona Eleitoral",
+        "158ª Zona Eleitoral",
+        "159ª Zona Eleitoral",
+        "160ª Zona Eleitoral",
+        "161ª Zona Eleitoral",
+        "162ª Zona Eleitoral",
+        "163ª Zona Eleitoral",
+        "164ª Zona Eleitoral",
+        "165ª Zona Eleitoral",
+        "166ª Zona Eleitoral",
+        "167ª Zona Eleitoral",
+        "168ª Zona Eleitoral",
+        "169ª Zona Eleitoral",
+        "170ª Zona Eleitoral",
+        "171ª Zona Eleitoral",
+        "172ª Zona Eleitoral",
+        "173ª Zona Eleitoral",
+        "174ª Zona Eleitoral",
+        "175ª Zona Eleitoral",
+        "176ª Zona Eleitoral",
+        "177ª Zona Eleitoral",
+        "178ª Zona Eleitoral",
+        "179ª Zona Eleitoral",
+        "180ª Zona Eleitoral",
+        "181ª Zona Eleitoral",
+        "182ª Zona Eleitoral",
+        "183ª Zona Eleitoral",
+        "184ª Zona Eleitoral",
+        "185ª Zona Eleitoral",
+        "186ª Zona Eleitoral",
+        "187ª Zona Eleitoral",
+        "188ª Zona Eleitoral",
+        "189ª Zona Eleitoral",
+        "190ª Zona Eleitoral",
+        "191ª Zona Eleitoral",
+        "192ª Zona Eleitoral",
+        "193ª Zona Eleitoral",
+        "194ª Zona Eleitoral",
+        "195ª Zona Eleitoral",
+        "196ª Zona Eleitoral",
+        "Outro / informar em observações",
+    ]
+
+    for z in zonas_padrao:
+        if z not in zonas:
+            zonas.append(z)
+
+    return zonas
+
+
+def tipologias_novo_atendimento():
+    """
+    Tipologias do novo atendimento.
+    Usa a lista institucional quando disponível.
+    """
+    try:
+        return tipologias_assunto()
+    except Exception:
+        return [
+            "Não classificado",
+            "Processo Cível Eleitoral",
+            "Processo Penal Eleitoral",
+            "Atos Normativos",
+            "Cadastro Eleitoral",
+            "Manuais, Cartilhas e Tutoriais",
+            "Sistemas",
+            "Processos Administrativos Eleitorais",
+            "Gestão, Governança e Apoio às Zonas",
+        ]
+
+
+def assuntos_por_tipologia(secao, tipologia):
+    """
+    Retorna assuntos filtrados pela tipologia quando possível.
+    Se o banco não tiver tipologia/categoria, retorna a lista normal de assuntos da seção.
+    """
+    try:
+        rows = assunto_rows()
+        secao_norm = normalizar_secao(secao)
+        filtrados = []
+        for r in rows:
+            nome = str(r.get("nome") or "").strip()
+            if not nome or nome == "Não informado":
+                continue
+            if normalizar_secao(r.get("secao")) != secao_norm:
+                continue
+            tip = r.get("tipologia") or r.get("categoria") or normalizar_tipologia_assunto(None, nome)
+            if str(tip or "") == str(tipologia or ""):
+                filtrados.append(nome)
+        if filtrados:
+            return ["Não informado"] + sorted(set(filtrados), key=lambda x: x.casefold())
+    except Exception:
+        pass
+    return assuntos(secao)
+
+
+
+
 def tela_novo_atendimento():
     """
-    Tela de cadastro de novo atendimento.
-    Correção: evita NameError quando a rota 'Novo atendimento' é chamada.
+    Porta de entrada da demanda.
+    Registra apenas dados essenciais:
+    data, origem, zona eleitoral, seção responsável, assunto e descrição da pergunta.
+    Os demais campos são preenchidos na fase Em atendimento.
     """
     exibir_mensagem_sistema()
     st.subheader("Novo atendimento")
-    st.caption("Registre uma nova demanda. O atendimento entra diretamente em Em atendimento.")
+    st.caption("Registre apenas a entrada da demanda. Os demais campos serão preenchidos na fase Em atendimento.")
 
     if not usuario_pode_editar_atendimentos():
         st.warning("Seu perfil não permite cadastrar atendimentos.")
@@ -3827,36 +4102,29 @@ def tela_novo_atendimento():
 
     usuario = usuario_logado() or {}
 
-    with st.form("form_novo_atendimento_corrigido", clear_on_submit=True):
+    with st.form("form_novo_atendimento_entrada_minima", clear_on_submit=True):
         col1, col2 = st.columns(2)
 
         with col1:
             data = st.text_input("Data", value=hoje_ddmmaaaa(), help="Formato: dd/mm/aaaa")
-            secao = st.selectbox("Seção responsável", SECOES_ATENDIMENTO, index=0)
-            assunto_lista = assuntos(secao)
-            assunto = st.selectbox("Assunto", assunto_lista, index=0)
             origem = st.selectbox("Origem", FONTES, index=0)
-            zona_eleitoral = st.text_input("Zona Eleitoral", placeholder="Ex.: 001ª, 156ª, Salvador, etc.")
+            zona_eleitoral = st.selectbox("Zona Eleitoral", zonas_eleitorais_dropdown(), index=0)
 
         with col2:
-            prioridade = st.selectbox("Prioridade", ["Normal", "Alta", "Urgente", "Baixa"], index=0)
-            complexidade = st.selectbox("Complexidade", COMPLEXIDADES_ATENDIMENTO, index=0)
-            servidores = ["Não informado"] + nomes_usuarios_ativos()
-            responsavel_padrao = usuario.get("nome") or usuario.get("email") or "Não informado"
-            if responsavel_padrao not in servidores:
-                servidores.insert(1, responsavel_padrao)
-            servidor = st.selectbox("Responsável", servidores, index=servidores.index(responsavel_padrao) if responsavel_padrao in servidores else 0)
-            protocolo = st.text_input("Protocolo / referência", placeholder="SEI, PJe, e-mail, mensagem etc.")
-            prazo_limite = st.text_input("Prazo limite", value="", placeholder="dd/mm/aaaa, se houver")
+            secao = st.selectbox("Seção responsável", SECOES_ATENDIMENTO, index=0)
+            assunto = st.selectbox("Assunto", assuntos(secao), index=0)
 
-        descricao = st.text_area("Descrição / pergunta", height=160, placeholder="Descreva a demanda recebida.")
-        observacoes = st.text_area("Observações internas", height=100)
+        descricao = st.text_area(
+            "Descrição da pergunta",
+            height=180,
+            placeholder="Descreva a pergunta/demanda apresentada pela Zona ou pela unidade demandante."
+        )
 
         salvar = st.form_submit_button("Cadastrar atendimento", type="primary")
 
     if salvar:
         if not str(descricao or "").strip():
-            st.warning("Informe a descrição/pergunta do atendimento.")
+            st.warning("Informe a descrição da pergunta.")
             return
 
         lista = atendimentos()
@@ -3872,17 +4140,17 @@ def tela_novo_atendimento():
             "situacao_validacao": "Não requerida",
             "validado_por": "",
             "validado_em": "",
-            "servidor": servidor or "Não informado",
+            "servidor": "Não informado",
             "fonte": origem or "Não informado",
             "assunto": assunto or "Não informado",
-            "zona_eleitoral": zona_eleitoral or "",
+            "zona_eleitoral": "" if zona_eleitoral == "Não informada" else zona_eleitoral,
             "origem": origem or "",
-            "protocolo": protocolo or "",
-            "prioridade": prioridade or "Normal",
-            "complexidade": normalizar_complexidade(complexidade or "Não informada"),
-            "prazo_limite": prazo_limite or "",
+            "protocolo": "",
+            "prioridade": "Normal",
+            "complexidade": "Não informada",
+            "prazo_limite": "",
             "descricao": limpar_html_residual_card(descricao) if "limpar_html_residual_card" in globals() else str(descricao or "").strip(),
-            "observacoes": limpar_html_residual_card(observacoes) if "limpar_html_residual_card" in globals() else str(observacoes or "").strip(),
+            "observacoes": "",
             "providencia_adotada": "",
             "conclusao": "",
             "criado_por": usuario.get("email") or usuario.get("nome") or "",
