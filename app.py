@@ -9807,59 +9807,16 @@ def tela_base_conhecimento():
         )
 
     st.divider()
-    st.markdown("### Cadastrar entendimento manualmente")
-    st.caption("Após salvar, o entendimento receberá automaticamente um número de cadastro no formato BC-000001.")
-
-    with st.form("form_base_conhecimento"):
-        col1, col2 = st.columns(2)
-        with col1:
-            secao = st.selectbox("Seção", secoes_atendimento(), key="bc_novo_secao")
-            assunto = st.selectbox("Assunto", assuntos(secao), key="bc_novo_assunto")
-            categoria = st.text_input("Categoria", value=assunto if assunto != "Não informado" else "", key="bc_novo_categoria")
-        with col2:
-            atendimento_origem_id = st.number_input("ID do atendimento de origem, se houver", min_value=0, step=1)
-            fundamento = st.text_area("Fundamento normativo")
-        resumo = st.text_area("Resumo da dúvida")
-        orientacao = st.text_area("Orientação adotada")
-
-        if st.form_submit_button("Salvar entendimento", type="primary"):
-            usuario = usuario_logado() or {}
-            row = {
-                "atendimento_origem_id": int(atendimento_origem_id) if atendimento_origem_id else None,
-                "secao": secao,
-                "assunto": assunto or "Não informado",
-                "categoria": categoria.strip() or assunto or "Não informado",
-                "resumo_duvida": resumo.strip(),
-                "orientacao_adotada": orientacao.strip(),
-                "fundamento_normativo": fundamento.strip(),
-                "criado_por_email": usuario.get("email", ""),
-                "criado_por_nome": usuario.get("nome", ""),
-                "ativo": True,
-                "versao": 1,
-                "superada": False,
-                "motivo_superacao": "",
-                "criado_em": agora_iso(),
-                "atualizado_em": agora_iso(),
-            }
-            criado = supabase_insert_silencioso("base_conhecimento", [row])
-            if criado and isinstance(criado, list) and criado[0].get("id"):
-                codigo = codigo_base_conhecimento(criado[0])
-                try:
-                    supabase_update_silencioso(
-                        "base_conhecimento",
-                        {"codigo_cadastro": codigo, "atualizado_em": agora_iso()},
-                        "id",
-                        criado[0].get("id")
-                    )
-                except Exception:
-                    pass
-                registrar_historico_memoria("base_conhecimento", criado[0].get("id"), codigo, "Criação", "Orientação cadastrada manualmente.")
-                st.success(f"Entendimento cadastrado sob o nº {codigo}.")
-            else:
-                st.success("Entendimento cadastrado. O número BC será exibido na consulta da base.")
-            st.rerun()
-
-
+    st.markdown("### Como novos entendimentos entram na Base de Conhecimento")
+    st.info(
+        "A Base de Conhecimento é alimentada a partir de respostas validadas em atendimentos. "
+        "Para criar novo entendimento, abra o atendimento, use ou redija a resposta, valide e marque a opção "
+        "'Salvar como Base de Conhecimento'."
+    )
+    st.caption(
+        "O cadastro manual foi removido para evitar duplicidade entre atendimento e memória institucional. "
+        "O formulário abaixo permanece apenas para revisar, superar ou retirar da lista ativa entendimentos já existentes."
+    )
 
     if usuario_pode_ver_memoria_avancada():
         st.divider()
