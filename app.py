@@ -4441,8 +4441,9 @@ def resumo_fontes_zel(fontes, bases):
 
 # ============================================================
 # ============================================================
-# ZEL - AGENTE CONTROLADA COM BARREIRAS INSTITUCIONAIS
-# Versao: zel_agente_controlada_v7
+# ============================================================
+# ZEL - AGENTE CONTROLADA COM INTENÇÃO DA PERGUNTA
+# Versão: zel_agente_intencao_v8
 # ============================================================
 
 ZEL_SCORE_MINIMO_EVIDENCIA = 22
@@ -4465,7 +4466,7 @@ def zel_tokens_pergunta(pergunta):
         "entre", "dentro", "fora", "esse", "essa", "este", "esta", "isso", "isto",
         "mais", "menos", "muito", "pouco", "deve", "pode", "ser", "sao", "são",
         "das", "dos", "uma", "umas", "uns", "com", "sem", "por", "que", "eleitoral",
-        "eleitorais", "pra", "está", "esta", "seria", "fazer"
+        "eleitorais", "pra", "está", "esta", "seria", "fazer", "administrativa"
     }
     tokens = []
     for p in texto.split():
@@ -4474,10 +4475,10 @@ def zel_tokens_pergunta(pergunta):
             tokens.append(p)
 
     extras = []
-    joined = " ".join(tokens)
+    joined = " ".join(tokens + [texto])
 
     if "administr" in joined:
-        extras += ["administrativo", "administrativa", "administrativo-eleitoral", "administrativo eleitoral", "esfera administrativa"]
+        extras += ["administrativo-eleitoral", "administrativo eleitoral", "esfera administrativa", "lançamento automático", "lancamento automatico"]
     if "multa" in joined:
         extras += ["multa", "multas", "sanção pecuniária", "sanções pecuniárias"]
     if "intima" in joined:
@@ -4490,16 +4491,14 @@ def zel_tokens_pergunta(pergunta):
         extras += ["execução", "execucao", "cobrança", "cobranca", "devedor"]
     if "parcel" in joined:
         extras += ["parcelamento", "parcelar", "parcelas", "requerimento"]
-    if "cadin" in joined:
-        extras += ["cadin", "inscrição", "inscricao", "inadimplência", "inadimplencia"]
-    if "serasa" in joined:
-        extras += ["serasajud", "serasa", "restrição", "restricao"]
+    if "que é" in joined or "o que e" in joined or "conceito" in joined or "defina" in joined or "significa" in joined:
+        extras += ["considera-se", "conceito", "definição", "definicao", "sanção pecuniária", "descumprimento de obrigação eleitoral"]
 
     for e in extras:
         if e not in tokens:
             tokens.append(e)
 
-    return tokens[:50]
+    return tokens[:55]
 
 
 def zel_dividir_blocos_normativos(texto):
@@ -4526,15 +4525,37 @@ def zel_dividir_blocos_normativos(texto):
     return blocos
 
 
+def zel_agente_identificar_intencao(pergunta):
+    p = zel_normalizar_texto(pergunta)
+
+    if p.startswith("o que e ") or p.startswith("o que é ") or "conceito" in p or "defina" in p or "significa" in p:
+        return "conceito"
+
+    if "diferen" in p or "disting" in p or "compar" in p:
+        return "diferenciacao"
+
+    if "prazo" in p or "intima" in p or "pagamento" in p or "quantos dias" in p:
+        return "prazo"
+
+    if "como" in p or "proced" in p or "execu" in p or "cobran" in p or "tramita" in p:
+        return "procedimento"
+
+    if "parcel" in p:
+        return "parcelamento"
+
+    return "orientacao"
+
+
 def zel_agente_classificar(atendimento=None, pergunta_livre=""):
     pergunta = str(pergunta_livre or (atendimento or {}).get("descricao") or "").strip()
     assunto = str((atendimento or {}).get("assunto") or "").strip()
     secao = normalizar_secao((atendimento or {}).get("secao") or "SEPRO") if "normalizar_secao" in globals() else str((atendimento or {}).get("secao") or "SEPRO")
     texto = zel_normalizar_texto(" ".join([pergunta, assunto]))
 
+    intencao = zel_agente_identificar_intencao(pergunta)
     tema = "geral"
     risco = "medio"
-    exige_prazo_expresso = False
+    exige_prazo_expresso = intencao == "prazo"
 
     if "multa" in texto and "administr" in texto:
         tema = "multa_administrativa"
@@ -4558,8 +4579,7 @@ def zel_agente_classificar(atendimento=None, pergunta_livre=""):
         tema = "propaganda_poder_policia"
         risco = "alto"
 
-    if "prazo" in texto or "intima" in texto or "pagamento" in texto or "dias" in texto:
-        exige_prazo_expresso = True
+    if exige_prazo_expresso:
         risco = "alto"
 
     if not pergunta:
@@ -4570,6 +4590,7 @@ def zel_agente_classificar(atendimento=None, pergunta_livre=""):
         "assunto": assunto or "Não informado",
         "secao": secao,
         "tema": tema,
+        "intencao": intencao,
         "risco": risco,
         "exige_prazo_expresso": exige_prazo_expresso,
         "tokens": zel_tokens_pergunta(pergunta),
@@ -4578,8 +4599,10 @@ def zel_agente_classificar(atendimento=None, pergunta_livre=""):
 
 def zel_pontuar_bloco(bloco, contexto):
     bloco_norm = zel_normalizar_texto(bloco)
+    pergunta_norm = zel_normalizar_texto(contexto.get("pergunta"))
     tokens = contexto.get("tokens") or []
     tema = contexto.get("tema")
+    intencao = contexto.get("intencao")
     exige_prazo = bool(contexto.get("exige_prazo_expresso"))
 
     score = 0
@@ -4588,19 +4611,24 @@ def zel_pontuar_bloco(bloco, contexto):
         if t_norm and t_norm in bloco_norm:
             score += 8 if " " in t_norm else 4
 
+    if intencao == "conceito":
+        for t in ["considera-se", "conceito", "definição", "definicao", "sanção pecuniária", "sancao pecuniaria", "descumprimento de obrigação eleitoral", "não mais passível de recurso"]:
+            if zel_normalizar_texto(t) in bloco_norm:
+                score += 16
+
     if tema == "multa_administrativa":
         if "multa" not in bloco_norm or "administr" not in bloco_norm:
             score -= 20
-        for t in ["administrativo-eleitoral", "administrativo eleitoral", "administrativa", "administrativo", "esfera administrativa"]:
+        for t in ["multa administrativo-eleitoral", "administrativo-eleitoral", "administrativo eleitoral", "esfera administrativa", "lançamento automático", "lancamento automatico"]:
             if zel_normalizar_texto(t) in bloco_norm:
-                score += 12
+                score += 14
 
     if tema == "multa_judicial":
         for t in ["multa judicial", "cumprimento definitivo de sentença", "sentença", "sentenca"]:
             if zel_normalizar_texto(t) in bloco_norm:
                 score += 12
 
-    if tema == "parcelamento_multa":
+    if tema == "parcelamento_multa" or intencao == "parcelamento":
         for t in ["parcelamento", "parcelas", "requerimento", "título iii", "titulo iii"]:
             if zel_normalizar_texto(t) in bloco_norm:
                 score += 14
@@ -4610,12 +4638,13 @@ def zel_pontuar_bloco(bloco, contexto):
             if zel_normalizar_texto(t) in bloco_norm:
                 score += 14
 
-    if ("execu" in zel_normalizar_texto(contexto.get("pergunta"))) or ("cobran" in zel_normalizar_texto(contexto.get("pergunta"))):
-        for t in ["execução", "execucao", "cobrança", "cobranca", "livro ii", "título i", "titulo i"]:
+    if intencao == "procedimento" or "execu" in pergunta_norm or "cobran" in pergunta_norm:
+        for t in ["execução", "execucao", "cobrança", "cobranca", "livro ii", "título i", "titulo i", "devedor"]:
             if zel_normalizar_texto(t) in bloco_norm:
                 score += 8
 
-    if contexto.get("risco") == "alto" and (
+    # Penaliza começo genérico, exceto em pergunta conceitual, pois o art. 2º pode ser exatamente a resposta.
+    if intencao != "conceito" and contexto.get("risco") == "alto" and (
         "disposições gerais" in bloco_norm or "art. 1º" in bloco_norm or "art. 2º" in bloco_norm
     ):
         score -= 35
@@ -4638,6 +4667,21 @@ def zel_extrair_prazos_do_texto(texto):
             if trecho not in achados:
                 achados.append(trecho)
     return achados[:5]
+
+
+def zel_extrair_definicao_multa_administrativa(texto):
+    texto = re.sub(r"\s+", " ", str(texto or "")).strip()
+    padroes = [
+        r"multa administrativo-eleitoral:\s*(.*?)(?=;\s*II\s*-|II\s*-|$)",
+        r"multa administrativa:\s*(.*?)(?=;\s*II\s*-|II\s*-|$)",
+    ]
+    for padrao in padroes:
+        m = re.search(padrao, texto, flags=re.IGNORECASE)
+        if m:
+            definicao = m.group(1).strip(" ;.")
+            if definicao:
+                return definicao
+    return ""
 
 
 def zel_fonte_row_validada(row):
@@ -4663,32 +4707,50 @@ def zel_base_row_validada(row):
 def zel_agente_buscar_evidencias(contexto, fontes=None, bases=None, limite=ZEL_MAX_EVIDENCIAS):
     candidatos = []
 
+    # Base de Conhecimento tem prioridade como memória institucional.
     for b in bases or []:
         if not zel_base_row_validada(b):
             continue
+
         try:
             titulo = codigo_base_ia(b)
         except Exception:
             titulo = str(b.get("codigo_cadastro") or "Base de Conhecimento")
+
         texto = "\n".join([
             str(b.get("resumo_duvida") or ""),
             str(b.get("orientacao_adotada") or ""),
             str(b.get("fundamento_normativo") or ""),
         ]).strip()
+
         score = zel_pontuar_bloco(texto, contexto)
         if score >= ZEL_SCORE_MINIMO_EVIDENCIA:
-            candidatos.append({"tipo": "Base de Conhecimento validada", "titulo": titulo, "referencia": "", "texto": texto, "score": score + 8})
+            candidatos.append({
+                "tipo": "Base de Conhecimento validada",
+                "titulo": titulo,
+                "referencia": "",
+                "texto": texto,
+                "score": score + 8,
+            })
 
     for f in fontes or []:
         if not zel_fonte_row_validada(f):
             continue
+
         titulo = str(f.get("titulo") or "Documento de apoio").strip()
         referencia = str(f.get("referencia") or "").strip()
         conteudo = str(f.get("conteudo_texto") or "").strip()
+
         for bloco in zel_dividir_blocos_normativos(conteudo):
             score = zel_pontuar_bloco(bloco, contexto)
             if score >= ZEL_SCORE_MINIMO_EVIDENCIA:
-                candidatos.append({"tipo": "Documento de apoio validado", "titulo": titulo, "referencia": referencia, "texto": bloco.strip(), "score": score})
+                candidatos.append({
+                    "tipo": "Documento de apoio validado",
+                    "titulo": titulo,
+                    "referencia": referencia,
+                    "texto": bloco.strip(),
+                    "score": score,
+                })
 
     return sorted(candidatos, key=lambda x: x["score"], reverse=True)[:limite]
 
@@ -4696,20 +4758,30 @@ def zel_agente_buscar_evidencias(contexto, fontes=None, bases=None, limite=ZEL_M
 def zel_agente_checar_suficiencia(contexto, evidencias):
     if contexto.get("risco") == "critico":
         return False, "O atendimento/pergunta não contém descrição suficiente."
+
     if not evidencias:
         return False, "Nenhuma Base de Conhecimento validada ou documento de apoio validado apresentou trecho aderente à pergunta."
+
     texto = zel_normalizar_texto("\n\n".join(e.get("texto") or "" for e in evidencias))
     maior_score = max([e.get("score", 0) for e in evidencias] or [0])
+
     if maior_score < ZEL_SCORE_MINIMO_EVIDENCIA:
         return False, "A aderência entre a pergunta e os trechos localizados foi insuficiente."
+
     if contexto.get("exige_prazo_expresso"):
         if maior_score < ZEL_SCORE_MINIMO_PRAZO:
             return False, "A pergunta envolve prazo/intimação/pagamento, mas a evidência não atingiu o nível mínimo de segurança."
         if not zel_extrair_prazos_do_texto(texto):
             return False, "A pergunta envolve prazo, mas nenhum número de dias foi localizado expressamente em base validada."
+
     if contexto.get("tema") == "multa_administrativa":
         if "multa" not in texto or "administr" not in texto:
             return False, "A pergunta envolve multa administrativa, mas o trecho localizado não confirma esse enquadramento."
+
+    if contexto.get("intencao") == "conceito" and contexto.get("tema") == "multa_administrativa":
+        if not ("sanção" in texto or "sancao" in texto or "considera-se" in texto or "descumprimento" in texto):
+            return False, "A pergunta pede conceito, mas o trecho localizado não contém definição normativa suficiente."
+
     return True, "Evidência suficiente."
 
 
@@ -4722,7 +4794,7 @@ def zel_agente_bloquear(motivo):
         "2. verificar se a Base de Conhecimento ou o documento de apoio contém o trecho específico da pergunta;\n"
         "3. cadastrar ou ajustar a Base de Conhecimento com orientação validada;\n"
         "4. submeter a demanda à análise manual da unidade responsável.\n\n"
-        "Regra de segurança: a Zel não cria prazo, rito, requisito ou conclusão jurídica sem fundamento validado correspondente."
+        "Regra de segurança: a Zel não cria conceito, prazo, rito, requisito ou conclusão jurídica sem fundamento validado correspondente."
     )
 
 
@@ -4730,41 +4802,72 @@ def zel_agente_redigir(contexto, evidencias):
     ok, motivo = zel_agente_checar_suficiencia(contexto, evidencias)
     if not ok:
         return zel_agente_bloquear(motivo)
+
     tema = contexto.get("tema")
+    intencao = contexto.get("intencao")
     texto_evidencia = "\n\n".join(e["texto"] for e in evidencias)
     prazos = zel_extrair_prazos_do_texto(texto_evidencia)
-    if contexto.get("exige_prazo_expresso"):
+
+    if intencao == "conceito" and tema == "multa_administrativa":
+        definicao = zel_extrair_definicao_multa_administrativa(texto_evidencia)
+        if not definicao:
+            return zel_agente_bloquear("A pergunta pede conceito de multa administrativa, mas a definição normativa não foi extraída com segurança.")
+
+        return (
+            "Multa administrativo-eleitoral é a sanção pecuniária imposta em razão de descumprimento de obrigação eleitoral, "
+            "decorrente de decisão administrativa ou de lançamento automático em sistema da Justiça Eleitoral, quando não mais passível de recurso na esfera administrativa.\n\n"
+            "Em termos práticos, ela se diferencia da multa judicial eleitoral porque nasce de procedimento ou registro administrativo da Justiça Eleitoral, e sua cobrança ocorre pela via de execução própria das multas administrativo-eleitorais.\n\n"
+            "Definição extraída da base validada: " + definicao + "."
+        )
+
+    if intencao == "diferenciacao" and tema in ("multa_administrativa", "multa_judicial"):
+        return (
+            "A base validada diferencia a multa administrativo-eleitoral da multa judicial eleitoral. "
+            "A multa administrativo-eleitoral decorre de decisão administrativa ou lançamento automático em sistema da Justiça Eleitoral, quando não há mais recurso administrativo. "
+            "Já a multa judicial eleitoral decorre de decisão judicial irrecorrível por violação ao Código Eleitoral ou às leis eleitorais.\n\n"
+            "A consequência prática é que a primeira segue rito de execução próprio das multas administrativas, enquanto a segunda segue cumprimento definitivo de sentença."
+        )
+
+    if intencao == "prazo":
         return (
             f"Com base no fundamento validado localizado, o prazo expressamente identificado é: {', '.join(prazos)}.\n\n"
             "Antes do envio, a unidade responsável deve conferir se o dispositivo localizado corresponde exatamente ao caso concreto. "
             "A Zel não fixa prazo por analogia, memória ou inferência; apenas reproduz prazo localizado em base validada."
         )
-    if tema == "multa_administrativa":
+
+    if intencao == "procedimento" and tema == "multa_administrativa":
         return (
-            "Com base no fundamento validado localizado, a multa administrativo-eleitoral deve observar o procedimento indicado na base validada.\n\n"
-            "Resposta sugerida: confirmar a definitividade da multa na esfera administrativa, identificar corretamente o devedor, aplicar o rito previsto no fundamento validado e adotar as providências cabíveis em caso de inadimplemento."
+            "Com base no fundamento validado localizado, a multa administrativo-eleitoral definitivamente constituída deve seguir o rito de execução próprio previsto na base validada.\n\n"
+            "Resposta sugerida: confirmar a definitividade da multa na esfera administrativa, identificar corretamente o devedor, observar os atos de intimação/cobrança previstos na base validada e adotar as providências executivas cabíveis em caso de inadimplemento."
         )
-    if tema == "parcelamento_multa":
+
+    if intencao == "parcelamento" or tema == "parcelamento_multa":
         return (
             "Com base no fundamento validado localizado, o parcelamento de multa eleitoral deve observar os requisitos, limites e procedimento expressamente previstos na base validada.\n\n"
             "Resposta sugerida: analisar o requerimento conforme os parâmetros da base validada, sem ampliar hipóteses ou dispensar requisitos não previstos."
         )
+
     return (
         "Com base nos fundamentos validados localizados, há suporte para resposta institucional.\n\n"
-        "Resposta sugerida: encaminhar orientação objetiva mencionando apenas o procedimento, requisito ou conclusão expressamente amparado na Base de Conhecimento ou documento de apoio validado."
+        "Resposta sugerida: encaminhar orientação objetiva mencionando apenas o conceito, procedimento, requisito ou conclusão expressamente amparado na Base de Conhecimento ou documento de apoio validado."
     )
 
 
 def zel_agente_resumir_evidencias(evidencias):
     if not evidencias:
         return "Nenhum fundamento validado específico foi localizado."
+
     linhas = []
     for i, e in enumerate(evidencias, start=1):
         ref = f" — {e.get('referencia')}" if e.get("referencia") else ""
         texto = re.sub(r"\s+", " ", str(e.get("texto") or "")).strip()
         if len(texto) > 900:
             texto = texto[:900].rsplit(" ", 1)[0] + "..."
-        linhas.append(f"{i}. {e.get('tipo')}: {e.get('titulo')}{ref}\n   Pontuação de aderência: {e.get('score')}\n   Trecho usado: {texto}")
+        linhas.append(
+            f"{i}. {e.get('tipo')}: {e.get('titulo')}{ref}\n"
+            f"   Pontuação de aderência: {e.get('score')}\n"
+            f"   Trecho usado: {texto}"
+        )
     return "\n".join(linhas)
 
 
@@ -4773,44 +4876,75 @@ def zel_agente_executar(atendimento=None, pergunta_livre="", fontes=None, bases=
     evidencias = zel_agente_buscar_evidencias(contexto, fontes=fontes, bases=bases)
     ok, motivo = zel_agente_checar_suficiencia(contexto, evidencias)
     resposta = zel_agente_redigir(contexto, evidencias)
-    return {"contexto": contexto, "evidencias": evidencias, "suficiente": ok, "motivo": motivo, "resposta": resposta}
+
+    return {
+        "contexto": contexto,
+        "evidencias": evidencias,
+        "suficiente": ok,
+        "motivo": motivo,
+        "resposta": resposta,
+    }
 
 
 def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None, bases=None):
     fontes = fontes or []
     bases = bases or []
+
     assunto = (atendimento or {}).get("assunto") or "Não informado"
     zona = (atendimento or {}).get("zona_eleitoral") or "Não informada"
     pergunta = str(pergunta_livre or (atendimento or {}).get("descricao") or "").strip()
+
     if not fontes and not bases:
         return (
             "A Zel não localizou Base de Conhecimento validada nem documento de apoio validado para responder com segurança.\n\n"
             "Regra de segurança: a Zel não produz resposta sem fundamento validado."
         )
-    execucao = zel_agente_executar(atendimento=atendimento, pergunta_livre=pergunta_livre, fontes=fontes, bases=bases)
+
+    execucao = zel_agente_executar(
+        atendimento=atendimento,
+        pergunta_livre=pergunta_livre,
+        fontes=fontes,
+        bases=bases
+    )
     contexto = execucao["contexto"]
     evidencias = execucao["evidencias"]
+
     partes = [
-        "Prezados(as),", "",
-        "Em atenção à demanda apresentada, segue minuta elaborada pela Zel em modo de agente controlada, com uso exclusivo de Base de Conhecimento validada e/ou documento de apoio validado no SIGA-COR.", "",
-        f"Assunto: {assunto}", f"Zona eleitoral: {zona}", "",
-        "Síntese da demanda:", pergunta, "",
+        "Prezados(as),",
+        "",
+        "Em atenção à demanda apresentada, segue minuta elaborada pela Zel em modo de agente controlada, com uso exclusivo de Base de Conhecimento validada e/ou documento de apoio validado no SIGA-COR.",
+        "",
+        f"Assunto: {assunto}",
+        f"Zona eleitoral: {zona}",
+        "",
+        "Síntese da demanda:",
+        pergunta,
+        "",
         "Classificação da Zel:",
         f"Tema identificado: {contexto.get('tema')}",
+        f"Intenção da pergunta: {contexto.get('intencao')}",
         f"Risco: {contexto.get('risco')}",
-        f"Exige prazo expresso: {'sim' if contexto.get('exige_prazo_expresso') else 'não'}", "",
-        "Resposta sugerida:", execucao["resposta"], "",
-        "Fundamento validado utilizado pela Zel:", zel_agente_resumir_evidencias(evidencias), "",
+        f"Exige prazo expresso: {'sim' if contexto.get('exige_prazo_expresso') else 'não'}",
+        "",
+        "Resposta sugerida:",
+        execucao["resposta"],
+        "",
+        "Fundamento validado utilizado pela Zel:",
+        zel_agente_resumir_evidencias(evidencias),
+        "",
         "Barreiras aplicadas:",
         "- a Zel atua como agente controlada, não como chatbot livre;",
+        "- a Zel identifica a intenção da pergunta antes de redigir;",
+        "- pergunta conceitual gera resposta conceitual; pergunta procedimental gera resposta procedimental;",
         "- a Zel só usa Base de Conhecimento validada e documento de apoio validado;",
         "- a Zel ignora registros inativos, não validados ou superados;",
-        "- a Zel não cria prazo, rito, requisito ou conclusão jurídica sem fundamento validado correspondente;",
+        "- a Zel não cria conceito, prazo, rito, requisito ou conclusão jurídica sem fundamento validado correspondente;",
         "- pergunta sobre prazo exige localização expressa de número de dias em base validada;",
-        "- se a evidência for insuficiente, a resposta é bloqueada para análise manual.", "",
+        "- se a evidência for insuficiente, a resposta é bloqueada para análise manual.",
+        "",
         "Controle:",
         "Minuta gerada pela Zel. A resposta somente deve encerrar o atendimento após validação interna pela SEPRO ou SEOCE.",
-        "Versão da lógica Zel: zel_agente_controlada_v7."
+        "Versão da lógica Zel: zel_agente_intencao_v8."
     ]
     return "\n".join(partes)
 
