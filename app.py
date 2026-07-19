@@ -100,6 +100,8 @@ STATUS_OPCOES = [
     STATUS_REALIZADO,
 ]
 
+STATUS_ATENDIMENTO = STATUS_OPCOES
+
 FONTES = [
     "Não informado",
     "E-mail",
@@ -1001,6 +1003,14 @@ def registrar_reabertura(atendimento, motivo):
     registrar_auditoria_atendimento(atendimento.get("id"), "reabertura", "motivo", "", motivo)
     registrar_historico_atendimento(atendimento.get("id"), "Reabertura", "Atendimento reaberto", motivo)
 
+
+
+
+def criar_base_conhecimento_do_atendimento(atendimento):
+    """
+    Cria item na Base de Conhecimento a partir da resposta validada de atendimento.
+    """
+    return criar_item_base_conhecimento(atendimento)
 
 
 def criar_modelo_resposta_do_atendimento(atendimento, titulo_modelo="", texto_modelo="", fundamento_normativo=""):
@@ -5115,6 +5125,20 @@ def painel_gerencial_zona(zona_consulta):
             st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
 
 
+
+def inativar_fonte_zel(fonte_id):
+    try:
+        return supabase_update_silencioso(
+            "fontes_zel",
+            {"ativo": False, "validado": False, "atualizado_em": agora_iso()},
+            "id",
+            fonte_id
+        )
+    except Exception as e:
+        st.error(f"Não foi possível inativar o documento de apoio: {e}")
+        return None
+
+
 def tela_fontes_zel():
     st.markdown("### Fontes cadastradas da Zel")
     st.caption(
@@ -5271,10 +5295,66 @@ def tela_fontes_zel():
             st.caption(f"Ativa: {'Sim' if f.get('ativo', True) else 'Não'} | Validada: {'Sim' if f.get('validado', True) else 'Não'}")
 
 
+
+def validar_minuta_zel_em_atendimento(atendimento_id, resposta, gerar_base=True, gerar_fonte=False, encerrar=True):
+    """
+    Valida a minuta gerada pela Zel e grava como resposta do atendimento.
+    A resposta validada pode virar Base de Conhecimento. O acervo documental é reservado para normas/manuais/documentos.
+    """
+    lista_at = atendimentos()
+    atendimento_validado = None
+
+    for item in lista_at:
+        if int(item.get("id", 0)) == int(atendimento_id):
+            item["providencia_adotada"] = str(resposta or "").strip()
+            item["situacao_validacao"] = "Validada pela unidade responsável"
+            item["validado_por"] = email_usuario_logado()
+            item["validado_em"] = agora_iso()
+            item["atualizado_em"] = agora_iso()
+
+            if encerrar:
+                item["status"] = STATUS_REALIZADO
+                item["data_conclusao"] = agora_iso()
+                item["data_realizacao"] = hoje_ddmmaaaa()
+
+            atendimento_validado = item
+            break
+
+    if not atendimento_validado:
+        return False, "Atendimento não localizado."
+
+    salvar_atendimentos(lista_at)
+
+    if gerar_base:
+        try:
+            criar_base_conhecimento_do_atendimento(atendimento_validado)
+            registrar_uso_zel(
+                atendimento_id,
+                "Resposta validada transformada em Base de Conhecimento",
+                "A resposta validada da Zel foi cadastrada como orientação institucional."
+            )
+        except Exception as e:
+            st.warning(f"Resposta validada, mas não foi possível gerar Base de Conhecimento: {e}")
+
+    try:
+        registrar_uso_zel(
+            atendimento_id,
+            "Resposta da Zel validada",
+            "Minuta validada pela unidade responsável e gravada como resposta do atendimento."
+        )
+    except Exception:
+        pass
+
+    limpar_estado_zel_atendimento(atendimento_id)
+    return True, "Resposta validada, gravada no atendimento e tela limpa para novo registro."
+
+
+
 def tela_validacao_zel():
-    st.markdown("### Validação de respostas sugeridas pela Zel")
+    st.markdown("### Validar respostas geradas pela Zel")
     st.caption(
-        "Atendimentos com resposta gerada pela Zel devem ser validados pela unidade responsável antes do encerramento."
+        "A validação grava a resposta no atendimento. Por padrão, a resposta validada também pode virar Base de Conhecimento. "
+        "Depois de gravar, a tela é limpa para novo registro."
     )
 
     lista = [
@@ -5304,33 +5384,45 @@ def tela_validacao_zel():
             st.markdown("**Pergunta/demanda:**")
             st.write(a.get("descricao") or "Não informada.")
 
-            resposta_key = f"zel_validacao_resposta_{a.get('id')}"
             resposta = st.text_area(
-                "Resposta sugerida para validação",
+                "Resposta para validar e gravar",
                 value=a.get("providencia_adotada") or "",
-                height=300,
-                key=resposta_key
+                height=340,
+                key=f"zel_validacao_resposta_{a.get('id')}"
             )
+
+            col_opts1, col_opts2 = st.columns(2)
+            with col_opts1:
+                gerar_base = st.checkbox(
+                    "Salvar também como Base de Conhecimento",
+                    value=True,
+                    key=f"zel_pendente_base_{a.get('id')}"
+                )
+            with col_opts2:
+                encerrar = st.checkbox(
+                    "Encerrar atendimento ao gravar",
+                    value=True,
+                    key=f"zel_pendente_encerrar_{a.get('id')}"
+                )
 
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Validar e encerrar atendimento", type="primary", key=f"zel_validar_{a.get('id')}"):
-                    lista_at = atendimentos()
-                    for item in lista_at:
-                        if int(item.get("id", 0)) == int(a.get("id", 0)):
-                            item["providencia_adotada"] = resposta
-                            item["status"] = STATUS_REALIZADO
-                            item["situacao_validacao"] = "Validada pela unidade responsável"
-                            item["validado_por"] = email_usuario_logado()
-                            item["validado_em"] = agora_iso()
-                            item["data_conclusao"] = agora_iso()
-                            item["data_realizacao"] = hoje_ddmmaaaa()
-                            item["atualizado_em"] = agora_iso()
-                            break
-                    salvar_atendimentos(lista_at)
-                    registrar_uso_zel(a.get("id"), "Resposta validada e atendimento encerrado", "Resposta sugerida pela Zel validada pela unidade responsável.")
-                    st.success("Resposta validada e atendimento encerrado.")
-                    st.rerun()
+                if st.button("Gravar resposta validada", type="primary", key=f"zel_validar_{a.get('id')}"):
+                    if not str(resposta or "").strip():
+                        st.warning("A resposta está vazia. Revise antes de gravar.")
+                    else:
+                        ok, msg = validar_minuta_zel_em_atendimento(
+                            a.get("id"),
+                            resposta,
+                            gerar_base=gerar_base,
+                            gerar_fonte=False,
+                            encerrar=encerrar
+                        )
+                        if ok:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
 
             with col2:
                 if st.button("Manter em análise", key=f"zel_manter_{a.get('id')}"):
@@ -5343,15 +5435,47 @@ def tela_validacao_zel():
                             break
                     salvar_atendimentos(lista_at)
                     registrar_uso_zel(a.get("id"), "Resposta mantida em análise", "Resposta da Zel ajustada, mas não validada.")
-                    st.success("Atendimento mantido em análise.")
+                    limpar_estado_zel_atendimento(a.get("id"))
+                    st.success("Resposta mantida em análise.")
                     st.rerun()
 
 
+def limpar_estado_zel_atendimento(atendimento_id=None):
+    """
+    Limpa estados temporários da Zel para deixar a tela pronta para outro registro.
+    """
+    prefixos = [
+        "zel_minuta_gerada_texto_",
+        "zel_minuta_fontes_",
+        "zel_minuta_revisao_",
+        "zel_validar_base_",
+        "zel_validar_encerrar_",
+        "zel_validar_resposta_final_",
+        "zel_salvar_pendente_",
+        "zel_gerar_no_atendimento_",
+    ]
+    for chave in list(st.session_state.keys()):
+        chave_txt = str(chave)
+        if atendimento_id is None:
+            if any(chave_txt.startswith(p) for p in prefixos):
+                try:
+                    del st.session_state[chave]
+                except Exception:
+                    pass
+        else:
+            if chave_txt.endswith(str(atendimento_id)) and any(chave_txt.startswith(p) for p in prefixos):
+                try:
+                    del st.session_state[chave]
+                except Exception:
+                    pass
+
+
+
 def tela_zel_ia_controlada():
-    st.subheader("Zel - IA controlada")
+    st.subheader("Zel - agente controlada")
     st.caption(
-        "Módulo interno para auxiliar a SEPRO e a SEOCE na elaboração e validação de respostas. "
-        "A Zel só usa fontes cadastradas, respostas promovidas como fonte e Bases de Conhecimento validadas."
+        "Área interna de curadoria e validação. A geração de resposta pela Zel ocorre dentro do próprio atendimento, "
+        "no botão 'Usar Zel para gerar resposta'."
     )
 
     if usuario_eh_zona_eleitoral():
@@ -5359,143 +5483,30 @@ def tela_zel_ia_controlada():
         return
 
     if not usuario_pode_editar_atendimentos():
-        st.warning("Seu perfil permite consulta, sem elaboração de respostas assistidas.")
+        st.warning("Seu perfil permite consulta, sem validação de respostas assistidas.")
         return
 
     st.markdown(
         """
         <div class="zel-banner">
-            <strong>Regra de controle da Zel:</strong><br>
-            A Zel não responde sem fonte. Toda minuta gerada fica pendente de validação humana.
-            O atendimento só deve ser encerrado após conferência da SEPRO ou da SEOCE.
+            <strong>Regra de uso da Zel:</strong><br>
+            A Zel não é consulta livre. Ela atua vinculada ao atendimento, usando apenas Base de Conhecimento validada e documentos de apoio validados.
+            Após revisão humana, a validação grava a resposta no atendimento e pode alimentar a Base de Conhecimento.
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    aba_atendimento, aba_livre, aba_fontes, aba_validacao = st.tabs([
-        "Gerar minuta por atendimento",
-        "Consulta controlada",
-        "Fontes da Zel",
-        "Validar respostas Zel"
+    aba_validacao, aba_fontes = st.tabs([
+        "Validar respostas Zel",
+        "Acervo documental"
     ])
-
-    with aba_atendimento:
-        lista = [
-            a for a in atendimentos()
-            if a.get("status") in (STATUS_EM_ATENDIMENTO, STATUS_CADASTRADO)
-            and normalizar_secao(a.get("secao")) in ("SEPRO", "SEOCE")
-        ]
-
-        busca = st.text_input(
-            "Localizar atendimento",
-            key="zel_busca_atendimento",
-            placeholder="Digite ID, zona, assunto, protocolo, origem ou palavra da demanda"
-        )
-
-        if busca.strip():
-            lista = buscar_atendimentos_texto(lista, busca)
-
-        lista = sorted(lista, key=lambda x: int(x.get("id", 0)), reverse=True)[:100]
-
-        if not lista:
-            st.info("Nenhum atendimento localizado para elaboração assistida.")
-        else:
-            opcoes = [
-                f"{a.get('id')} | {normalizar_secao(a.get('secao'))} | {a.get('zona_eleitoral') or 'Zona não informada'} | {a.get('assunto') or 'Sem assunto'}"
-                for a in lista
-            ]
-
-            escolha = st.selectbox("Atendimento", opcoes, key="zel_atendimento_escolhido")
-            id_escolhido = int(str(escolha).split("|")[0].strip())
-            atendimento = next((a for a in lista if int(a.get("id", 0)) == id_escolhido), None)
-
-            if atendimento:
-                with st.expander("Resumo do atendimento selecionado", expanded=True):
-                    st.markdown(f"**ID:** {atendimento.get('id')}")
-                    st.markdown(f"**Seção:** {normalizar_secao(atendimento.get('secao'))}")
-                    st.markdown(f"**Zona:** {atendimento.get('zona_eleitoral') or 'Não informada'}")
-                    st.markdown(f"**Assunto:** {atendimento.get('assunto') or 'Não informado'}")
-                    st.markdown("**Descrição:**")
-                    st.write(atendimento.get("descricao") or "Não informada.")
-
-                minuta, fontes, bases = gerar_minuta_zel_para_atendimento(atendimento)
-
-                st.markdown("### Fontes localizadas")
-                if not fontes and not bases:
-                    st.warning("Nenhuma fonte cadastrada suficiente foi localizada.")
-                else:
-                    for f in fontes:
-                        st.caption(f"Fonte Zel: {f.get('titulo') or 'Sem título'} | {f.get('referencia') or 'Sem referência'}")
-                    for b in bases:
-                        st.caption(f"Base de conhecimento: {codigo_base_ia(b)} | {b.get('assunto') or b.get('categoria') or 'Sem assunto'}")
-
-                st.markdown("### Minuta da Zel para validação")
-                minuta_editada = st.text_area(
-                    "Revise antes de usar",
-                    value=minuta,
-                    height=420,
-                    key=f"zel_minuta_{atendimento.get('id')}"
-                )
-
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    if st.button("Aplicar como resposta pendente de validação", type="primary", key=f"zel_aplicar_{atendimento.get('id')}"):
-                        lista_atendimentos = atendimentos()
-                        for item in lista_atendimentos:
-                            if int(item.get("id", 0)) == int(atendimento.get("id", 0)):
-                                item["providencia_adotada"] = minuta_editada
-                                item["situacao_validacao"] = STATUS_VALIDACAO_Zel
-                                item["observacoes"] = ((item.get("observacoes") or "") + f"\n\nZel: minuta gerada com fontes: {resumo_fontes_zel(fontes, bases)}").strip()
-                                item["atualizado_em"] = agora_iso()
-                                break
-                        salvar_atendimentos(lista_atendimentos)
-                        registrar_uso_zel(
-                            atendimento.get("id"),
-                            "Minuta aplicada como pendente de validação",
-                            f"Fontes usadas: {resumo_fontes_zel(fontes, bases) or 'nenhuma'}"
-                        )
-                        st.success("Minuta aplicada ao atendimento como resposta pendente de validação.")
-                        st.rerun()
-
-                with col_b:
-                    if st.button("Registrar apenas consulta Zel", key=f"zel_registrar_{atendimento.get('id')}"):
-                        registrar_uso_zel(
-                            atendimento.get("id"),
-                            "Consulta registrada",
-                            f"Fontes localizadas: {resumo_fontes_zel(fontes, bases) or 'nenhuma'}"
-                        )
-                        st.success("Consulta registrada no histórico do atendimento.")
-
-    with aba_livre:
-        st.markdown("### Consulta controlada")
-        st.caption("A consulta livre também só usa fonte cadastrada ou entendimento institucional.")
-
-        secao = st.selectbox("Seção", ["SEPRO", "SEOCE"], key="zel_livre_secao")
-        assunto = st.selectbox("Assunto", assuntos(secao), key="zel_livre_assunto")
-        pergunta = st.text_area("Pergunta", height=150, key="zel_livre_pergunta")
-
-        if st.button("Gerar resposta controlada", type="primary", key="zel_livre_gerar"):
-            atendimento_simulado = {
-                "id": "",
-                "secao": secao,
-                "assunto": assunto,
-                "zona_eleitoral": "",
-                "descricao": pergunta,
-            }
-            fontes = fontes_relevantes_zel(atendimento=atendimento_simulado, pergunta_livre=pergunta, limite=6)
-            bases = fontes_base_conhecimento_como_fonte_zel(atendimento=atendimento_simulado, pergunta_livre=pergunta, limite=4)
-            minuta = gerar_minuta_zel_controlada(atendimento=atendimento_simulado, pergunta_livre=pergunta, fontes=fontes, bases=bases)
-
-            st.text_area("Minuta para revisão", value=minuta, height=420, key="zel_livre_resultado")
-
-    with aba_fontes:
-        tela_fontes_zel()
 
     with aba_validacao:
         tela_validacao_zel()
 
-
+    with aba_fontes:
+        tela_fontes_zel()
 
 
 def sidebar_nav_button(label, destino, key_prefix):
@@ -7094,6 +7105,103 @@ def atendimento_textbox_html(titulo, conteudo):
         <div class="atendimento-textbox-content">{html.escape(conteudo)}</div>
     </div>
     """
+
+
+
+def componente_zel_no_atendimento(atendimento):
+    """
+    Usa a Zel dentro do próprio atendimento, como opção de resposta.
+    """
+    if not atendimento:
+        return
+    if usuario_eh_zona_eleitoral():
+        return
+    if not usuario_pode_editar_atendimentos():
+        return
+
+    atendimento_id = atendimento.get("id")
+    if not atendimento_id:
+        return
+
+    if atendimento.get("status") == STATUS_REALIZADO:
+        return
+
+    with st.expander("Zel - usar agente controlada para gerar resposta", expanded=False):
+        st.caption("A Zel usa apenas Base de Conhecimento validada e documentos de apoio validados. A resposta só é gravada após validação humana.")
+
+        resultado_key = f"zel_minuta_gerada_texto_{atendimento_id}"
+        fontes_key = f"zel_minuta_fontes_{atendimento_id}"
+
+        if st.button("Usar Zel para gerar resposta", type="primary", key=f"zel_gerar_no_atendimento_{atendimento_id}"):
+            minuta, fontes, bases = gerar_minuta_zel_para_atendimento(atendimento)
+            st.session_state[resultado_key] = minuta
+            st.session_state[fontes_key] = resumo_fontes_zel(fontes, bases)
+            registrar_uso_zel(
+                atendimento_id,
+                "Minuta gerada no módulo de atendimento",
+                f"Fontes usadas: {resumo_fontes_zel(fontes, bases) or 'nenhuma'}"
+            )
+
+        minuta_valor = st.session_state.get(resultado_key, "")
+        if minuta_valor:
+            resposta_editada = st.text_area(
+                "Minuta da Zel para revisar",
+                value=minuta_valor,
+                height=360,
+                key=f"zel_minuta_revisao_{atendimento_id}"
+            )
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                gerar_base = st.checkbox(
+                    "Salvar como Base de Conhecimento",
+                    value=True,
+                    key=f"zel_validar_base_{atendimento_id}"
+                )
+            with col_b:
+                encerrar = st.checkbox(
+                    "Encerrar atendimento",
+                    value=True,
+                    key=f"zel_validar_encerrar_{atendimento_id}"
+                )
+
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                if st.button("Gravar resposta validada", type="primary", key=f"zel_validar_resposta_final_{atendimento_id}"):
+                    if not str(resposta_editada or "").strip():
+                        st.warning("A resposta está vazia.")
+                    else:
+                        ok, msg = validar_minuta_zel_em_atendimento(
+                            atendimento_id,
+                            resposta_editada,
+                            gerar_base=gerar_base,
+                            gerar_fonte=False,
+                            encerrar=encerrar
+                        )
+                        if ok:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+            with col_g2:
+                if st.button("Salvar como pendente de validação", key=f"zel_salvar_pendente_{atendimento_id}"):
+                    lista_at = atendimentos()
+                    for item in lista_at:
+                        if int(item.get("id", 0)) == int(atendimento_id):
+                            item["providencia_adotada"] = resposta_editada
+                            item["situacao_validacao"] = STATUS_VALIDACAO_Zel
+                            item["observacoes"] = (
+                                (item.get("observacoes") or "")
+                                + f"\n\nZel: minuta gerada e pendente de validação. Fontes: {st.session_state.get(fontes_key, '')}"
+                            ).strip()
+                            item["atualizado_em"] = agora_iso()
+                            break
+                    salvar_atendimentos(lista_at)
+                    registrar_uso_zel(atendimento_id, "Minuta salva como pendente de validação", st.session_state.get(fontes_key, ""))
+                    limpar_estado_zel_atendimento(atendimento_id)
+                    st.success("Minuta salva como pendente de validação.")
+                    st.rerun()
 
 
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
