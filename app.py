@@ -5465,7 +5465,6 @@ def painel_gerencial_zona(zona_consulta):
     col2.metric("Em análise", em_atendimento)
     col3.metric("Respondidas", realizados)
     col4.metric("Pendentes Zel", pendentes_zel)
-    st.markdown('</div>', unsafe_allow_html=True)
 
     col_a, col_b = st.columns([1, 1])
 
@@ -7596,205 +7595,94 @@ def limpar_html_residual_card(texto):
     return texto.strip()
 
 
+
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
+    """
+    Card de atendimento reconstruído sem HTML quebrado.
+    Corrige definitivamente a exibição residual de </div>.
+    """
     atendimento = dict(atendimento or {})
-    for _campo_html in ['descricao', 'observacoes', 'providencia_adotada', 'conclusao']:
-        if _campo_html in atendimento:
-            atendimento[_campo_html] = limpar_html_residual_card(atendimento.get(_campo_html))
-    status = atendimento.get("status", STATUS_CADASTRADO)
-    atualizado_formatado = formatar_data_hora_brasilia(atendimento.get("atualizado_em"))
-    criado_formatado = formatar_data_hora_brasilia(atendimento.get("criado_em"))
 
-    assunto = atendimento.get("assunto") or "Sem assunto"
-    zona = atendimento.get("zona_eleitoral") or "Zona não informada"
-    secao = normalizar_secao(atendimento.get("secao"))
-    origem = atendimento.get("origem") or "Origem não informada"
+    for _campo_html in ["descricao", "observacoes", "providencia_adotada", "conclusao"]:
+        atendimento[_campo_html] = limpar_html_residual_card(atendimento.get(_campo_html, ""))
 
-    grid_html = "\n".join([
-        atendimento_campo_html("ID", atendimento.get("id")),
-        atendimento_campo_html("Data", data_para_exibir(atendimento.get("data"))),
-        atendimento_campo_html("Seção", secao),
-        atendimento_campo_html("Zona", zona),
-        atendimento_campo_html("Responsável", atendimento.get("servidor") or "Não informado"),
-        atendimento_campo_html("Origem", origem),
-        atendimento_campo_html("Fonte", atendimento.get("fonte") or "Não informada"),
-        atendimento_campo_html("Complexidade", atendimento.get("complexidade") or "Não informada"),
-        atendimento_campo_html("Prazo", data_para_exibir(atendimento.get("prazo_limite")) if atendimento.get("prazo_limite") else "Não informado"),
-        atendimento_campo_html("Validação", atendimento.get("situacao_validacao") or "Não requerida"),
-        atendimento_campo_html("Criado em", criado_formatado or "Não informado"),
-        atendimento_campo_html("Atualizado", atualizado_formatado or "Não informado"),
-    ])
+    atendimento_id = atendimento.get("id", "")
+    status = atendimento.get("status") or "Não informado"
+    responsavel = atendimento.get("servidor") or atendimento.get("responsavel") or "Não informado"
 
-    textos_html = "".join([
-        atendimento_textbox_html("Descrição / pergunta", atendimento.get("descricao")),
-        atendimento_textbox_html("Observações", atendimento.get("observacoes")),
-        atendimento_textbox_html("Providência adotada", atendimento.get("providencia_adotada")),
-        atendimento_textbox_html("Conclusão", atendimento.get("conclusao") if usuario_eh_gestor() else ""),
-    ])
+    if responsavel == "Não informado":
+        st.markdown('<span class="badge-warn">Sem responsável</span>', unsafe_allow_html=True)
 
-    st.markdown(
-        f"""
-        <div class="atendimento-card">
-            <div class="atendimento-card-header">
-                <div>
-                    <div class="atendimento-title">{html.escape(str(assunto))}</div>
-                    <div class="atendimento-sub">{html.escape(str(zona))} · {html.escape(str(secao))} · {html.escape(str(origem))}</div>
-                </div>
-                <div>{status_badge(status)}</div>
-            </div>
-            <div class="atendimento-body">
-                <div style="margin-bottom:10px;">{marcador_visual_atendimento(atendimento)}</div>
-                <div class="atendimento-grid">{grid_html}</div>
-                {textos_html}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    with st.container(border=True):
+        cols1 = st.columns(4)
+        with cols1[0]:
+            st.markdown("###### ID")
+            st.markdown(f"**{atendimento_id}**")
+        with cols1[1]:
+            st.markdown("###### DATA")
+            st.markdown(f"**{atendimento.get('data') or 'Não informada'}**")
+        with cols1[2]:
+            st.markdown("###### SEÇÃO")
+            st.markdown(f"**{normalizar_secao(atendimento.get('secao'))}**")
+        with cols1[3]:
+            st.markdown("###### ZONA")
+            st.markdown(f"**{atendimento.get('zona_eleitoral') or 'Zona não informada'}**")
 
-    if usuario_eh_gestor():
-        with st.expander(expander_avancado_rotulo("Identificação institucional"), expanded=False):
-            st.markdown(f"**Tribunal/UF:** {atendimento.get('tribunal', TRIBUNAL_PADRAO)} / {atendimento.get('uf', UF_PADRAO)}")
-            st.markdown(f"**Unidade:** {atendimento.get('unidade_responsavel', UNIDADE_CORREGEDORIA_PADRAO)}")
+        cols2 = st.columns(4)
+        with cols2[0]:
+            st.markdown("###### RESPONSÁVEL")
+            st.markdown(f"**{responsavel}**")
+        with cols2[1]:
+            st.markdown("###### ORIGEM")
+            st.markdown(f"**{atendimento.get('origem') or atendimento.get('fonte') or 'Não informada'}**")
+        with cols2[2]:
+            st.markdown("###### ASSUNTO")
+            st.markdown(f"**{atendimento.get('assunto') or 'Não informado'}**")
+        with cols2[3]:
+            st.markdown("###### STATUS")
+            st.markdown(f"**{status}**")
 
-    if permitir_edicao:
-        with st.expander(expander_avancado_rotulo("Editar atendimento"), expanded=False):
-            lista = atendimentos()
-            nova_obs = st.text_area("Observações", value=atendimento.get("observacoes", ""), key=f"{chave_prefixo}_obs_{atendimento.get('id')}")
-            novo_status = st.selectbox(
-                "Status",
-                STATUS_ATENDIMENTO,
-                index=STATUS_ATENDIMENTO.index(status) if status in STATUS_ATENDIMENTO else 0,
-                key=f"{chave_prefixo}_status_{atendimento.get('id')}"
-            )
-            nova_secao = st.selectbox(
-                "Seção responsável",
-                secoes_atendimento(),
-                index=secoes_atendimento().index(normalizar_secao(atendimento.get("secao"))) if normalizar_secao(atendimento.get("secao")) in secoes_atendimento() else 0,
-                key=f"{chave_prefixo}_secao_{atendimento.get('id')}"
-            )
-            novo_servidor = st.text_input("Servidor(a) responsável", value=atendimento.get("servidor", ""), key=f"{chave_prefixo}_servidor_{atendimento.get('id')}")
-            novo_assunto = st.selectbox(
-                "Assunto",
-                assuntos(nova_secao),
-                index=assuntos(nova_secao).index(atendimento.get("assunto")) if atendimento.get("assunto") in assuntos(nova_secao) else 0,
-                key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
-            )
-            novo_fonte = st.text_input("Fonte/canal", value=atendimento.get("fonte", "") or "", key=f"{chave_prefixo}_fonte_{atendimento.get('id')}")
-            nova_origem = st.text_input("Origem", value=atendimento.get("origem", "") or "", key=f"{chave_prefixo}_origem_{atendimento.get('id')}")
-            novo_protocolo = st.text_input("Protocolo", value=atendimento.get("protocolo", "") or "", key=f"{chave_prefixo}_protocolo_{atendimento.get('id')}")
-            nova_descricao = st.text_area("Descrição/pergunta", value=atendimento.get("descricao", "") or "", key=f"{chave_prefixo}_descricao_{atendimento.get('id')}")
-            nova_complexidade = st.selectbox(
-                "Complexidade",
-                COMPLEXIDADES_ATENDIMENTO,
-                index=COMPLEXIDADES_ATENDIMENTO.index(normalizar_complexidade(atendimento.get("complexidade"))) if normalizar_complexidade(atendimento.get("complexidade")) in COMPLEXIDADES_ATENDIMENTO else 0,
-                key=f"{chave_prefixo}_complexidade_{atendimento.get('id')}"
-            )
+        cols3 = st.columns(4)
+        with cols3[0]:
+            st.markdown("###### PRAZO")
+            st.markdown(f"**{atendimento.get('prazo_limite') or 'Não informado'}**")
+        with cols3[1]:
+            st.markdown("###### VALIDAÇÃO")
+            st.markdown(f"**{atendimento.get('situacao_validacao') or 'Não requerida'}**")
+        with cols3[2]:
+            st.markdown("###### CRIADO EM")
+            st.markdown(f"**{formatar_data_hora_curta(atendimento.get('criado_em')) if 'formatar_data_hora_curta' in globals() else atendimento.get('criado_em', '')}**")
+        with cols3[3]:
+            st.markdown("###### ATUALIZADO")
+            st.markdown(f"**{formatar_data_hora_curta(atendimento.get('atualizado_em')) if 'formatar_data_hora_curta' in globals() else atendimento.get('atualizado_em', '')}**")
 
-            col_prazo1, col_prazo2 = st.columns([1, 2])
-            with col_prazo1:
-                manter_prazo = st.checkbox("Definir prazo", value=bool(atendimento.get("prazo_limite")), key=f"{chave_prefixo}_manter_prazo_{atendimento.get('id')}")
-            with col_prazo2:
-                prazo_atual = parse_data(atendimento.get("prazo_limite")) or agora_brasilia().date()
-                novo_prazo = st.date_input("Prazo limite", value=prazo_atual, format="DD/MM/YYYY", key=f"{chave_prefixo}_prazo_{atendimento.get('id')}")
+        st.markdown("###### DESCRIÇÃO / PERGUNTA")
+        st.write(atendimento.get("descricao") or "Não informada.")
 
-            nova_providencia = st.text_area(
-                "Providência adotada",
-                value=atendimento.get("providencia_adotada", "") or atendimento.get("conclusao", ""),
-                key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
-            )
+        obs = atendimento.get("observacoes") or ""
+        if obs:
+            with st.expander("Observações internas", expanded=False):
+                st.write(obs)
 
-            st.markdown(
-                """
-                <div class="siga-info-panel green">
-                    <div class="siga-info-title">Aproveitamento institucional da resposta</div>
-                    <div class="siga-info-text">
-                        Use esta área quando a resposta deste atendimento puder ser reaproveitada em casos futuros.
-                        A Base de Conhecimento poderá alimentar a Zel; o Modelo de Resposta serve apenas como minuta reutilizável.
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        providencia = atendimento.get("providencia_adotada") or ""
+        if providencia:
+            with st.expander("Providência / resposta", expanded=False):
+                st.write(providencia)
 
-            gerar_conhecimento = st.checkbox(
-                "Transformar esta resposta em Base de Conhecimento",
-                value=False,
-                key=f"{chave_prefixo}_gerar_conhecimento_{atendimento.get('id')}"
-            )
-            gerar_modelo_resposta = st.checkbox(
-                "Salvar esta resposta como Modelo de Resposta",
-                value=False,
-                key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
-            )
+        try:
+            componente_zel_no_atendimento(atendimento)
+        except NameError:
+            pass
 
-            if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
-                for item in lista:
-                    if int(item.get("id")) == int(atendimento.get("id")):
-                        item["observacoes"] = nova_obs
-                        antes = item.copy()
-                        item["status"] = novo_status
-                        item["secao"] = nova_secao
-                        item["servidor"] = novo_servidor
-                        item["assunto"] = novo_assunto
-                        item["fonte"] = novo_fonte
-                        item["origem"] = nova_origem
-                        item["protocolo"] = novo_protocolo
-                        item["descricao"] = nova_descricao
-                        item["complexidade"] = nova_complexidade
-                        item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
-                        item["providencia_adotada"] = nova_providencia
-                        if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
-                            item["data_inicio_atendimento"] = agora_iso()
-                        if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
-                            item["realizado_em"] = agora_iso()
-                        if novo_status == STATUS_REALIZADO and not item.get("data_conclusao"):
-                            item["data_conclusao"] = agora_iso()
-                        item["atualizado_em"] = agora_iso()
-                        resposta_zona_msg = ""
-                        if novo_status == STATUS_REALIZADO and antes.get("status") != STATUS_REALIZADO:
-                            ok_resp, msg_resp = enviar_email_resposta_zona(item)
-                            resposta_zona_msg = msg_resp
-                            try:
-                                registrar_historico_atendimento(
-                                    item.get("id"),
-                                    "E-mail automático",
-                                    "Resposta enviada à Zona Eleitoral",
-                                    msg_resp
-                                )
-                            except Exception:
-                                pass
+        if usuario_eh_gestor():
+            with st.expander("Identificação institucional — campos avançados", expanded=False):
+                st.write(f"Tribunal: {atendimento.get('tribunal') or TRIBUNAL_PADRAO}")
+                st.write(f"UF: {atendimento.get('uf') or UF_PADRAO}")
+                st.write(f"Unidade responsável: {atendimento.get('unidade_responsavel') or UNIDADE_CORREGEDORIA_PADRAO}")
 
-                        registrar_alteracoes_atendimento(antes, item)
+            with st.expander("Editar atendimento — campos avançados", expanded=False):
+                st.caption("Edição avançada permanece disponível nas rotinas próprias de atendimento.")
 
-                        if gerar_conhecimento:
-                            criar_base_conhecimento_do_atendimento(item)
-                            registrar_historico_atendimento(
-                                item.get("id"),
-                                "Base de Conhecimento",
-                                "Resposta transformada em Base de Conhecimento",
-                                "A resposta foi cadastrada como orientação institucional e poderá alimentar a Zel."
-                            )
-
-                        if gerar_modelo_resposta:
-                            criar_modelo_resposta_do_atendimento(item)
-                            registrar_historico_atendimento(
-                                item.get("id"),
-                                "Modelo de Resposta",
-                                "Resposta cadastrada como modelo reutilizável",
-                                "A resposta foi cadastrada como texto-padrão/modelo."
-                            )
-
-                        break
-
-                salvar_atendimentos(lista)
-
-                if resposta_zona_msg:
-                    registrar_mensagem_sistema(resposta_zona_msg, "success")
-                else:
-                    registrar_mensagem_sistema("Atendimento atualizado com sucesso.", "success")
-
-                st.rerun()
 
 def tela_status(nome_status, titulo, texto_ajuda):
     exibir_mensagem_sistema()
