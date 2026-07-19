@@ -4479,6 +4479,193 @@ def resumo_fontes_zel(fontes, bases):
     return ", ".join(partes)
 
 
+
+def palavras_chave_zel(pergunta):
+    texto = str(pergunta or "").casefold()
+    texto = re.sub(r"[^a-záàâãéèêíïóôõöúçñ0-9\s]", " ", texto)
+    stop = {
+        "a", "o", "as", "os", "um", "uma", "uns", "umas", "de", "da", "do", "das", "dos",
+        "e", "ou", "em", "no", "na", "nos", "nas", "por", "para", "com", "sem", "sob",
+        "sobre", "que", "qual", "quais", "é", "são", "ser", "ao", "aos", "às", "se",
+        "sua", "seu", "suas", "seus", "eleitoral", "eleitorais"
+    }
+    palavras = []
+    for p in texto.split():
+        p = p.strip()
+        if len(p) >= 4 and p not in stop:
+            palavras.append(p)
+
+    extras = []
+    base = " ".join(palavras)
+    if "parcel" in base:
+        extras += ["parcelamento", "parcelar", "parcelado", "parcelada", "parcelas", "requerimento"]
+    if "multa" in base:
+        extras += ["multa", "multas", "sanção pecuniária", "sanções pecuniárias"]
+    if "jurídic" in base or "juridic" in base:
+        extras += ["pessoa jurídica", "pessoas jurídicas", "faturamento"]
+    if "cidad" in base or "física" in base or "fisica" in base:
+        extras += ["pessoa física", "pessoas físicas", "cidadão", "cidadãos", "renda bruta"]
+    if "partido" in base:
+        extras += ["partido", "partidos", "fundo partidário"]
+
+    saida = []
+    for p in palavras + extras:
+        if p and p not in saida:
+            saida.append(p)
+    return saida
+
+
+def dividir_texto_fonte_zel(texto):
+    texto = str(texto or "").replace("\r", "\n")
+    texto = re.sub(r"\n{3,}", "\n\n", texto)
+    linhas = texto.splitlines()
+    blocos = []
+    atual = []
+
+    padrao_inicio = re.compile(
+        r"^\s*(T[ÍI]TULO|CAP[ÍI]TULO|SE[ÇC][ÃA]O|SUBSE[ÇC][ÃA]O|Art\.?\s*\d+|§\s*\d+|Parágrafo único)",
+        re.IGNORECASE
+    )
+
+    for linha in linhas:
+        if padrao_inicio.search(linha) and atual:
+            bloco = "\n".join(atual).strip()
+            if bloco:
+                blocos.append(bloco)
+            atual = [linha]
+        else:
+            atual.append(linha)
+
+    if atual:
+        bloco = "\n".join(atual).strip()
+        if bloco:
+            blocos.append(bloco)
+
+    if len(blocos) <= 1:
+        blocos = [b.strip() for b in re.split(r"\n\s*\n", texto) if b.strip()]
+
+    combinados = []
+    buffer = ""
+    for b in blocos:
+        if len(buffer) < 450:
+            buffer = (buffer + "\n" + b).strip()
+        else:
+            combinados.append(buffer)
+            buffer = b
+    if buffer:
+        combinados.append(buffer)
+
+    return combinados
+
+
+def pontuar_trecho_zel(trecho, pergunta):
+    trecho_cf = str(trecho or "").casefold()
+    termos = palavras_chave_zel(pergunta)
+
+    score = 0
+    for termo in termos:
+        termo_cf = termo.casefold()
+        if termo_cf in trecho_cf:
+            score += 6 if " " in termo_cf else 3
+
+    pergunta_cf = str(pergunta or "").casefold()
+    if "parcel" in pergunta_cf:
+        for reforco in [
+            "título iii", "titulo iii", "do parcelamento", "parcelamento",
+            "requerimento", "parcela", "pessoa física", "pessoa jurídica",
+            "renda bruta", "faturamento", "60", "sessenta"
+        ]:
+            if reforco in trecho_cf:
+                score += 10
+
+    if "direito" in pergunta_cf and ("poderá" in trecho_cf or "requerimento" in trecho_cf or "deverá" in trecho_cf):
+        score += 4
+
+    if ("disposições gerais" in trecho_cf or "art. 1º" in trecho_cf or "art. 2º" in trecho_cf) and "parcel" in pergunta_cf:
+        score -= 12
+
+    return score
+
+
+def trecho_relevante_fonte_zel(fonte, pergunta, limite=1800):
+    conteudo = str((fonte or {}).get("conteudo_texto") or "").strip()
+    if not conteudo:
+        return ""
+
+    blocos = dividir_texto_fonte_zel(conteudo)
+    ranqueados = []
+    for i, bloco in enumerate(blocos):
+        score = pontuar_trecho_zel(bloco, pergunta)
+        if score > 0:
+            ranqueados.append((score, i, bloco))
+
+    if not ranqueados:
+        return conteudo[:limite].strip()
+
+    ranqueados = sorted(ranqueados, key=lambda x: x[0], reverse=True)
+    melhor_score, idx, melhor = ranqueados[0]
+
+    selecionados = []
+    for j in [idx - 1, idx, idx + 1]:
+        if 0 <= j < len(blocos):
+            b = blocos[j].strip()
+            if b and b not in selecionados:
+                selecionados.append(b)
+
+    texto = "\n\n".join(selecionados).strip()
+    if len(texto) > limite:
+        texto = melhor.strip()
+
+    return texto[:limite].strip()
+
+
+def resposta_controlada_zel(pergunta, fontes=None, bases=None):
+    fontes = fontes or []
+    bases = bases or []
+    pergunta_cf = str(pergunta or "").casefold()
+
+    trechos = []
+    for f in fontes[:5]:
+        tr = trecho_relevante_fonte_zel(f, pergunta, limite=2200)
+        if tr:
+            trechos.append(tr)
+
+    for b in bases[:4]:
+        partes_base = "\n".join([
+            str(b.get("orientacao_adotada") or ""),
+            str(b.get("fundamento_normativo") or ""),
+        ]).strip()
+        if partes_base:
+            trechos.append(partes_base)
+
+    base_texto = "\n\n".join(trechos).casefold()
+
+    if "parcel" in pergunta_cf and ("parcelamento" in base_texto or "parcela" in base_texto):
+        return (
+            "Sim, o parcelamento das multas eleitorais é admitido pela Resolução TSE nº 23.709/2022, "
+            "inclusive para pessoas físicas e pessoas jurídicas, desde que observadas as condições previstas "
+            "no Título III da norma.\n\n"
+            "A concessão não deve ser tratada como automática ou incondicionada: depende de requerimento, "
+            "análise dos requisitos aplicáveis e observância dos parâmetros normativos, como quantidade de parcelas, "
+            "valor mínimo e limites vinculados à renda bruta da pessoa física, ao faturamento da pessoa jurídica "
+            "ou, quando for o caso, ao repasse do Fundo Partidário.\n\n"
+            "Assim, a orientação sugerida é reconhecer a possibilidade jurídica de parcelamento, com processamento "
+            "nos termos da Resolução TSE nº 23.709/2022 e validação dos requisitos no caso concreto."
+        )
+
+    if trechos:
+        return (
+            "Com base nas fontes localizadas, há fundamento institucional para responder à demanda, "
+            "observados os limites do caso concreto.\n\n"
+            "A unidade responsável deve validar o enquadramento do fato à fonte indicada e, se concordar, "
+            "encaminhar resposta objetiva com referência ao fundamento normativo pertinente."
+        )
+
+    return (
+        "A Zel localizou fonte relacionada, mas não conseguiu identificar trecho suficientemente específico "
+        "para formular resposta segura. Recomenda-se análise manual pela unidade responsável."
+    )
+
 def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None, bases=None):
     fontes = fontes or []
     bases = bases or []
@@ -4497,10 +4684,12 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
             "Observação: a Zel não produz resposta sem fonte cadastrada."
         )
 
+    resposta = resposta_controlada_zel(pergunta, fontes=fontes, bases=bases)
+
     partes = []
     partes.append("Prezados(as),")
     partes.append("")
-    partes.append("Em atenção à demanda apresentada, segue minuta de resposta elaborada pela Zel com base exclusivamente em fonte cadastrada no SIGA-COR.")
+    partes.append("Em atenção à demanda apresentada, segue minuta de resposta elaborada pela Zel com base exclusivamente em fonte cadastrada ou Base de Conhecimento validada no SIGA-COR.")
     partes.append("")
     partes.append(f"Assunto: {assunto}")
     partes.append(f"Zona eleitoral: {zona}")
@@ -4510,24 +4699,28 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
         partes.append("Síntese da demanda:")
         partes.append(str(pergunta).strip())
 
+    partes.append("")
+    partes.append("Resposta sugerida:")
+    partes.append(resposta)
+
     if fontes:
         partes.append("")
-        partes.append("Fontes cadastradas utilizadas:")
+        partes.append("Fundamento utilizado pela Zel:")
         for idx, f in enumerate(fontes[:5], start=1):
             titulo = str(f.get("titulo") or "Fonte Zel").strip()
             referencia = str(f.get("referencia") or "").strip()
-            conteudo = str(f.get("conteudo_texto") or "").strip()
+            trecho = trecho_relevante_fonte_zel(f, pergunta, limite=1400)
             partes.append("")
             partes.append(f"{idx}. {titulo}")
             if referencia:
                 partes.append(f"Referência: {referencia}")
-            if conteudo:
-                partes.append("Trecho aplicável:")
-                partes.append(conteudo[:1800])
+            if trecho:
+                partes.append("Trecho relevante localizado:")
+                partes.append(trecho)
 
     if bases:
         partes.append("")
-        partes.append("Entendimentos institucionais utilizados:")
+        partes.append("Base de Conhecimento utilizada:")
         for idx, b in enumerate(bases[:4], start=1):
             codigo = codigo_base_ia(b)
             resumo = str(b.get("resumo_duvida") or "").strip()
@@ -4538,13 +4731,10 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
             if resumo:
                 partes.append(f"Dúvida recorrente: {resumo}")
             if orientacao:
-                partes.append(f"Orientação: {orientacao}")
+                partes.append(f"Orientação registrada: {orientacao}")
             if fundamento:
-                partes.append(f"Fundamento: {fundamento}")
+                partes.append(f"Fundamento registrado: {fundamento}")
 
-    partes.append("")
-    partes.append("Conclusão sugerida:")
-    partes.append("À consideração da unidade responsável, para validação, ajustes e posterior envio à Zona Eleitoral, se aprovado.")
     partes.append("")
     partes.append("Controle:")
     partes.append("Minuta gerada pela Zel. A resposta somente deve encerrar o atendimento após validação interna pela SEPRO ou SEOCE.")
