@@ -3811,6 +3811,116 @@ def tela_menu_principal():
         render_visao_executiva(meus, "Resumo operacional")
 
 
+
+def tela_novo_atendimento():
+    """
+    Tela de cadastro de novo atendimento.
+    Correção: evita NameError quando a rota 'Novo atendimento' é chamada.
+    """
+    exibir_mensagem_sistema()
+    st.subheader("Novo atendimento")
+    st.caption("Registre uma nova demanda. O atendimento entra diretamente em Em atendimento.")
+
+    if not usuario_pode_editar_atendimentos():
+        st.warning("Seu perfil não permite cadastrar atendimentos.")
+        return
+
+    usuario = usuario_logado() or {}
+
+    with st.form("form_novo_atendimento_corrigido", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            data = st.text_input("Data", value=hoje_ddmmaaaa(), help="Formato: dd/mm/aaaa")
+            secao = st.selectbox("Seção responsável", SECOES_ATENDIMENTO, index=0)
+            assunto_lista = assuntos(secao)
+            assunto = st.selectbox("Assunto", assunto_lista, index=0)
+            origem = st.selectbox("Origem", FONTES, index=0)
+            zona_eleitoral = st.text_input("Zona Eleitoral", placeholder="Ex.: 001ª, 156ª, Salvador, etc.")
+
+        with col2:
+            prioridade = st.selectbox("Prioridade", ["Normal", "Alta", "Urgente", "Baixa"], index=0)
+            complexidade = st.selectbox("Complexidade", COMPLEXIDADES_ATENDIMENTO, index=0)
+            servidores = ["Não informado"] + nomes_usuarios_ativos()
+            responsavel_padrao = usuario.get("nome") or usuario.get("email") or "Não informado"
+            if responsavel_padrao not in servidores:
+                servidores.insert(1, responsavel_padrao)
+            servidor = st.selectbox("Responsável", servidores, index=servidores.index(responsavel_padrao) if responsavel_padrao in servidores else 0)
+            protocolo = st.text_input("Protocolo / referência", placeholder="SEI, PJe, e-mail, mensagem etc.")
+            prazo_limite = st.text_input("Prazo limite", value="", placeholder="dd/mm/aaaa, se houver")
+
+        descricao = st.text_area("Descrição / pergunta", height=160, placeholder="Descreva a demanda recebida.")
+        observacoes = st.text_area("Observações internas", height=100)
+
+        salvar = st.form_submit_button("Cadastrar atendimento", type="primary")
+
+    if salvar:
+        if not str(descricao or "").strip():
+            st.warning("Informe a descrição/pergunta do atendimento.")
+            return
+
+        lista = atendimentos()
+        novo = {
+            "id": proximo_id(lista),
+            "data": data or hoje_ddmmaaaa(),
+            "status": STATUS_EM_ATENDIMENTO,
+            "secao": normalizar_secao(secao),
+            "tribunal": TRIBUNAL_PADRAO,
+            "uf": UF_PADRAO,
+            "unidade_responsavel": UNIDADE_CORREGEDORIA_PADRAO,
+            "requer_validacao": False,
+            "situacao_validacao": "Não requerida",
+            "validado_por": "",
+            "validado_em": "",
+            "servidor": servidor or "Não informado",
+            "fonte": origem or "Não informado",
+            "assunto": assunto or "Não informado",
+            "zona_eleitoral": zona_eleitoral or "",
+            "origem": origem or "",
+            "protocolo": protocolo or "",
+            "prioridade": prioridade or "Normal",
+            "complexidade": normalizar_complexidade(complexidade or "Não informada"),
+            "prazo_limite": prazo_limite or "",
+            "descricao": limpar_html_residual_card(descricao) if "limpar_html_residual_card" in globals() else str(descricao or "").strip(),
+            "observacoes": limpar_html_residual_card(observacoes) if "limpar_html_residual_card" in globals() else str(observacoes or "").strip(),
+            "providencia_adotada": "",
+            "conclusao": "",
+            "criado_por": usuario.get("email") or usuario.get("nome") or "",
+            "criado_em": agora_iso(),
+            "atualizado_em": agora_iso(),
+            "data_realizacao": "",
+            "data_inicio_atendimento": agora_iso(),
+            "data_conclusao": "",
+            "triado_por": usuario.get("email") or usuario.get("nome") or "",
+            "triado_em": agora_iso(),
+            "natureza_demanda": "Orientação procedimental ordinária",
+            "eixo_competencia": "",
+            "unidade_sugerida": normalizar_secao(secao),
+            "exige_validacao_tecnica": False,
+            "unidade_tecnica_validadora": "Não necessária",
+            "status_validacao_tecnica": "Não necessária",
+            "exige_coajuc": False,
+            "motivo_escalonamento": "",
+        }
+
+        lista.append(novo)
+        salvar_atendimentos(lista)
+
+        try:
+            registrar_historico_atendimento(
+                novo.get("id"),
+                "Cadastro",
+                "Atendimento cadastrado",
+                f"Novo atendimento cadastrado por {usuario.get('nome') or usuario.get('email') or 'usuário'}."
+            )
+        except Exception:
+            pass
+
+        st.success("Atendimento cadastrado e encaminhado para Em atendimento.")
+        st.session_state["pagina_atual"] = "Em atendimento"
+        st.rerun()
+
+
 def tela_validacao_chefia():
     st.subheader("Validação da chefia  ›")
     st.caption("Orientações e respostas que dependem de conferência, validação ou devolução para ajuste pela chefia.")
@@ -7204,7 +7314,25 @@ def componente_zel_no_atendimento(atendimento):
                     st.rerun()
 
 
+
+def limpar_html_residual_card(texto):
+    """
+    Remove resíduos de HTML que eventualmente apareçam no card como texto visível.
+    Corrige especialmente fechamentos </div> que podem sobrar de templates visuais.
+    """
+    texto = str(texto or "")
+    texto = texto.replace("</div>", "")
+    texto = texto.replace("<div>", "")
+    texto = re.sub(r"(?im)^\s*</?div[^>]*>\s*$", "", texto)
+    texto = re.sub(r"\n{3,}", "\n\n", texto)
+    return texto.strip()
+
+
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
+    atendimento = dict(atendimento or {})
+    for _campo_html in ['descricao', 'observacoes', 'providencia_adotada', 'conclusao']:
+        if _campo_html in atendimento:
+            atendimento[_campo_html] = limpar_html_residual_card(atendimento.get(_campo_html))
     status = atendimento.get("status", STATUS_CADASTRADO)
     atualizado_formatado = formatar_data_hora_brasilia(atendimento.get("atualizado_em"))
     criado_formatado = formatar_data_hora_brasilia(atendimento.get("criado_em"))
@@ -7399,7 +7527,6 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     registrar_mensagem_sistema("Atendimento atualizado com sucesso.", "success")
 
                 st.rerun()
-
 
 def tela_status(nome_status, titulo, texto_ajuda):
     exibir_mensagem_sistema()
