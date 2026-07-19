@@ -94,13 +94,9 @@ STATUS_CADASTRADO = "Triagem"
 STATUS_EM_ATENDIMENTO = "Em atendimento"
 STATUS_REALIZADO = "Atendimento realizado"
 
-STATUS_OPCOES = [
-    STATUS_CADASTRADO,
-    STATUS_EM_ATENDIMENTO,
-    STATUS_REALIZADO,
-]
+STATUS_OPCOES = [STATUS_EM_ATENDIMENTO, STATUS_REALIZADO]
 
-STATUS_ATENDIMENTO = STATUS_OPCOES
+STATUS_ATENDIMENTO = [STATUS_EM_ATENDIMENTO, STATUS_REALIZADO]
 
 FONTES = [
     "Não informado",
@@ -1464,6 +1460,41 @@ def atendimento_db_para_app(row):
         "potencial_uniformizacao": row.get("potencial_uniformizacao") or "Baixo",
         "produto_institucional_sugerido": row.get("produto_institucional_sugerido") or "Não sugerido",
     }
+
+
+
+
+def normalizar_status_atendimento(valor):
+    """
+    Normaliza status do atendimento.
+    A fase Triagem foi removida do fluxo operacional.
+    Registros antigos em Triagem passam a ser tratados como Em atendimento.
+    """
+    texto = str(valor or "").strip()
+
+    if not texto:
+        return STATUS_EM_ATENDIMENTO
+
+    mapa = {
+        "triagem": STATUS_EM_ATENDIMENTO,
+        "cadastrado": STATUS_EM_ATENDIMENTO,
+        "novo": STATUS_EM_ATENDIMENTO,
+        "em atendimento": STATUS_EM_ATENDIMENTO,
+        "atendimento realizado": STATUS_REALIZADO,
+        "realizado": STATUS_REALIZADO,
+        "concluído": STATUS_REALIZADO,
+        "concluido": STATUS_REALIZADO,
+    }
+
+    return mapa.get(texto.casefold(), texto if texto in [STATUS_EM_ATENDIMENTO, STATUS_REALIZADO] else STATUS_EM_ATENDIMENTO)
+
+
+def status_atendimento_opcoes():
+    """
+    Opções visíveis no sistema após remoção da fase Triagem.
+    """
+    return [STATUS_EM_ATENDIMENTO, STATUS_REALIZADO]
+
 
 
 
@@ -7810,9 +7841,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         with st.expander(expander_avancado_rotulo("Editar atendimento"), expanded=False):
             lista = atendimentos()
             nova_obs = st.text_area("Observações", value=atendimento.get("observacoes", ""), key=f"{chave_prefixo}_obs_{atendimento.get('id')}")
-            novo_status = st.selectbox(
-                "Status",
-                STATUS_ATENDIMENTO,
+            novo_status = st.selectbox("Status", status_atendimento_opcoes(),
                 index=STATUS_ATENDIMENTO.index(status) if status in STATUS_ATENDIMENTO else 0,
                 key=f"{chave_prefixo}_status_{atendimento.get('id')}"
             )
@@ -7888,7 +7917,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     if int(item.get("id")) == int(atendimento.get("id")):
                         item["observacoes"] = nova_obs
                         antes = item.copy()
-                        item["status"] = novo_status
+                        item["status"] = normalizar_status_atendimento(novo_status)
                         item["secao"] = nova_secao
                         item["servidor"] = novo_servidor
                         item["assunto"] = novo_assunto
