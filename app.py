@@ -5065,6 +5065,10 @@ def resumo_fontes_zel(fontes, bases=None):
     return ", ".join(partes)
 
 
+ZEL_SCORE_MINIMO_EVIDENCIA = 18
+ZEL_SCORE_MINIMO_PRAZO = 35
+ZEL_MAX_EVIDENCIAS = 5
+
 def zel_normalizar_texto(texto):
     texto = str(texto or "").casefold()
     texto = texto.replace("\r", "\n")
@@ -5332,7 +5336,10 @@ def zel_base_row_validada(row):
     return True
 
 
-def zel_agente_buscar_evidencias(contexto, fontes=None, bases=None, limite=ZEL_MAX_EVIDENCIAS):
+def zel_agente_buscar_evidencias(contexto, fontes=None, bases=None, limite=None):
+    if limite is None:
+        limite = ZEL_MAX_EVIDENCIAS
+
     candidatos = []
 
     for b in bases or []:
