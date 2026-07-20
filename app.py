@@ -7876,6 +7876,29 @@ def atualizar_status_atendimento(atendimento_id, novo_status):
 
     salvar_atendimentos(lista)
     return True, f"Atendimento movido para {item_atualizado.get('status')}."
+
+def prazo_limite_para_texto_seguro(manter_prazo=False, novo_prazo=None):
+    """
+    Converte o prazo limite para texto sem derrubar o app.
+    Corrige erro ao salvar quando novo_prazo/manter_prazo não existem ou vêm vazios.
+    """
+    try:
+        if not manter_prazo:
+            return ""
+
+        if not novo_prazo:
+            return ""
+
+        if hasattr(novo_prazo, "strftime"):
+            return novo_prazo.strftime("%d/%m/%Y")
+
+        return str(novo_prazo or "").strip()
+    except Exception:
+        return ""
+
+
+
+
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
     atendimento = dict(atendimento or {})
     for _campo_html in ['descricao', 'observacoes', 'providencia_adotada', 'conclusao']:
@@ -7984,6 +8007,27 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
             )
 
+
+            prazo_atual_texto = str(atendimento.get("prazo_limite") or "").strip()
+            manter_prazo = st.checkbox(
+                "Definir prazo",
+                value=bool(prazo_atual_texto),
+                key=f"{chave_prefixo}_manter_prazo_{atendimento.get('id')}"
+            )
+            novo_prazo = None
+            if manter_prazo:
+                try:
+                    data_padrao_prazo = datetime.strptime(prazo_atual_texto, "%d/%m/%Y").date() if prazo_atual_texto else date.today()
+                except Exception:
+                    data_padrao_prazo = date.today()
+
+                novo_prazo = st.date_input(
+                    "Prazo limite",
+                    value=data_padrao_prazo,
+                    format="DD/MM/YYYY",
+                    key=f"{chave_prefixo}_prazo_limite_{atendimento.get('id')}"
+                )
+
             st.markdown(
                 """
                 <div class="siga-info-panel green">
@@ -8021,7 +8065,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         item["origem"] = novo_fonte
                         item["descricao"] = nova_descricao
                         item["complexidade"] = nova_complexidade
-                        item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
+                        item["prazo_limite"] = prazo_limite_para_texto_seguro(manter_prazo, novo_prazo)
                         item["providencia_adotada"] = nova_providencia
                         if normalizar_status_atendimento(item.get("status")) == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
                             item["data_inicio_atendimento"] = agora_iso()
