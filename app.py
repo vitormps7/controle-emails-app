@@ -7773,6 +7773,43 @@ def renderizar_html_card_seguro(html_card):
         st.markdown(html_card, unsafe_allow_html=True)
 
 
+
+def registrar_alteracoes_atendimento(antes, depois):
+    """
+    Registra alterações do atendimento no histórico sem impedir o salvamento.
+    Corrige NameError ao salvar edição do atendimento.
+    """
+    try:
+        antes = dict(antes or {})
+        depois = dict(depois or {})
+        atendimento_id = depois.get("id") or antes.get("id")
+
+        campos_monitorados = [
+            "status", "servidor", "assunto", "fonte", "origem", "zona_eleitoral",
+            "descricao", "observacoes", "providencia_adotada", "conclusao",
+            "prioridade", "complexidade", "prazo_limite", "situacao_validacao",
+        ]
+
+        alterados = []
+        for campo in campos_monitorados:
+            valor_antes = str(antes.get(campo, "") or "")
+            valor_depois = str(depois.get(campo, "") or "")
+            if valor_antes != valor_depois:
+                alterados.append(f"{campo}: '{valor_antes}' -> '{valor_depois}'")
+
+        if alterados and atendimento_id:
+            registrar_historico_atendimento(
+                atendimento_id,
+                "Edição",
+                "Atendimento atualizado",
+                "\\n".join(alterados[:30])
+            )
+    except Exception:
+        pass
+
+
+
+
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
     atendimento = dict(atendimento or {})
     for _campo_html in ['descricao', 'observacoes', 'providencia_adotada', 'conclusao']:
@@ -7866,14 +7903,6 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
             )
             novo_fonte = st.text_input("Fonte/canal", value=atendimento.get("fonte", "") or "", key=f"{chave_prefixo}_fonte_{atendimento.get('id')}")
             nova_origem = st.text_input("Origem", value=atendimento.get("origem", "") or "", key=f"{chave_prefixo}_origem_{atendimento.get('id')}")
-            novo_protocolo = st.text_input("Protocolo", value=atendimento.get("protocolo", "") or "", key=f"{chave_prefixo}_protocolo_{atendimento.get('id')}")
-            nova_descricao = st.text_area("Descrição/pergunta", value=atendimento.get("descricao", "") or "", key=f"{chave_prefixo}_descricao_{atendimento.get('id')}")
-            nova_complexidade = st.selectbox(
-                "Complexidade",
-                COMPLEXIDADES_ATENDIMENTO,
-                index=COMPLEXIDADES_ATENDIMENTO.index(normalizar_complexidade(atendimento.get("complexidade"))) if normalizar_complexidade(atendimento.get("complexidade")) in COMPLEXIDADES_ATENDIMENTO else 0,
-                key=f"{chave_prefixo}_complexidade_{atendimento.get('id')}"
-            )
 
             col_prazo1, col_prazo2 = st.columns([1, 2])
             with col_prazo1:
@@ -7923,7 +7952,6 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         item["assunto"] = novo_assunto
                         item["fonte"] = novo_fonte
                         item["origem"] = nova_origem
-                        item["protocolo"] = novo_protocolo
                         item["descricao"] = nova_descricao
                         item["complexidade"] = nova_complexidade
                         item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
