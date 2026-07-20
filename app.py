@@ -7064,6 +7064,116 @@ def tela_inicio():
     tela_menu_principal()
 
 
+
+def tela_dashboard():
+    """
+    Dashboard gerencial seguro.
+    Correção: evita NameError quando a rota Dashboard é chamada.
+    Não altera atendimento, Zel, Base de Conhecimento ou layout do card.
+    """
+    exibir_mensagem_sistema()
+    st.subheader("Dashboard")
+    st.caption("Visão geral dos atendimentos registrados no SIGA-COR.")
+
+    try:
+        lista = filtros_base(atendimentos())
+    except Exception:
+        try:
+            lista = atendimentos()
+        except Exception:
+            lista = []
+
+    try:
+        lista = list(lista or [])
+    except Exception:
+        lista = []
+
+    def _status_item(a):
+        try:
+            return normalizar_status_atendimento(a.get("status"))
+        except Exception:
+            return str(a.get("status") or "")
+
+    total = len(lista)
+    em_atendimento = len([a for a in lista if _status_item(a) == STATUS_EM_ATENDIMENTO])
+    realizados = len([a for a in lista if _status_item(a) == STATUS_REALIZADO])
+    sem_responsavel = len([
+        a for a in lista
+        if not str(a.get("servidor") or a.get("responsavel") or "").strip()
+        or str(a.get("servidor") or "").strip().casefold() == "não informado"
+        or str(a.get("servidor") or "").strip().casefold() == "nao informado"
+    ])
+
+    cols = st.columns(4)
+    with cols[0]:
+        st.metric("Total de atendimentos", total)
+    with cols[1]:
+        st.metric("Em atendimento", em_atendimento)
+    with cols[2]:
+        st.metric("Atendimento realizado", realizados)
+    with cols[3]:
+        st.metric("Sem responsável", sem_responsavel)
+
+    st.divider()
+
+    try:
+        df = pd.DataFrame(lista)
+    except Exception:
+        df = pd.DataFrame()
+
+    if df.empty:
+        st.info("Nenhum atendimento encontrado para exibir no dashboard.")
+        return
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("### Atendimentos por seção")
+        try:
+            base_secao = (
+                df.assign(secao=df.get("secao", "Não informada").fillna("Não informada"))
+                .groupby("secao", dropna=False)
+                .size()
+                .reset_index(name="Quantidade")
+                .sort_values("Quantidade", ascending=False)
+            )
+            st.dataframe(base_secao, use_container_width=True, hide_index=True)
+        except Exception:
+            st.info("Não foi possível montar o quadro por seção.")
+
+    with col2:
+        st.markdown("### Atendimentos por assunto")
+        try:
+            base_assunto = (
+                df.assign(assunto=df.get("assunto", "Não informado").fillna("Não informado"))
+                .groupby("assunto", dropna=False)
+                .size()
+                .reset_index(name="Quantidade")
+                .sort_values("Quantidade", ascending=False)
+                .head(15)
+            )
+            st.dataframe(base_assunto, use_container_width=True, hide_index=True)
+        except Exception:
+            st.info("Não foi possível montar o quadro por assunto.")
+
+    st.markdown("### Últimos atendimentos")
+    try:
+        colunas = []
+        for c in ["id", "data", "status", "secao", "zona_eleitoral", "assunto", "servidor", "fonte"]:
+            if c in df.columns:
+                colunas.append(c)
+
+        ultimos = df.sort_values("id", ascending=False).head(20) if "id" in df.columns else df.head(20)
+        if colunas:
+            st.dataframe(ultimos[colunas], use_container_width=True, hide_index=True)
+        else:
+            st.dataframe(ultimos, use_container_width=True, hide_index=True)
+    except Exception:
+        st.info("Não foi possível exibir os últimos atendimentos.")
+
+
+
+
 def tela_meus_atendimentos():
     st.subheader("Meus atendimentos")
     st.caption("Fila pessoal do usuário logado, considerando demandas atribuídas, criadas ou triadas por você.")
