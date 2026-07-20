@@ -7065,16 +7065,12 @@ def tela_inicio():
 
 
 
-def tela_dashboard():
-    """
-    Dashboard gerencial seguro.
-    Correção: evita NameError quando a rota Dashboard é chamada.
-    Não altera atendimento, Zel, Base de Conhecimento ou layout do card.
-    """
-    exibir_mensagem_sistema()
-    st.subheader("Dashboard")
-    st.caption("Visão geral dos atendimentos registrados no SIGA-COR.")
 
+def _dashboard_lista_atendimentos_segura():
+    """
+    Coleta atendimentos com segurança para Dashboard e Inteligência Gerencial.
+    Não altera dados.
+    """
     try:
         lista = filtros_base(atendimentos())
     except Exception:
@@ -7084,94 +7080,241 @@ def tela_dashboard():
             lista = []
 
     try:
-        lista = list(lista or [])
+        return list(lista or [])
     except Exception:
-        lista = []
+        return []
 
-    def _status_item(a):
-        try:
-            return normalizar_status_atendimento(a.get("status"))
-        except Exception:
-            return str(a.get("status") or "")
 
-    total = len(lista)
-    em_atendimento = len([a for a in lista if _status_item(a) == STATUS_EM_ATENDIMENTO])
-    realizados = len([a for a in lista if _status_item(a) == STATUS_REALIZADO])
-    sem_responsavel = len([
-        a for a in lista
-        if not str(a.get("servidor") or a.get("responsavel") or "").strip()
-        or str(a.get("servidor") or "").strip().casefold() == "não informado"
-        or str(a.get("servidor") or "").strip().casefold() == "nao informado"
-    ])
-
-    cols = st.columns(4)
-    with cols[0]:
-        st.metric("Total de atendimentos", total)
-    with cols[1]:
-        st.metric("Em atendimento", em_atendimento)
-    with cols[2]:
-        st.metric("Atendimento realizado", realizados)
-    with cols[3]:
-        st.metric("Sem responsável", sem_responsavel)
-
-    st.divider()
-
+def _dashboard_status_seguro(a):
     try:
-        df = pd.DataFrame(lista)
+        return normalizar_status_atendimento(a.get("status"))
+    except Exception:
+        return str(a.get("status") or "Não informado").strip() or "Não informado"
+
+
+def _dashboard_dataframe_seguro(lista):
+    try:
+        df = pd.DataFrame(list(lista or []))
     except Exception:
         df = pd.DataFrame()
 
     if df.empty:
-        st.info("Nenhum atendimento encontrado para exibir no dashboard.")
+        return df
+
+    for col in ["status", "secao", "assunto", "zona_eleitoral", "servidor", "fonte", "origem", "data", "id"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    try:
+        df["status_normalizado"] = df.apply(lambda r: _dashboard_status_seguro(r.to_dict()), axis=1)
+    except Exception:
+        df["status_normalizado"] = df["status"].fillna("Não informado").astype(str)
+
+    df["secao"] = df["secao"].fillna("Não informada").astype(str).replace("", "Não informada")
+    df["assunto"] = df["assunto"].fillna("Não informado").astype(str).replace("", "Não informado")
+    df["zona_eleitoral"] = df["zona_eleitoral"].fillna("Zona não informada").astype(str).replace("", "Zona não informada")
+    df["servidor"] = df["servidor"].fillna("Não informado").astype(str).replace("", "Não informado")
+    df["fonte_canal"] = df["fonte"].fillna("").astype(str)
+    df.loc[df["fonte_canal"].str.strip() == "", "fonte_canal"] = df["origem"].fillna("").astype(str)
+    df["fonte_canal"] = df["fonte_canal"].replace("", "Não informado")
+
+    return df
+
+
+def _dashboard_contagem(df, coluna, limite=10):
+    if df is None or df.empty or coluna not in df.columns:
+        return pd.DataFrame(columns=[coluna, "Quantidade"])
+
+    base = (
+        df[coluna]
+        .fillna("Não informado")
+        .astype(str)
+        .replace("", "Não informado")
+        .value_counts()
+        .reset_index()
+    )
+    base.columns = [coluna, "Quantidade"]
+    return base.head(limite)
+
+
+def _dashboard_pizza(titulo, df_contagem, coluna_rotulo):
+    st.markdown(f"#### {titulo}")
+
+    if df_contagem is None or df_contagem.empty:
+        st.info("Sem dados para este gráfico.")
         return
 
+    try:
+        import plotly.express as px
+        fig = px.pie(
+            df_contagem,
+            names=coluna_rotulo,
+            values="Quantidade",
+            hole=0.38,
+        )
+        fig.update_traces(textposition="inside", textinfo="percent+label")
+        fig.update_layout(
+            margin=dict(l=10, r=10, t=20, b=10),
+            height=360,
+            legend_title_text="",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        st.dataframe(df_contagem, use_container_width=True, hide_index=True)
+
+
+def _dashboard_barras(titulo, df_contagem, coluna_rotulo):
+    st.markdown(f"#### {titulo}")
+
+    if df_contagem is None or df_contagem.empty:
+        st.info("Sem dados para este quadro.")
+        return
+
+    try:
+        import plotly.express as px
+        fig = px.bar(
+            df_contagem.sort_values("Quantidade", ascending=True),
+            x="Quantidade",
+            y=coluna_rotulo,
+            orientation="h",
+        )
+        fig.update_layout(
+            margin=dict(l=10, r=10, t=20, b=10),
+            height=380,
+            yaxis_title="",
+            xaxis_title="Quantidade",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        st.dataframe(df_contagem, use_container_width=True, hide_index=True)
+
+
+def _dashboard_linha_mensal(df):
+    st.markdown("#### Evolução mensal")
+
+    if df is None or df.empty or "data" not in df.columns:
+        st.info("Sem dados de data para montar evolução mensal.")
+        return
+
+    try:
+        datas = pd.to_datetime(df["data"], format="%d/%m/%Y", errors="coerce")
+        base = (
+            pd.DataFrame({"mes": datas.dt.to_period("M").astype(str)})
+            .dropna()
+            .query("mes != 'NaT'")
+            .value_counts()
+            .reset_index(name="Quantidade")
+            .sort_values("mes")
+        )
+
+        if base.empty:
+            st.info("Sem datas válidas para montar evolução mensal.")
+            return
+
+        import plotly.express as px
+        fig = px.line(base, x="mes", y="Quantidade", markers=True)
+        fig.update_layout(
+            margin=dict(l=10, r=10, t=20, b=10),
+            height=340,
+            xaxis_title="Mês",
+            yaxis_title="Quantidade",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        st.info("Não foi possível montar a evolução mensal.")
+
+
+def _render_dashboard_gerencial(titulo="Dashboard Gerencial", subtitulo="Visão geral dos atendimentos registrados no SIGA-COR."):
+    exibir_mensagem_sistema()
+    st.title(titulo)
+    st.caption(subtitulo)
+
+    lista = _dashboard_lista_atendimentos_segura()
+    df = _dashboard_dataframe_seguro(lista)
+
+    total = len(lista)
+    em_atendimento = len([a for a in lista if _dashboard_status_seguro(a) == STATUS_EM_ATENDIMENTO])
+    realizados = len([a for a in lista if _dashboard_status_seguro(a) == STATUS_REALIZADO])
+    sem_responsavel = len([
+        a for a in lista
+        if not str(a.get("servidor") or a.get("responsavel") or "").strip()
+        or str(a.get("servidor") or "").strip().casefold() in ["não informado", "nao informado"]
+    ])
+    taxa = (realizados / total * 100) if total else 0
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        st.metric("Total", total)
+    with c2:
+        st.metric("Em atendimento", em_atendimento)
+    with c3:
+        st.metric("Realizados", realizados)
+    with c4:
+        st.metric("% realizado", f"{taxa:.1f}%")
+    with c5:
+        st.metric("Sem responsável", sem_responsavel)
+
+    if df.empty:
+        st.info("Nenhum atendimento encontrado para exibir.")
+        return
+
+    st.divider()
+    st.markdown("### Distribuição dos atendimentos")
+
     col1, col2 = st.columns(2)
-
     with col1:
-        st.markdown("### Atendimentos por seção")
-        try:
-            base_secao = (
-                df.assign(secao=df.get("secao", "Não informada").fillna("Não informada"))
-                .groupby("secao", dropna=False)
-                .size()
-                .reset_index(name="Quantidade")
-                .sort_values("Quantidade", ascending=False)
-            )
-            st.dataframe(base_secao, use_container_width=True, hide_index=True)
-        except Exception:
-            st.info("Não foi possível montar o quadro por seção.")
-
+        _dashboard_pizza("Por status", _dashboard_contagem(df, "status_normalizado", 8), "status_normalizado")
     with col2:
-        st.markdown("### Atendimentos por assunto")
-        try:
-            base_assunto = (
-                df.assign(assunto=df.get("assunto", "Não informado").fillna("Não informado"))
-                .groupby("assunto", dropna=False)
-                .size()
-                .reset_index(name="Quantidade")
-                .sort_values("Quantidade", ascending=False)
-                .head(15)
-            )
-            st.dataframe(base_assunto, use_container_width=True, hide_index=True)
-        except Exception:
-            st.info("Não foi possível montar o quadro por assunto.")
+        _dashboard_pizza("Por seção", _dashboard_contagem(df, "secao", 8), "secao")
 
+    col3, col4 = st.columns(2)
+    with col3:
+        _dashboard_pizza("Por fonte/canal", _dashboard_contagem(df, "fonte_canal", 8), "fonte_canal")
+    with col4:
+        _dashboard_pizza("Por responsável", _dashboard_contagem(df, "servidor", 8), "servidor")
+
+    st.divider()
+    col5, col6 = st.columns(2)
+    with col5:
+        _dashboard_barras("Assuntos mais recorrentes", _dashboard_contagem(df, "assunto", 12), "assunto")
+    with col6:
+        _dashboard_barras("Zonas mais demandantes", _dashboard_contagem(df, "zona_eleitoral", 12), "zona_eleitoral")
+
+    st.divider()
+    _dashboard_linha_mensal(df)
+
+    st.divider()
     st.markdown("### Últimos atendimentos")
     try:
-        colunas = []
-        for c in ["id", "data", "status", "secao", "zona_eleitoral", "assunto", "servidor", "fonte"]:
-            if c in df.columns:
-                colunas.append(c)
-
+        colunas = [c for c in ["id", "data", "status_normalizado", "secao", "zona_eleitoral", "assunto", "servidor", "fonte_canal"] if c in df.columns]
         ultimos = df.sort_values("id", ascending=False).head(20) if "id" in df.columns else df.head(20)
-        if colunas:
-            st.dataframe(ultimos[colunas], use_container_width=True, hide_index=True)
-        else:
-            st.dataframe(ultimos, use_container_width=True, hide_index=True)
+        st.dataframe(ultimos[colunas], use_container_width=True, hide_index=True)
     except Exception:
         st.info("Não foi possível exibir os últimos atendimentos.")
 
 
+
+def tela_dashboard():
+    """
+    Dashboard gerencial com gráficos.
+    Mantém pizza, barras, evolução mensal e tabela dos últimos atendimentos.
+    """
+    _render_dashboard_gerencial(
+        titulo="Dashboard Gerencial",
+        subtitulo="Visão geral, distribuição por status, seção, fonte/canal, responsáveis, assuntos e zonas."
+    )
+
+
+
+def tela_inteligencia_gerencial():
+    """
+    Inteligência Gerencial estabilizada.
+    Usa o mesmo motor do Dashboard, com leitura gerencial e gráficos.
+    """
+    _render_dashboard_gerencial(
+        titulo="Inteligência Gerencial",
+        subtitulo="Leitura estratégica dos atendimentos, recorrências, fontes/canais, zonas demandantes e responsáveis."
+    )
 
 
 def tela_meus_atendimentos():
