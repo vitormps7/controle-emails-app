@@ -8028,6 +8028,14 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     key=f"{chave_prefixo}_prazo_limite_{atendimento.get('id')}"
                 )
 
+
+            nova_providencia = st.text_area(
+                "Providência adotada",
+                value=atendimento.get("providencia_adotada", ""),
+                height=180,
+                key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
+            )
+
             st.markdown(
                 """
                 <div class="siga-info-panel green">
@@ -8051,6 +8059,9 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 value=False,
                 key=f"{chave_prefixo}_gerar_modelo_resposta_{atendimento.get('id')}"
             )
+
+            if 'nova_providencia' not in locals():
+                nova_providencia = atendimento.get("providencia_adotada", "")
 
             if st.button("Salvar alterações", key=f"{chave_prefixo}_salvar_{atendimento.get('id')}"):
                 for item in lista:
