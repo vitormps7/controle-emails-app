@@ -7810,6 +7810,72 @@ def registrar_alteracoes_atendimento(antes, depois):
 
 
 
+
+
+def tipos_fonte_dropdown(valor_atual=""):
+    """Opções padronizadas para Fonte/canal do atendimento."""
+    opcoes = [
+        "Não informado",
+        "Telefone",
+        "E-mail",
+        "WhatsApp",
+        "SEI",
+        "PJe",
+        "Portal das Zonas",
+        "Atendimento presencial",
+        "Reunião",
+        "Ofício",
+        "Outro",
+    ]
+    valor_atual = str(valor_atual or "").strip()
+    if valor_atual and valor_atual not in opcoes:
+        opcoes.append(valor_atual)
+    return opcoes
+
+
+def atualizar_status_atendimento(atendimento_id, novo_status):
+    """Move o atendimento entre Em atendimento e Atendimento realizado."""
+    lista = atendimentos()
+    item_atualizado = None
+
+    for item in lista:
+        if int(item.get("id", 0)) == int(atendimento_id):
+            antes = dict(item)
+            item["status"] = normalizar_status_atendimento(novo_status)
+            item["atualizado_em"] = agora_iso()
+
+            if item["status"] == STATUS_REALIZADO:
+                item["data_conclusao"] = agora_iso()
+                item["data_realizacao"] = hoje_ddmmaaaa()
+                item["realizado_em"] = agora_iso()
+            elif item["status"] == STATUS_EM_ATENDIMENTO:
+                item["data_conclusao"] = ""
+                item["data_realizacao"] = ""
+                item["realizado_em"] = ""
+
+            item_atualizado = dict(item)
+
+            try:
+                registrar_alteracoes_atendimento(antes, item)
+            except Exception:
+                pass
+
+            try:
+                registrar_historico_atendimento(
+                    atendimento_id,
+                    "Mudança de status",
+                    f"Status alterado para {item['status']}",
+                    f"Atendimento movido para {item['status']}."
+                )
+            except Exception:
+                pass
+            break
+
+    if not item_atualizado:
+        return False, "Atendimento não localizado."
+
+    salvar_atendimentos(lista)
+    return True, f"Atendimento movido para {item_atualizado.get('status')}."
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
     atendimento = dict(atendimento or {})
     for _campo_html in ['descricao', 'observacoes', 'providencia_adotada', 'conclusao']:
@@ -7878,10 +7944,20 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         with st.expander(expander_avancado_rotulo("Editar atendimento"), expanded=False):
             lista = atendimentos()
             nova_obs = st.text_area("Observações", value=atendimento.get("observacoes", ""), key=f"{chave_prefixo}_obs_{atendimento.get('id')}")
-            novo_status = st.selectbox("Status", status_atendimento_opcoes(),
-                index=STATUS_ATENDIMENTO.index(status) if status in STATUS_ATENDIMENTO else 0,
-                key=f"{chave_prefixo}_status_{atendimento.get('id')}"
+            novo_status = normalizar_status_atendimento(atendimento.get("status") or STATUS_EM_ATENDIMENTO)
+            nova_descricao = st.text_area(
+                "Descrição / pergunta",
+                value=atendimento.get("descricao", ""),
+                height=140,
+                key=f"{chave_prefixo}_descricao_{atendimento.get('id')}"
             )
+            nova_complexidade = st.selectbox(
+                "Complexidade",
+                COMPLEXIDADES_ATENDIMENTO,
+                index=COMPLEXIDADES_ATENDIMENTO.index(normalizar_complexidade(atendimento.get("complexidade"))) if normalizar_complexidade(atendimento.get("complexidade")) in COMPLEXIDADES_ATENDIMENTO else 0,
+                key=f"{chave_prefixo}_complexidade_{atendimento.get('id')}"
+            )
+
             nova_secao = st.selectbox(
                 "Seção responsável",
                 secoes_atendimento(),
@@ -7901,7 +7977,13 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 index=assuntos(nova_secao).index(atendimento.get("assunto")) if atendimento.get("assunto") in assuntos(nova_secao) else 0,
                 key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
             )
-            novo_fonte = st.text_input("Fonte/canal", value=atendimento.get("fonte", "") or "", key=f"{chave_prefixo}_fonte_{atendimento.get('id')}")
+            opcoes_fonte = tipos_fonte_dropdown(atendimento.get("fonte") or atendimento.get("origem") or "")
+            novo_fonte = st.selectbox(
+                "Fonte/canal",
+                opcoes_fonte,
+                index=opcoes_fonte.index(atendimento.get("fonte")) if atendimento.get("fonte") in opcoes_fonte else 0,
+                key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
+            )
             nova_origem = st.text_input("Origem", value=atendimento.get("origem", "") or "", key=f"{chave_prefixo}_origem_{atendimento.get('id')}")
 
             col_prazo1, col_prazo2 = st.columns([1, 2])
@@ -7946,7 +8028,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     if int(item.get("id")) == int(atendimento.get("id")):
                         item["observacoes"] = nova_obs
                         antes = item.copy()
-                        item["status"] = normalizar_status_atendimento(novo_status)
+                        item["status"] = normalizar_status_atendimento(atendimento.get("status") or STATUS_EM_ATENDIMENTO)
                         item["secao"] = nova_secao
                         item["servidor"] = novo_servidor
                         item["assunto"] = novo_assunto
@@ -7956,16 +8038,16 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         item["complexidade"] = nova_complexidade
                         item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
                         item["providencia_adotada"] = nova_providencia
-                        if novo_status == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
+                        if normalizar_status_atendimento(item.get("status")) == STATUS_EM_ATENDIMENTO and not item.get("data_inicio_atendimento"):
                             item["data_inicio_atendimento"] = agora_iso()
-                        if novo_status == STATUS_REALIZADO and not item.get("realizado_em"):
+                        if normalizar_status_atendimento(item.get("status")) == STATUS_REALIZADO and not item.get("realizado_em"):
                             item["realizado_em"] = agora_iso()
-                        if novo_status == STATUS_REALIZADO and not item.get("data_conclusao"):
+                        if normalizar_status_atendimento(item.get("status")) == STATUS_REALIZADO and not item.get("data_conclusao"):
                             item["data_conclusao"] = agora_iso()
                         item["situacao_validacao"] = normalizar_situacao_validacao(item.get("situacao_validacao"))
                         item["atualizado_em"] = agora_iso()
                         resposta_zona_msg = ""
-                        if novo_status == STATUS_REALIZADO and antes.get("status") != STATUS_REALIZADO:
+                        if False:
                             ok_resp, msg_resp = enviar_email_resposta_zona(item)
                             resposta_zona_msg = msg_resp
                             try:
@@ -8008,6 +8090,30 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                     registrar_mensagem_sistema("Atendimento atualizado com sucesso.", "success")
 
                 st.rerun()
+
+    st.markdown("---")
+    col_mov1, col_mov2 = st.columns(2)
+
+    if normalizar_status_atendimento(atendimento.get("status")) == STATUS_EM_ATENDIMENTO:
+        with col_mov1:
+            if st.button("Mover para realizado", type="primary", key=f"{chave_prefixo}_mover_realizado_{atendimento.get('id')}"):
+                ok, msg = atualizar_status_atendimento(atendimento.get("id"), STATUS_REALIZADO)
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+    elif normalizar_status_atendimento(atendimento.get("status")) == STATUS_REALIZADO:
+        with col_mov1:
+            if st.button("Mover para em atendimento", key=f"{chave_prefixo}_mover_atendimento_{atendimento.get('id')}"):
+                ok, msg = atualizar_status_atendimento(atendimento.get("id"), STATUS_EM_ATENDIMENTO)
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
 
 def tela_status(nome_status, titulo, texto_ajuda):
     exibir_mensagem_sistema()
