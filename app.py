@@ -4202,7 +4202,7 @@ def tela_novo_atendimento():
     """
     Porta de entrada da demanda.
     Registra apenas dados essenciais:
-    data, origem, zona eleitoral, seção responsável, assunto e descrição da pergunta.
+    data, fonte/canal, zona eleitoral, seção responsável, assunto e descrição da pergunta.
     Os demais campos são preenchidos na fase Em atendimento.
     """
     exibir_mensagem_sistema()
@@ -4220,7 +4220,7 @@ def tela_novo_atendimento():
 
         with col1:
             data = st.text_input("Data", value=hoje_ddmmaaaa(), help="Formato: dd/mm/aaaa")
-            origem = st.selectbox("Origem", FONTES, index=0)
+            fonte_canal = st.selectbox("Fonte/canal", tipos_fonte_dropdown(""), index=0)
             zona_eleitoral = st.selectbox("Zona Eleitoral", zonas_eleitorais_dropdown(), index=0)
 
         with col2:
@@ -4254,10 +4254,10 @@ def tela_novo_atendimento():
             "validado_por": "",
             "validado_em": "",
             "servidor": "Não informado",
-            "fonte": origem or "Não informado",
+            "fonte": fonte_canal or "Não informado",
             "assunto": assunto or "Não informado",
             "zona_eleitoral": "" if zona_eleitoral == "Não informada" else zona_eleitoral,
-            "origem": origem or "",
+            "origem": fonte_canal or "",
             "protocolo": "",
             "prioridade": "Normal",
             "complexidade": "Não informada",
@@ -7888,7 +7888,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
     assunto = atendimento.get("assunto") or "Sem assunto"
     zona = atendimento.get("zona_eleitoral") or "Zona não informada"
     secao = normalizar_secao(atendimento.get("secao"))
-    origem = atendimento.get("origem") or "Origem não informada"
+    fonte_canal = atendimento.get("fonte") or atendimento.get("origem") or "Fonte/canal não informado"
 
     grid_html = "\n".join([
         atendimento_campo_html("ID", atendimento.get("id")),
@@ -7896,8 +7896,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         atendimento_campo_html("Seção", secao),
         atendimento_campo_html("Zona", zona),
         atendimento_campo_html("Responsável", atendimento.get("servidor") or "Não informado"),
-        atendimento_campo_html("Origem", origem),
-        atendimento_campo_html("Fonte", atendimento.get("fonte") or "Não informada"),
+        atendimento_campo_html("Fonte/canal", fonte_canal),
         atendimento_campo_html("Complexidade", atendimento.get("complexidade") or "Não informada"),
         atendimento_campo_html("Prazo", data_para_exibir(atendimento.get("prazo_limite")) if atendimento.get("prazo_limite") else "Não informado"),
         atendimento_campo_html("Validação", atendimento.get("situacao_validacao") or "Não requerida"),
@@ -7917,7 +7916,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
             <div class="atendimento-card-header">
                 <div>
                     <div class="atendimento-title">{html.escape(str(assunto))}</div>
-                    <div class="atendimento-sub">{html.escape(str(zona))} · {html.escape(str(secao))} · {html.escape(str(origem))}</div>
+                    <div class="atendimento-sub">{html.escape(str(zona))} · {html.escape(str(secao))} · {html.escape(str(fonte_canal))}</div>
                 </div>
                 <div>{status_badge(status)}</div>
             </div>
@@ -7984,20 +7983,6 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 index=opcoes_fonte.index(atendimento.get("fonte")) if atendimento.get("fonte") in opcoes_fonte else 0,
                 key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
             )
-            nova_origem = st.text_input("Origem", value=atendimento.get("origem", "") or "", key=f"{chave_prefixo}_origem_{atendimento.get('id')}")
-
-            col_prazo1, col_prazo2 = st.columns([1, 2])
-            with col_prazo1:
-                manter_prazo = st.checkbox("Definir prazo", value=bool(atendimento.get("prazo_limite")), key=f"{chave_prefixo}_manter_prazo_{atendimento.get('id')}")
-            with col_prazo2:
-                prazo_atual = parse_data(atendimento.get("prazo_limite")) or agora_brasilia().date()
-                novo_prazo = st.date_input("Prazo limite", value=prazo_atual, format="DD/MM/YYYY", key=f"{chave_prefixo}_prazo_{atendimento.get('id')}")
-
-            nova_providencia = st.text_area(
-                "Providência adotada",
-                value=atendimento.get("providencia_adotada", "") or atendimento.get("conclusao", ""),
-                key=f"{chave_prefixo}_providencia_{atendimento.get('id')}"
-            )
 
             st.markdown(
                 """
@@ -8033,7 +8018,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         item["servidor"] = novo_servidor
                         item["assunto"] = novo_assunto
                         item["fonte"] = novo_fonte
-                        item["origem"] = nova_origem
+                        item["origem"] = novo_fonte
                         item["descricao"] = nova_descricao
                         item["complexidade"] = nova_complexidade
                         item["prazo_limite"] = novo_prazo.strftime("%d/%m/%Y") if manter_prazo else ""
@@ -8114,6 +8099,31 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 else:
                     st.error(msg)
 
+    with col_mov2:
+        confirmar_exclusao = st.checkbox(
+            "Confirmar exclusão",
+            value=False,
+            key=f"{chave_prefixo}_confirmar_excluir_{atendimento.get('id')}"
+        )
+        if st.button(
+            "Excluir atendimento",
+            key=f"{chave_prefixo}_excluir_{atendimento.get('id')}",
+            disabled=not confirmar_exclusao
+        ):
+            if excluir_atendimento_por_id(atendimento.get("id")):
+                try:
+                    registrar_historico_atendimento(
+                        atendimento.get("id"),
+                        "Exclusão",
+                        "Atendimento excluído",
+                        "Atendimento excluído pelo usuário."
+                    )
+                except Exception:
+                    pass
+                registrar_mensagem_sistema("Atendimento excluído com sucesso.", "success")
+                st.rerun()
+            else:
+                st.error("Não foi possível excluir o atendimento.")
 
 def tela_status(nome_status, titulo, texto_ajuda):
     exibir_mensagem_sistema()
