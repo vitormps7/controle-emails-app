@@ -2254,13 +2254,22 @@ def atendimentos_df(lista=None):
     return df[colunas]
 
 
+
 def enviar_email(destinatario, assunto_email, corpo):
+    """
+    Envia e-mail do SIGA-COR com tolerância a configurações comuns de SMTP.
+    Suporta STARTTLS, SSL/465 e remetente configurado nos Secrets.
+    """
     try:
-        smtp_host = st.secrets.get("SMTP_HOST", "")
-        smtp_port = int(st.secrets.get("SMTP_PORT", 587))
-        smtp_user = st.secrets.get("SMTP_USER", "")
-        smtp_password = st.secrets.get("SMTP_PASSWORD", "")
-        remetente = st.secrets.get("EMAIL_REMETENTE", smtp_user)
+        destinatario = str(destinatario or "").strip()
+        if not destinatario:
+            return False, "Destinatário não informado."
+
+        smtp_host = str(st.secrets.get("SMTP_HOST", "") or "").strip()
+        smtp_port = int(st.secrets.get("SMTP_PORT", 587) or 587)
+        smtp_user = str(st.secrets.get("SMTP_USER", "") or "").strip()
+        smtp_password = str(st.secrets.get("SMTP_PASSWORD", "") or "").strip()
+        remetente = str(st.secrets.get("EMAIL_REMETENTE", smtp_user) or smtp_user).strip()
 
         if not all([smtp_host, smtp_port, smtp_user, smtp_password, remetente]):
             return False, "Envio de e-mail não configurado nos Secrets do Streamlit."
@@ -2268,21 +2277,30 @@ def enviar_email(destinatario, assunto_email, corpo):
         msg = EmailMessage()
         msg["From"] = remetente
         msg["To"] = destinatario
-        msg["Subject"] = assunto_email
-        msg.set_content(corpo)
+        msg["Subject"] = str(assunto_email or "").strip() or "SIGA-COR"
+        msg.set_content(str(corpo or ""))
 
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as servidor:
-            servidor.starttls()
-            servidor.login(smtp_user, smtp_password)
-            servidor.send_message(msg)
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30) as servidor:
+                servidor.login(smtp_user, smtp_password)
+                servidor.send_message(msg)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as servidor:
+                try:
+                    servidor.ehlo()
+                except Exception:
+                    pass
+                try:
+                    servidor.starttls()
+                    servidor.ehlo()
+                except Exception:
+                    pass
+                servidor.login(smtp_user, smtp_password)
+                servidor.send_message(msg)
 
-        return True, "E-mail enviado com sucesso."
+        return True, f"E-mail enviado para {destinatario}."
     except Exception as e:
-        return False, f"Não foi possível enviar o e-mail: {e}"
-
-
-
-
+        return False, f"Não foi possível enviar o e-mail: {type(e).__name__}: {e}"
 
 
 def numero_zona_eleitoral(valor):
@@ -2410,7 +2428,7 @@ DADOS DO ATENDIMENTO
 ID: {atendimento.get('id')}
 Data do atendimento: {data_para_exibir(atendimento.get('data'))}
 Seção: {normalizar_secao(atendimento.get('secao'))}
-Origem da demanda/chamada: {atendimento.get('origem') or 'Não informado'}
+Fonte/canal: {atendimento.get('fonte') or atendimento.get('origem') or 'Não informado'}
 Zona eleitoral: {atendimento.get('zona_eleitoral') or 'Não informado'}
 Assunto: {atendimento.get('assunto') or 'Não informado'}
 Responsável: {atendimento.get('servidor') or 'Não informado'}
@@ -3889,7 +3907,6 @@ def tela_menu_principal():
         cards_gestao.append(("workflow", "Inteligência gerencial", "Analisar recorrências, competências, riscos e oportunidades de orientação.", "Abrir inteligência", "Inteligência gerencial", "card_inteligencia_gerencial"))
     if usuario_eh_gestor():
         cards_gestao.extend([
-            ("shield", "Validação da chefia", "Validar orientações preparadas pela equipe ou devolver para ajuste.", "Validar orientações", "Validação da chefia", "card_validacao_chefia"),
             ("chart", "Painel gerencial", "Acompanhar indicadores essenciais e a situação dos atendimentos.", "Abrir painel", "Dashboard", "card_painel_gerencial"),
             ("file", "Relatórios", "Emitir relatórios gerenciais, auditoria e memória institucional.", "Emitir relatório", "Relatórios e exportação", "card_relatorios"),
         ])
@@ -4297,47 +4314,30 @@ def tela_novo_atendimento():
         except Exception:
             pass
 
-        st.success("Atendimento cadastrado e encaminhado para Em atendimento.")
+        email_ok, email_msg = enviar_email_demanda_cadastrada_unidade(novo)
+        if email_ok:
+            registrar_mensagem_sistema("success", "Atendimento cadastrado e e-mail de cadastramento enviado à unidade responsável.")
+        else:
+            registrar_mensagem_sistema("warning", f"Atendimento cadastrado, mas o e-mail de cadastramento não foi enviado: {email_msg}")
+
         st.session_state["pagina_atual"] = "Em atendimento"
         st.rerun()
 
 
+
 def tela_validacao_chefia():
-    st.subheader("Validação da chefia  ›")
-    st.caption("Orientações e respostas que dependem de conferência, validação ou devolução para ajuste pela chefia.")
-
-    lista = filtros_base(atendimentos())
-    pendentes = [
-        a for a in lista
-        if a.get("requer_validacao")
-        or a.get("situacao_validacao") in ("Pendente de validação", "Devolvido para ajuste")
-    ]
-
-    aba1, aba2, aba3 = st.tabs(["Pendentes", "Devolvidos", "Validados"])
-
-    with aba1:
-        base = [a for a in pendentes if a.get("situacao_validacao") == "Pendente de validação"]
-        st.write(f"Total pendente: **{len(base)}**")
-        if not base:
-            st.info("Nenhum atendimento pendente de validação.")
-        for item in sorted(base, key=lambda x: int(x.get("id", 0)), reverse=True):
-            card_atendimento(item, "validacao_pendentes")
-
-    with aba2:
-        base = [a for a in pendentes if a.get("situacao_validacao") == "Devolvido para ajuste"]
-        st.write(f"Total devolvido: **{len(base)}**")
-        if not base:
-            st.info("Nenhum atendimento devolvido para ajuste.")
-        for item in sorted(base, key=lambda x: int(x.get("id", 0)), reverse=True):
-            card_atendimento(item, "validacao_devolvidos")
-
-    with aba3:
-        base = [a for a in lista if a.get("situacao_validacao") == "Validado pela chefia"]
-        st.write(f"Total validado: **{len(base)}**")
-        if not base:
-            st.info("Nenhum atendimento validado encontrado.")
-        for item in sorted(base, key=lambda x: int(x.get("id", 0)), reverse=True):
-            card_atendimento(item, "validacao_validados")
+    """
+    Fluxo removido.
+    O entendimento passa a ser considerado validado quando a resposta é transformada em
+    Base de Conhecimento, Modelo de Resposta ou outro instrumento institucional.
+    """
+    st.subheader("Conversão em conhecimento removida do fluxo")
+    st.info(
+        "A validação autônoma da chefia foi retirada do SIGA-COR. "
+        "Quando uma resposta é transformada em Base de Conhecimento, Modelo de Resposta, Texto-padrão "
+        "ou Instrumento de Orientação, o entendimento já passa a ser considerado validado."
+    )
+    st.markdown("Use a fase **Em atendimento** para revisar a resposta e depois salve como Base de Conhecimento ou Modelo de Resposta.")
 
 
 def tela_orientacoes_zonas():
@@ -4866,13 +4866,132 @@ def fonte_zel_para_texto(row):
     ])
 
 
-def fontes_relevantes_zel(atendimento=None, pergunta_livre="", limite=6):
+
+def _texto_seguro_fonte_zel(*partes):
+    return "\\n".join([str(p or "").strip() for p in partes if str(p or "").strip()]).strip()
+
+
+def _fonte_zel_virtual(titulo, secao, assunto, tipo_fonte, referencia, conteudo_texto, origem_id=None):
+    return {
+        "id": origem_id,
+        "titulo": titulo or tipo_fonte or "Fonte institucional",
+        "secao": normalizar_secao(secao or "SEPRO"),
+        "assunto": assunto or "Não informado",
+        "tipo_fonte": tipo_fonte or "Fonte institucional",
+        "referencia": referencia or "",
+        "conteudo_texto": conteudo_texto or "",
+        "nome_arquivo": "",
+        "ativo": True,
+        "validado": True,
+        "origem_virtual": True,
+    }
+
+
+def fontes_memoria_institucional_zel_rows():
+    """
+    Converte dinamicamente a memória institucional em fontes da Zel.
+    Não duplica registros no banco: usa como fonte tudo que já está validado/institucionalizado.
+    Inclui:
+    - Entendimentos / Base de Conhecimento;
+    - Textos-padrão / Modelos de Resposta;
+    - Instrumentos de Orientação;
+    - fontes documentais cadastradas diretamente na Zel.
+    """
+    fontes = []
+
+    # 1. Fontes documentais próprias da Zel
+    try:
+        for f in fontes_zel_rows(incluir_inativas=False):
+            if f.get("ativo", True) and f.get("validado", True):
+                fontes.append(f)
+    except Exception:
+        pass
+
+    # 2. Entendimentos / Base de Conhecimento
+    try:
+        for b in base_conhecimento_rows(incluir_superadas=False):
+            conteudo = _texto_seguro_fonte_zel(
+                f"Código: {codigo_base_conhecimento(b)}",
+                f"Resumo da dúvida: {b.get('resumo_duvida') or ''}",
+                f"Orientação adotada: {b.get('orientacao_adotada') or ''}",
+                f"Fundamento normativo: {b.get('fundamento_normativo') or ''}",
+            )
+            if conteudo:
+                fontes.append(_fonte_zel_virtual(
+                    titulo=f"Base de Conhecimento {codigo_base_conhecimento(b)}",
+                    secao=b.get("secao"),
+                    assunto=b.get("assunto") or b.get("categoria"),
+                    tipo_fonte="Entendimento / Base de Conhecimento",
+                    referencia=f"BASE:{b.get('id') or codigo_base_conhecimento(b)}",
+                    conteudo_texto=conteudo,
+                    origem_id=b.get("id"),
+                ))
+    except Exception:
+        pass
+
+    # 3. Textos-padrão / Modelos de Resposta
+    try:
+        for m in modelos_resposta_rows(incluir_superadas=False):
+            conteudo = _texto_seguro_fonte_zel(
+                f"Título: {m.get('titulo') or ''}",
+                f"Assunto: {m.get('assunto') or ''}",
+                f"Texto/modelo: {m.get('corpo') or m.get('texto') or m.get('conteudo') or m.get('modelo') or m.get('resposta') or ''}",
+                f"Observações: {m.get('observacoes') or ''}",
+            )
+            if conteudo:
+                fontes.append(_fonte_zel_virtual(
+                    titulo=m.get("titulo") or "Modelo de resposta",
+                    secao=m.get("secao"),
+                    assunto=m.get("assunto"),
+                    tipo_fonte="Texto-padrão / Modelo de Resposta",
+                    referencia=f"MODELO:{m.get('id') or ''}",
+                    conteudo_texto=conteudo,
+                    origem_id=m.get("id"),
+                ))
+    except Exception:
+        pass
+
+    # 4. Instrumentos de Orientação
+    try:
+        for i in rows_tabela_simples("instrumentos_orientacao"):
+            if str(i.get("status") or "").casefold() in ["superado", "arquivado"]:
+                continue
+            conteudo = _texto_seguro_fonte_zel(
+                f"Tipo: {i.get('tipo') or ''}",
+                f"Título: {i.get('titulo') or ''}",
+                f"Assunto: {i.get('assunto') or ''}",
+                f"Fundamento normativo: {i.get('fundamento_normativo') or ''}",
+                f"Link de publicação: {i.get('link_publicacao') or ''}",
+                f"Observações: {i.get('observacoes') or ''}",
+            )
+            if conteudo:
+                fontes.append(_fonte_zel_virtual(
+                    titulo=i.get("titulo") or "Instrumento de orientação",
+                    secao=i.get("secao") or i.get("unidade_autora"),
+                    assunto=i.get("assunto"),
+                    tipo_fonte=f"Instrumento de Orientação - {i.get('tipo') or 'Orientação'}",
+                    referencia=f"INSTRUMENTO:{i.get('id') or i.get('codigo') or ''}",
+                    conteudo_texto=conteudo,
+                    origem_id=i.get("id"),
+                ))
+    except Exception:
+        pass
+
+    return fontes
+
+
+
+def fontes_relevantes_zel(atendimento=None, pergunta_livre="", limite=10):
+    """
+    Busca fontes da Zel em toda a memória institucional:
+    fontes documentais, Base de Conhecimento, Modelos/Textos-padrão e Instrumentos.
+    """
     termos = termos_do_atendimento_para_ia(atendimento, pergunta_livre)
     secao = normalizar_secao((atendimento or {}).get("secao") or (usuario_logado() or {}).get("secao") or "SEPRO")
     assunto = str((atendimento or {}).get("assunto") or "").strip()
 
     candidatos = []
-    for f in fontes_zel_rows(incluir_inativas=False):
+    for f in fontes_memoria_institucional_zel_rows():
         texto = fonte_zel_para_texto(f)
         score = pontuar_relevancia_controlada(texto, termos)
 
@@ -4880,6 +4999,10 @@ def fontes_relevantes_zel(atendimento=None, pergunta_livre="", limite=6):
             score += 6
         if secao and normalizar_secao(f.get("secao") or secao) == secao:
             score += 3
+
+        # Fontes institucionais já validadas recebem bônus moderado.
+        if f.get("origem_virtual"):
+            score += 2
 
         if score > 0:
             candidatos.append((score, f))
@@ -4930,27 +5053,16 @@ def codigo_base_ia(base):
         return "Base sem código"
 
 
-def resumo_fontes_zel(fontes, bases):
+
+def resumo_fontes_zel(fontes, bases=None):
     partes = []
     for f in fontes or []:
+        tipo = f.get("tipo_fonte") or "Fonte"
         titulo = f.get("titulo") or f.get("referencia") or "Fonte Zel"
-        partes.append(f"FONTE:{titulo}")
+        partes.append(f"{tipo}: {titulo}")
     for b in bases or []:
         partes.append(codigo_base_ia(b))
     return ", ".join(partes)
-
-
-# ============================================================
-# ============================================================
-# ============================================================
-# ============================================================
-# ZEL - AGENTE CONTROLADA COM RESPOSTA ÚTIL OU BLOQUEIO
-# Versão: zel_resposta_util_v9
-# ============================================================
-
-ZEL_SCORE_MINIMO_EVIDENCIA = 18
-ZEL_SCORE_MINIMO_PRAZO = 35
-ZEL_MAX_EVIDENCIAS = 5
 
 
 def zel_normalizar_texto(texto):
@@ -5490,9 +5602,10 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
     ]
     return "\n".join(partes)
 
+
 def gerar_minuta_zel_para_atendimento(atendimento):
-    fontes = fontes_relevantes_zel(atendimento=atendimento, limite=6)
-    bases = fontes_base_conhecimento_como_fonte_zel(atendimento=atendimento, limite=4)
+    fontes = fontes_relevantes_zel(atendimento=atendimento, limite=12)
+    bases = []
     minuta = gerar_minuta_zel_controlada(atendimento=atendimento, fontes=fontes, bases=bases)
     return minuta, fontes, bases
 
@@ -6255,11 +6368,6 @@ def sidebar_menu():
         if usuario_pode_editar_atendimentos():
             if st.button("Novo atendimento ›", key="side_atendimento_novo", use_container_width=True):
                 ir_para_pagina("Novo atendimento")
-                st.rerun()
-
-        if usuario_eh_gestor():
-            if st.button("Validação da chefia ›", key="side_atendimento_validacao", use_container_width=True):
-                ir_para_pagina("Validação da chefia")
                 st.rerun()
 
         botoes_atendimento = [
@@ -10724,7 +10832,7 @@ def eventos_linha_tempo_atendimento(atendimento):
     if atendimento.get("data_inicio_atendimento"):
         add(atendimento.get("data_inicio_atendimento"), "Início do atendimento", f"Responsável: {atendimento.get('servidor') or 'não informado'}.")
     if atendimento.get("requer_validacao"):
-        add(atendimento.get("validado_em"), "Validação da chefia", atendimento.get("situacao_validacao") or "Validação requerida.")
+        add(atendimento.get("validado_em"), "Conversão em conhecimento", atendimento.get("situacao_validacao") or "Validação requerida.")
     if atendimento.get("data_conclusao") or atendimento.get("realizado_em"):
         add(atendimento.get("data_conclusao") or atendimento.get("realizado_em"), "Conclusão", atendimento.get("conclusao") or "Atendimento concluído.")
     try:
@@ -11222,7 +11330,7 @@ def processo_as_is_to_be():
             "Dimensão": "Validação e qualidade",
             "AS-IS": "Revisão eventual pela chefia, sem trilha padronizada.",
             "TO-BE": "Fluxo de validação, devolução para ajuste, registro de comentários e histórico.",
-            "Recurso no sistema": "Validação da chefia; comentários internos; histórico; auditoria.",
+            "Recurso no sistema": "Conversão em conhecimento; comentários internos; histórico; auditoria.",
         },
         {
             "Dimensão": "Monitoramento gerencial",
@@ -11674,7 +11782,7 @@ def tela_governanca_tecnica():
             4. **Atividade:** triagem e designação do responsável.
             5. **Atividade:** análise técnica e elaboração da orientação.
             6. **Subprocesso:** consulta a modelo de resposta ou base de conhecimento.
-            7. **Gateway:** exige validação da chefia?
+            7. **Gateway:** exige conversão em conhecimento?
             8. **Atividade:** validar, devolver para ajuste ou concluir.
             9. **Evento final:** atendimento realizado, auditado e disponível para memória institucional.
             """
@@ -11688,7 +11796,7 @@ def tela_governanca_tecnica():
             {"Indicador": "Prazo vencido", "Objetivo": "Apoiar gestão de risco operacional.", "Fonte": "Prazo limite"},
             {"Indicador": "Assuntos recorrentes", "Objetivo": "Identificar temas para padronização e capacitação.", "Fonte": "Assunto/Base de conhecimento"},
             {"Indicador": "Uso da base de conhecimento", "Objetivo": "Mensurar reaproveitamento da memória institucional.", "Fonte": "Usos BC"},
-            {"Indicador": "Validação pela chefia", "Objetivo": "Acompanhar qualidade e revisão.", "Fonte": "Fluxo de validação"},
+            {"Indicador": "Validação por conversão em conhecimento", "Objetivo": "Acompanhar qualidade e revisão.", "Fonte": "Fluxo de validação"},
         ])
         st.dataframe(indicadores, use_container_width=True, hide_index=True)
 
@@ -11835,7 +11943,7 @@ def main():
     elif escolha == "Novo atendimento":
         tela_novo_atendimento()
 
-    elif escolha == "Validação da chefia":
+    elif escolha == "Conversão em conhecimento":
         tela_validacao_chefia()
 
     elif escolha == "Portal das Zonas":
