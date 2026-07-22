@@ -4340,36 +4340,117 @@ def tela_validacao_chefia():
     st.markdown("Use a fase **Em atendimento** para revisar a resposta e depois salve como Base de Conhecimento ou Modelo de Resposta.")
 
 
+
 def tela_orientacoes_zonas():
-    st.subheader("Orientações às Zonas")
-    aviso_modo_visualizacao()
-    st.caption(
-        "Ambiente integrado para consulta e manutenção da memória institucional, "
-        "modelos de resposta e instrumentos de orientação."
+    st.title("Orientações às Zonas")
+    st.caption("Base única de conhecimento institucional. Tudo que for cadastrado aqui passa a ser fonte da Zel.")
+
+    st.info(
+        "A Base de Conhecimento é o acervo único do SIGA-COR. Ela alimenta a Zel e registra os entendimentos institucionais da unidade."
     )
-    descricao_diferenca_base_modelo()
 
-    aba1, aba2, aba3 = st.tabs([
-        "Entendimentos / Base de conhecimento",
-        "Textos-padrão / Modelos de resposta",
-        "Instrumentos de orientação",
-    ])
+    st.subheader("Cadastrar Base de Conhecimento / Fonte da Zel")
 
-    with aba1:
-        tela_base_conhecimento()
+    with st.form("form_base_unica_zel", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            secao = st.selectbox("Seção responsável", SECOES_ATENDIMENTO, index=0)
+            assunto = st.selectbox("Assunto", assuntos(secao), index=0)
+        with col2:
+            titulo = st.text_input("Título do entendimento", placeholder="Ex.: Procedimento após pagamento de multa")
+            arquivo = st.file_uploader(
+                "Upload de documento de apoio",
+                type=["txt", "md", "csv", "json", "sql", "py", "html", "htm", "pdf", "docx", "doc"],
+                help="Aceita PDF com texto selecionável, DOCX, DOC e arquivos textuais."
+            )
 
-    with aba2:
-        tela_modelos_resposta()
+        texto_extraido = ""
+        if arquivo is not None:
+            texto_extraido = texto_arquivo_upload_zel(arquivo)
 
-    with aba3:
-        if usuario_pode_ver_governanca():
-            tela_instrumentos_orientacao()
+        resumo_duvida = st.text_area(
+            "Resumo da dúvida / tema",
+            value=titulo or "",
+            height=100,
+            placeholder="Descreva a dúvida, o tema ou a situação recorrente."
+        )
+
+        orientacao_adotada = st.text_area(
+            "Orientação institucional adotada",
+            height=180,
+            placeholder="Registre a orientação objetiva que deve fundamentar futuras respostas da Zel."
+        )
+
+        fundamento_normativo = st.text_area(
+            "Fundamento normativo / documento de apoio",
+            value=texto_extraido,
+            height=220,
+            placeholder="Cole o fundamento, trecho normativo, manual, decisão, orientação ou conteúdo extraído do arquivo."
+        )
+
+        salvar = st.form_submit_button("Cadastrar como Base de Conhecimento e Fonte da Zel", type="primary")
+
+    if salvar:
+        if not str(orientacao_adotada or "").strip() and not str(fundamento_normativo or "").strip():
+            st.warning("Informe ao menos a orientação institucional ou o fundamento normativo.")
         else:
-            st.info("Instrumentos de orientação estão disponíveis para chefia e administradores.")
+            dados = cadastrar_base_conhecimento_unica(
+                titulo=titulo,
+                secao=secao,
+                assunto=assunto,
+                resumo_duvida=resumo_duvida,
+                orientacao_adotada=orientacao_adotada,
+                fundamento_normativo=fundamento_normativo,
+                atendimento_id=None
+            )
+            if dados is not None:
+                st.success("Base de Conhecimento cadastrada. Ela já passa a ser fonte da Zel.")
+                st.rerun()
 
+    st.divider()
+    st.subheader("Consultar Base de Conhecimento / Fontes da Zel")
 
+    try:
+        bases = base_conhecimento_rows(incluir_superadas=False)
+    except Exception:
+        bases = []
 
+    busca = st.text_input("Pesquisar na base", placeholder="Digite assunto, palavra-chave, fundamento ou orientação")
+    if busca.strip():
+        termo = busca.casefold()
+        bases = [
+            b for b in bases
+            if termo in " ".join([
+                str(b.get("resumo_duvida") or ""),
+                str(b.get("orientacao_adotada") or ""),
+                str(b.get("fundamento_normativo") or ""),
+                str(b.get("assunto") or ""),
+                str(b.get("secao") or ""),
+            ]).casefold()
+        ]
 
+    st.caption(f"{len(bases)} registro(s) encontrado(s).")
+
+    for b in bases[:100]:
+        with st.container(border=True):
+            try:
+                codigo = codigo_base_conhecimento(b)
+            except Exception:
+                codigo = b.get("id")
+            st.markdown(f"**{codigo} — {b.get('assunto') or 'Não informado'}**")
+            st.caption(f"Seção: {normalizar_secao(b.get('secao') or 'SEPRO')}")
+
+            if b.get("resumo_duvida"):
+                st.markdown("**Tema / dúvida:**")
+                st.write(b.get("resumo_duvida"))
+            if b.get("orientacao_adotada"):
+                st.markdown("**Orientação institucional:**")
+                st.write(b.get("orientacao_adotada"))
+            if b.get("fundamento_normativo"):
+                with st.expander("Fundamento/documento de apoio", expanded=False):
+                    st.write(b.get("fundamento_normativo"))
+
+            st.caption("Registro ativo desta base é fonte da Zel.")
 
 
 def demandas_da_zona(zona):
@@ -4981,28 +5062,126 @@ def fontes_memoria_institucional_zel_rows():
 
 
 
+
+def mensagem_zel_sem_base(contexto=""):
+    contexto = str(contexto or "").strip()
+    detalhe = f" para o tema '{contexto}'" if contexto else " para o tema informado"
+    return (
+        "Não foi possível gerar uma resposta segura pela Zel, pois ainda não existem bases de conhecimento cadastradas "
+        f"ou suficientemente aderentes{detalhe}.\n\n"
+        "Cadastre ou atualize a Base de Conhecimento com a orientação institucional aplicável e depois retorne ao atendimento "
+        "para clicar em 'Refazer resposta da Zel'."
+    )
+
+
+def fonte_unica_zel_rows():
+    """
+    Fonte única da Zel: Base de Conhecimento institucional.
+    """
+    fontes = []
+    try:
+        rows = base_conhecimento_rows(incluir_superadas=False)
+    except Exception:
+        rows = []
+
+    for b in rows or []:
+        try:
+            codigo = codigo_base_conhecimento(b)
+        except Exception:
+            codigo = str(b.get("id") or "")
+
+        conteudo = "\n".join([
+            f"Código: {codigo}",
+            f"Seção: {normalizar_secao(b.get('secao') or 'SEPRO')}",
+            f"Assunto: {b.get('assunto') or b.get('categoria') or 'Não informado'}",
+            f"Resumo da dúvida: {b.get('resumo_duvida') or ''}",
+            f"Orientação adotada: {b.get('orientacao_adotada') or ''}",
+            f"Fundamento normativo: {b.get('fundamento_normativo') or ''}",
+        ]).strip()
+
+        if not conteudo:
+            continue
+
+        fontes.append({
+            "id": b.get("id"),
+            "titulo": f"Base de Conhecimento {codigo}",
+            "secao": normalizar_secao(b.get("secao") or "SEPRO"),
+            "assunto": b.get("assunto") or b.get("categoria") or "Não informado",
+            "tipo_fonte": "Base de Conhecimento",
+            "referencia": f"BASE:{b.get('id') or codigo}",
+            "conteudo_texto": conteudo,
+            "nome_arquivo": "",
+            "ativo": True,
+            "validado": True,
+            "origem_base_conhecimento": True,
+        })
+    return fontes
+
+
+def cadastrar_base_conhecimento_unica(titulo, secao, assunto, resumo_duvida, orientacao_adotada, fundamento_normativo, atendimento_id=None):
+    """
+    Cadastro único de conhecimento institucional. Tudo que entra aqui vira fonte da Zel.
+    """
+    usuario = usuario_logado() or {}
+    row = {
+        "secao": normalizar_secao(secao),
+        "assunto": assunto or "Não informado",
+        "categoria": assunto or "Não informado",
+        "resumo_duvida": str(resumo_duvida or titulo or "").strip(),
+        "orientacao_adotada": str(orientacao_adotada or "").strip(),
+        "fundamento_normativo": str(fundamento_normativo or "").strip(),
+        "atendimento_id": atendimento_id,
+        "ativo": True,
+        "superada": False,
+        "criado_por_email": usuario.get("email", ""),
+        "criado_por_nome": usuario.get("nome", ""),
+        "criado_em": agora_iso(),
+        "atualizado_em": agora_iso(),
+    }
+
+    try:
+        ok, msg, dados = supabase_insert_diagnostico("base_conhecimento", [row])
+        if ok:
+            return dados if dados is not None else []
+    except Exception as e:
+        msg = str(e)
+
+    # Fallback para instalações com colunas mais simples
+    row_simples = dict(row)
+    for k in ["categoria", "atendimento_id", "ativo", "superada", "criado_por_email", "criado_por_nome", "atualizado_em"]:
+        row_simples.pop(k, None)
+
+    try:
+        ok, msg, dados = supabase_insert_diagnostico("base_conhecimento", [row_simples])
+        if ok:
+            return dados if dados is not None else []
+        st.error("Não foi possível cadastrar a Base de Conhecimento.")
+        st.code(str(msg))
+        return None
+    except Exception as e:
+        st.error("Não foi possível cadastrar a Base de Conhecimento.")
+        st.code(str(e))
+        return None
+
+
+
 def fontes_relevantes_zel(atendimento=None, pergunta_livre="", limite=10):
     """
-    Busca fontes da Zel em toda a memória institucional:
-    fontes documentais, Base de Conhecimento, Modelos/Textos-padrão e Instrumentos.
+    A Zel busca exclusivamente na Base de Conhecimento.
     """
     termos = termos_do_atendimento_para_ia(atendimento, pergunta_livre)
-    secao = normalizar_secao((atendimento or {}).get("secao") or (usuario_logado() or {}).get("secao") or "SEPRO")
+    secao = normalizar_secao((atendimento or {}).get("secao") or "SEPRO")
     assunto = str((atendimento or {}).get("assunto") or "").strip()
 
     candidatos = []
-    for f in fontes_memoria_institucional_zel_rows():
-        texto = fonte_zel_para_texto(f)
+    for f in fonte_unica_zel_rows():
+        texto = fonte_zel_para_texto(f) if "fonte_zel_para_texto" in globals() else str(f.get("conteudo_texto") or "")
         score = pontuar_relevancia_controlada(texto, termos)
 
         if assunto and assunto.casefold() in texto.casefold():
-            score += 6
+            score += 8
         if secao and normalizar_secao(f.get("secao") or secao) == secao:
             score += 3
-
-        # Fontes institucionais já validadas recebem bônus moderado.
-        if f.get("origem_virtual"):
-            score += 2
 
         if score > 0:
             candidatos.append((score, f))
@@ -5054,20 +5233,14 @@ def codigo_base_ia(base):
 
 
 
+
 def resumo_fontes_zel(fontes, bases=None):
     partes = []
     for f in fontes or []:
-        tipo = f.get("tipo_fonte") or "Fonte"
-        titulo = f.get("titulo") or f.get("referencia") or "Fonte Zel"
-        partes.append(f"{tipo}: {titulo}")
-    for b in bases or []:
-        partes.append(codigo_base_ia(b))
+        titulo = f.get("titulo") or f.get("referencia") or "Base de Conhecimento"
+        partes.append(f"Base de Conhecimento: {titulo}")
     return ", ".join(partes)
 
-
-ZEL_SCORE_MINIMO_EVIDENCIA = 18
-ZEL_SCORE_MINIMO_PRAZO = 35
-ZEL_MAX_EVIDENCIAS = 5
 
 def zel_normalizar_texto(texto):
     texto = str(texto or "").casefold()
@@ -5610,10 +5783,20 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
     return "\n".join(partes)
 
 
+
 def gerar_minuta_zel_para_atendimento(atendimento):
     fontes = fontes_relevantes_zel(atendimento=atendimento, limite=12)
     bases = []
+
+    if not fontes:
+        return mensagem_zel_sem_base((atendimento or {}).get("assunto") or ""), [], []
+
     minuta = gerar_minuta_zel_controlada(atendimento=atendimento, fontes=fontes, bases=bases)
+
+    texto = str(minuta or "")
+    if texto.startswith("A Zel não encontrou fundamento validado suficiente") or "A Zel bloqueou" in texto:
+        minuta = mensagem_zel_sem_base((atendimento or {}).get("assunto") or "")
+
     return minuta, fontes, bases
 
 
@@ -6273,42 +6456,34 @@ def limpar_estado_zel_atendimento(atendimento_id=None):
 
 
 
+
 def tela_zel_ia_controlada():
     st.subheader("Zel - agente controlada")
     st.caption(
-        "Área interna de curadoria e validação. A geração de resposta pela Zel ocorre dentro do próprio atendimento, "
-        "no botão 'Usar Zel para gerar resposta'."
+        "A Zel usa exclusivamente a Base de Conhecimento do SIGA-COR. "
+        "A geração da resposta ocorre dentro do atendimento."
     )
 
     if usuario_eh_zona_eleitoral():
         st.warning("Este módulo é interno e não está disponível para usuários de Zona Eleitoral.")
         return
 
-    if not usuario_pode_editar_atendimentos():
-        st.warning("Seu perfil permite consulta, sem validação de respostas assistidas.")
-        return
-
     st.markdown(
         """
         <div class="zel-banner">
             <strong>Regra de uso da Zel:</strong><br>
-            A Zel não é consulta livre. Ela atua vinculada ao atendimento, usando apenas Base de Conhecimento validada e documentos de apoio validados.
-            Após revisão humana, a validação grava a resposta no atendimento e pode alimentar a Base de Conhecimento.
+            A Zel não possui acervo paralelo. A Base de Conhecimento é o acervo único do sistema e a fonte única da Zel.
+            Se não houver base aderente ao tema, a Zel informará isso de forma clara e humanizada.
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    aba_validacao, aba_fontes = st.tabs([
-        "Validar respostas Zel",
-        "Acervo documental"
-    ])
+    st.info(
+        "Para alimentar a Zel, cadastre uma Base de Conhecimento ou transforme uma resposta validada do atendimento em Base de Conhecimento."
+    )
 
-    with aba_validacao:
-        tela_validacao_zel()
-
-    with aba_fontes:
-        tela_fontes_zel()
+    tela_validacao_zel()
 
 
 def sidebar_nav_button(label, destino, key_prefix):
@@ -8182,7 +8357,7 @@ def componente_zel_no_atendimento(atendimento):
         resultado_key = f"zel_minuta_gerada_texto_{atendimento_id}"
         fontes_key = f"zel_minuta_fontes_{atendimento_id}"
 
-        if st.button("Usar Zel para gerar resposta", type="primary", key=f"zel_gerar_no_atendimento_{atendimento_id}"):
+        if st.button("Usar Zel para gerar resposta" if not minuta_valor else "Refazer resposta da Zel", type="primary", key=f"zel_gerar_no_atendimento_{atendimento_id}"):
             minuta, fontes, bases = gerar_minuta_zel_para_atendimento(atendimento)
             st.session_state[resultado_key] = minuta
             st.session_state[fontes_key] = resumo_fontes_zel(fontes, bases)
