@@ -5629,7 +5629,120 @@ def registrar_uso_zel(atendimento_id, acao, resumo):
         pass
 
 
+
+def extrair_texto_pdf_bytes(data):
+    """
+    Extrai texto de PDF com texto selecionável.
+    Não faz OCR. PDF escaneado deve ser convertido ou ter o texto colado manualmente.
+    """
+    if not data:
+        return ""
+
+    try:
+        import io
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        partes = []
+        for page in reader.pages:
+            try:
+                partes.append(page.extract_text() or "")
+            except Exception:
+                pass
+        return "\n\n".join([p.strip() for p in partes if p and p.strip()]).strip()
+    except Exception:
+        pass
+
+    try:
+        import io
+        from PyPDF2 import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        partes = []
+        for page in reader.pages:
+            try:
+                partes.append(page.extract_text() or "")
+            except Exception:
+                pass
+        return "\n\n".join([p.strip() for p in partes if p and p.strip()]).strip()
+    except Exception:
+        return ""
+
+
+def extrair_texto_docx_bytes(data):
+    """
+    Extrai texto de DOCX.
+    """
+    if not data:
+        return ""
+
+    try:
+        import io
+        from docx import Document
+        doc = Document(io.BytesIO(data))
+        partes = []
+
+        for p in doc.paragraphs:
+            texto = (p.text or "").strip()
+            if texto:
+                partes.append(texto)
+
+        for tabela in doc.tables:
+            for row in tabela.rows:
+                celulas = []
+                for cell in row.cells:
+                    texto = (cell.text or "").strip()
+                    if texto:
+                        celulas.append(texto)
+                if celulas:
+                    partes.append(" | ".join(celulas))
+
+        return "\n".join(partes).strip()
+    except Exception:
+        return ""
+
+
+def extrair_texto_doc_bytes(data):
+    """
+    Tenta extrair texto de DOC antigo.
+    O formato .doc depende de conversores externos; se falhar, o sistema orienta converter para DOCX.
+    """
+    if not data:
+        return ""
+
+    try:
+        import tempfile
+        import os
+        import subprocess
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+
+        try:
+            # Se antiword estiver disponível no ambiente, usa.
+            proc = subprocess.run(
+                ["antiword", tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=20
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                return proc.stdout.strip()
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return ""
+
+
 def texto_arquivo_upload_zel(uploaded_file):
+    """
+    Lê arquivo enviado como fonte da Zel.
+    Aceita texto simples, PDF com texto selecionável, DOCX e DOC antigo quando houver conversor disponível.
+    """
     if uploaded_file is None:
         return ""
 
@@ -5641,13 +5754,48 @@ def texto_arquivo_upload_zel(uploaded_file):
     except Exception:
         return ""
 
-    if ext in ("txt", "md", "csv", "json", "sql", "py", "html"):
+    try:
+        uploaded_file.seek(0)
+    except Exception:
+        pass
+
+    if ext in ("txt", "md", "csv", "json", "sql", "py", "html", "htm"):
         for enc in ("utf-8", "latin-1", "cp1252"):
             try:
                 return data.decode(enc)
             except Exception:
                 pass
+        st.warning("Não consegui ler o arquivo textual. Tente salvar em UTF-8 ou cole o conteúdo manualmente.")
+        return ""
 
+    if ext == "pdf":
+        texto = extrair_texto_pdf_bytes(data)
+        if not texto:
+            st.warning(
+                "Não consegui extrair texto deste PDF. Isso costuma ocorrer quando o PDF é escaneado/imagem. "
+                "Use PDF com texto selecionável ou cole o trecho autorizado manualmente."
+            )
+        return texto
+
+    if ext == "docx":
+        texto = extrair_texto_docx_bytes(data)
+        if not texto:
+            st.warning(
+                "Não consegui extrair texto deste DOCX. Verifique se o arquivo contém texto selecionável "
+                "ou cole o trecho autorizado manualmente."
+            )
+        return texto
+
+    if ext == "doc":
+        texto = extrair_texto_doc_bytes(data)
+        if not texto:
+            st.warning(
+                "O formato DOC antigo depende de conversor externo que pode não existir no Streamlit Cloud. "
+                "Converta o arquivo para DOCX ou cole o trecho autorizado manualmente."
+            )
+        return texto
+
+    st.warning("Formato de arquivo não suportado para extração automática.")
     return ""
 
 
@@ -5818,9 +5966,10 @@ def tela_fontes_zel():
                 )
 
             arquivo = st.file_uploader(
-                "Upload de fonte textual",
-                type=["txt", "md", "csv", "json", "sql", "py", "html"],
-                key="zel_upload_fonte"
+                "Upload de fonte documental",
+                type=["txt", "md", "csv", "json", "sql", "py", "html", "htm", "pdf", "docx", "doc"],
+                key="zel_upload_fonte",
+                help="Aceita TXT, PDF com texto selecionável, DOCX e DOC. Para PDF escaneado ou DOC antigo sem conversor disponível, cole o trecho manualmente."
             )
 
             texto_upload = texto_arquivo_upload_zel(arquivo) if arquivo else ""
@@ -5830,7 +5979,7 @@ def tela_fontes_zel():
                 value=texto_upload,
                 height=260,
                 key="zel_fonte_conteudo",
-                placeholder="Cole aqui o trecho autorizado que poderá fundamentar respostas da Zel."
+                placeholder="Cole aqui o trecho autorizado que poderá fundamentar respostas da Zel. Se o upload for PDF/DOCX/DOC com texto extraível, este campo será preenchido automaticamente."
             )
 
             salvar = st.form_submit_button("Cadastrar fonte da Zel", type="primary")
