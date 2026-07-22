@@ -8267,6 +8267,38 @@ def prazo_limite_para_texto_seguro(manter_prazo=False, novo_prazo=None):
 
 
 
+
+def data_atendimento_para_texto_seguro(valor):
+    """
+    Normaliza a data do atendimento para dd/mm/aaaa sem quebrar o app.
+    Aceita date/datetime ou texto.
+    """
+    try:
+        if not valor:
+            return hoje_ddmmaaaa()
+
+        if hasattr(valor, "strftime"):
+            return valor.strftime("%d/%m/%Y")
+
+        texto = str(valor or "").strip()
+        if not texto:
+            return hoje_ddmmaaaa()
+
+        # Se já vier dd/mm/aaaa, mantém.
+        if re.match(r"^\d{2}/\d{2}/\d{4}$", texto):
+            return texto
+
+        # Tenta converter ISO ou outros formatos comuns.
+        try:
+            return pd.to_datetime(texto, errors="coerce").strftime("%d/%m/%Y")
+        except Exception:
+            return texto
+    except Exception:
+        return hoje_ddmmaaaa()
+
+
+
+
 def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
     atendimento = dict(atendimento or {})
     for _campo_html in ['descricao', 'observacoes', 'providencia_adotada', 'conclusao']:
@@ -8334,6 +8366,12 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         with st.expander(expander_avancado_rotulo("Editar atendimento"), expanded=False):
             lista = atendimentos()
             nova_obs = st.text_area("Observações", value=atendimento.get("observacoes", ""), key=f"{chave_prefixo}_obs_{atendimento.get('id')}")
+            nova_data = st.text_input(
+                "Data do atendimento",
+                value=data_para_exibir(atendimento.get("data")) if atendimento.get("data") else hoje_ddmmaaaa(),
+                help="Formato: dd/mm/aaaa",
+                key=f"{chave_prefixo}_data_{atendimento.get('id')}"
+            )
             novo_status = normalizar_status_atendimento(atendimento.get("status") or STATUS_EM_ATENDIMENTO)
             nova_descricao = st.text_area(
                 "Descrição / pergunta",
@@ -8373,6 +8411,18 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 opcoes_fonte,
                 index=opcoes_fonte.index(atendimento.get("fonte")) if atendimento.get("fonte") in opcoes_fonte else 0,
                 key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
+            )
+
+            opcoes_zona = zonas_eleitorais_dropdown()
+            zona_atual = atendimento.get("zona_eleitoral") or "Não informada"
+            if zona_atual and zona_atual not in opcoes_zona:
+                opcoes_zona.insert(1, zona_atual)
+
+            nova_zona_eleitoral = st.selectbox(
+                "Zona Eleitoral",
+                opcoes_zona,
+                index=opcoes_zona.index(zona_atual) if zona_atual in opcoes_zona else 0,
+                key=f"{chave_prefixo}_zona_eleitoral_{atendimento.get('id')}"
             )
 
 
@@ -8435,6 +8485,8 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 for item in lista:
                     if int(item.get("id")) == int(atendimento.get("id")):
                         item["observacoes"] = nova_obs
+                        item["data"] = data_atendimento_para_texto_seguro(nova_data)
+                        item["zona_eleitoral"] = "" if nova_zona_eleitoral == "Não informada" else nova_zona_eleitoral
                         antes = item.copy()
                         item["status"] = normalizar_status_atendimento(atendimento.get("status") or STATUS_EM_ATENDIMENTO)
                         item["secao"] = nova_secao
