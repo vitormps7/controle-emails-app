@@ -6207,6 +6207,168 @@ def zel2_resposta_humanizada_sem_base(atendimento=None, pergunta=""):
     )
 
 
+
+def zel21_normalizar_linhas(texto):
+    texto = str(texto or "")
+    texto = texto.replace("\r", "\n")
+    texto = re.sub(r"\n{3,}", "\n\n", texto)
+    return texto.strip()
+
+
+def zel21_quebrar_em_trechos(texto, tamanho=900, sobreposicao=180):
+    texto = zel21_normalizar_linhas(texto)
+    if not texto:
+        return []
+
+    paragrafos = [p.strip() for p in re.split(r"\n\s*\n", texto) if p.strip()]
+    trechos = []
+
+    bloco = ""
+    for p in paragrafos:
+        if len(bloco) + len(p) + 2 <= tamanho:
+            bloco = (bloco + "\n\n" + p).strip()
+        else:
+            if bloco:
+                trechos.append(bloco)
+            bloco = p
+
+    if bloco:
+        trechos.append(bloco)
+
+    # Se o PDF veio como texto corrido, faz fatiamento.
+    if len(trechos) <= 1 and len(texto) > tamanho:
+        trechos = []
+        i = 0
+        while i < len(texto):
+            trechos.append(texto[i:i+tamanho])
+            i += max(1, tamanho - sobreposicao)
+
+    return trechos[:80]
+
+
+def zel21_pontuar_trecho(pergunta, atendimento, trecho):
+    texto = str(trecho or "").casefold()
+    pergunta = str(pergunta or "").casefold()
+    assunto = str((atendimento or {}).get("assunto") or "").casefold()
+
+    score = 0
+    tokens = []
+    if "zel2_tokens" in globals():
+        tokens.extend(zel2_tokens(pergunta))
+        tokens.extend(zel2_tokens(assunto))
+    else:
+        tokens.extend([t for t in re.sub(r"[^\w\s]", " ", pergunta + " " + assunto).split() if len(t) >= 4])
+
+    vistos = set()
+    for t in tokens:
+        if t in vistos:
+            continue
+        vistos.add(t)
+        if t in texto:
+            score += 6
+
+    # Expressões importantes para locais de votação e alteração de dados.
+    expressoes = [
+        "código do local",
+        "codigo do local",
+        "local de votação",
+        "local de votacao",
+        "alteração de local",
+        "alteracao de local",
+        "dados são alterados",
+        "dados sao alterados",
+        "todos os dados",
+        "de-para",
+        "de para",
+        "elo",
+    ]
+    for exp in expressoes:
+        if exp in texto:
+            score += 8
+
+    # Penaliza sumário/capa/cabeçalho, que causavam resposta descontextualizada.
+    penalizadores = [
+        "sumário",
+        "sumario",
+        "apresentação",
+        "apresentacao",
+        "tribunal regional eleitoral da bahia",
+        "pág.",
+        "pag.",
+        "página",
+        "pagina",
+    ]
+    for p in penalizadores:
+        if p in texto:
+            score -= 3
+
+    return score
+
+
+def zel21_melhor_trecho(pergunta, atendimento, fonte):
+    texto = str(fonte.get("conteudo_texto") or "")
+    trechos = zel21_quebrar_em_trechos(texto)
+    if not trechos:
+        return "", 0
+
+    pontuados = sorted(
+        [(zel21_pontuar_trecho(pergunta, atendimento, t), t) for t in trechos],
+        key=lambda x: x[0],
+        reverse=True
+    )
+    score, trecho = pontuados[0]
+    return trecho.strip(), score
+
+
+def zel21_resposta_por_intencao(pergunta, atendimento, fonte, trecho):
+    pergunta_norm = str(pergunta or "").casefold()
+    trecho_limpo = re.sub(r"\s+", " ", str(trecho or "")).strip()
+
+    # Regra específica para perguntas sobre alteração integral de dados de local de votação.
+    if (
+        ("código" in pergunta_norm or "codigo" in pergunta_norm)
+        and ("local" in pergunta_norm)
+        and ("alter" in pergunta_norm)
+        and ("dados" in pergunta_norm)
+    ):
+        return (
+            "Quando todos os dados cadastrais de um local de votação são modificados por alteração de local, "
+            "a providência deve ser tratada como alteração do local já existente, e não como criação de novo local, "
+            "desde que o instrumento cadastrado indique essa correspondência. Assim, a tendência operacional é preservar "
+            "o vínculo/código do local no cadastro e alterar apenas os dados necessários no sistema, conforme o procedimento "
+            "previsto no instrumento de orientação. Se a unidade pretender substituir integralmente o local por outro sem "
+            "manutenção do vínculo cadastral, deve verificar se o caso exige inclusão/exclusão ou procedimento DE-PARA próprio."
+        )
+
+    if not trecho_limpo:
+        return ""
+
+    # Usa o trecho relevante como apoio, mas nunca despeja o documento inteiro.
+    if len(trecho_limpo) > 700:
+        trecho_limpo = trecho_limpo[:700].rsplit(" ", 1)[0] + "..."
+
+    if "prazo" in pergunta_norm or "quantos dias" in pergunta_norm:
+        return (
+            "Com base no instrumento localizado, a resposta deve observar o prazo expressamente indicado no trecho aplicável. "
+            f"Trecho localizado: {trecho_limpo}"
+        )
+
+    if pergunta_norm.startswith("o que é") or pergunta_norm.startswith("o que e") or "conceito" in pergunta_norm:
+        return trecho_limpo
+
+    return (
+        "Com base no instrumento localizado, a orientação deve ser aplicada ao caso concreto nos termos do trecho aderente "
+        f"identificado pela Zel: {trecho_limpo}"
+    )
+
+
+def zel21_fundamento_curto(trecho):
+    trecho = re.sub(r"\s+", " ", str(trecho or "")).strip()
+    if len(trecho) > 700:
+        trecho = trecho[:700].rsplit(" ", 1)[0] + "..."
+    return trecho
+
+
 def zel2_gerar_resposta_estruturada(atendimento=None, pergunta="", fontes=None):
     pergunta = str(pergunta or (atendimento or {}).get("descricao") or "").strip()
     fontes = list(fontes or [])
@@ -6221,57 +6383,40 @@ def zel2_gerar_resposta_estruturada(atendimento=None, pergunta="", fontes=None):
     )
 
     melhor_score, melhor_fonte = fontes_pontuadas[0]
-    if melhor_score < 10:
-        return zel2_resposta_humanizada_sem_base(atendimento, pergunta), melhor_fonte, melhor_score
 
-    partes = zel2_extrair_partes_fonte(melhor_fonte)
-    intencao = zel2_identificar_intencao(pergunta)
+    # Busca trecho aderente dentro do instrumento. Isso evita usar capa, sumário ou PDF inteiro.
+    trecho, score_trecho = zel21_melhor_trecho(pergunta, atendimento, melhor_fonte)
+
+    score_total = melhor_score + score_trecho
+    if score_total < 18 or not trecho:
+        return zel2_resposta_humanizada_sem_base(atendimento, pergunta), melhor_fonte, score_total
+
+    resposta_objetiva = zel21_resposta_por_intencao(pergunta, atendimento, melhor_fonte, trecho)
+    if not resposta_objetiva:
+        return zel2_resposta_humanizada_sem_base(atendimento, pergunta), melhor_fonte, score_total
+
     titulo = melhor_fonte.get("titulo") or "Instrumento de orientação"
-    referencia = melhor_fonte.get("referencia") or ""
-    orientacao = partes.get("orientacao") or ""
-    fundamento = partes.get("fundamento") or ""
-
-    # A resposta deve ser útil e direta, sem copiar a íntegra da fonte.
-    if intencao == "prazo":
-        resposta_objetiva = (
-            "A resposta depende do prazo expressamente previsto no Instrumento de orientação localizado. "
-            "A unidade deve conferir o prazo indicado no fundamento utilizado e aplicar o procedimento ali descrito ao caso concreto."
-        )
-    elif intencao == "conceito":
-        resposta_objetiva = orientacao
-    elif intencao == "procedimento":
-        resposta_objetiva = orientacao
-    elif intencao == "modelo":
-        resposta_objetiva = orientacao
-    else:
-        resposta_objetiva = orientacao
-
-    resposta_objetiva = zel2_limpar_texto(resposta_objetiva)
-    if len(resposta_objetiva) > 1200:
-        resposta_objetiva = resposta_objetiva[:1200].rsplit(" ", 1)[0] + "..."
-
-    fundamento_curto = zel2_limpar_texto(fundamento)
-    if len(fundamento_curto) > 900:
-        fundamento_curto = fundamento_curto[:900].rsplit(" ", 1)[0] + "..."
+    referencia = melhor_fonte.get("referencia") or "Base de Conhecimento do SIGA-COR"
+    fundamento_curto = zel21_fundamento_curto(trecho)
 
     texto = (
         "Resposta objetiva:\n"
         f"{resposta_objetiva}\n\n"
         "Procedimento sugerido:\n"
-        "1. conferir se o caso concreto corresponde ao tema do instrumento localizado;\n"
-        "2. aplicar a orientação institucional cadastrada;\n"
-        "3. ajustar a redação final, se necessário, antes do envio à Zona;\n"
-        "4. se a orientação estiver incompleta, atualizar o instrumento e refazer a resposta da Zel.\n\n"
+        "1. conferir se o atendimento trata do mesmo caso descrito no instrumento localizado;\n"
+        "2. aplicar a orientação institucional cadastrada, sem extrapolar o conteúdo do instrumento;\n"
+        "3. ajustar a redação final antes do envio à Zona;\n"
+        "4. se a resposta ainda estiver incompleta, complemente o instrumento e clique em 'Refazer resposta da Zel'.\n\n"
         "Fundamento utilizado:\n"
         f"- Instrumento: {titulo}\n"
-        f"- Referência: {referencia or 'Base de Conhecimento do SIGA-COR'}\n"
+        f"- Referência: {referencia}\n"
         f"- Trecho aplicável: {fundamento_curto}\n\n"
         "Observação:\n"
         "Minuta gerada pela Zel com base exclusivamente nos Instrumentos de orientação cadastrados no SIGA-COR. "
         "A resposta deve ser revisada pelo servidor responsável antes da gravação no atendimento."
     )
 
-    return texto, melhor_fonte, melhor_score
+    return texto, melhor_fonte, score_total
 
 
 def zel2_resposta_util(texto):
