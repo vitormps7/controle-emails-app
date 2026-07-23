@@ -6786,12 +6786,22 @@ def sidebar_menu():
         ]
         if usuario_pode_ver_governanca():
             botoes_conhecimento += [
-                ("Instrumentos de orientação", "Instrumentos de orientação"),
                 ("Curadoria do Portal", "Curadoria do Portal"),
             ]
 
+        # Evita StreamlitDuplicateElementKey se algum item antigo ainda vier duplicado
+        # após unificação de Orientações às Zonas com Instrumentos de orientação.
+        botoes_conhecimento_unicos = []
+        destinos_vistos = set()
         for label, destino in botoes_conhecimento:
-            if st.button(label, key=f"side_conhecimento_{destino}", use_container_width=True):
+            if destino in destinos_vistos:
+                continue
+            destinos_vistos.add(destino)
+            botoes_conhecimento_unicos.append((label, destino))
+
+        for i, (label, destino) in enumerate(botoes_conhecimento_unicos):
+            key_destino = re.sub(r"[^A-Za-z0-9_]+", "_", str(destino))
+            if st.button(label, key=f"side_conhecimento_{i}_{key_destino}", use_container_width=True):
                 ir_para_pagina(destino)
                 st.rerun()
 
