@@ -4395,6 +4395,12 @@ def tela_orientacoes_zonas():
             placeholder="Descreva a dúvida, o tema, a situação recorrente ou a finalidade do instrumento."
         )
 
+        perguntas_responde = st.text_area(
+            "Perguntas que este instrumento responde",
+            height=120,
+            placeholder="Ex.: Qual o prazo para pagamento da multa?\\nComo proceder após o trânsito em julgado?\\nQuando baixar a multa?"
+        )
+
         orientacao_adotada = st.text_area(
             "Orientação institucional adotada",
             height=180,
@@ -4416,6 +4422,7 @@ def tela_orientacoes_zonas():
         else:
             resumo_final = "\n".join([
                 f"Tipo de registro: {tipo_registro}",
+                f"Perguntas que este instrumento responde: {perguntas_responde}",
                 str(resumo_duvida or "").strip()
             ]).strip()
 
@@ -5850,20 +5857,217 @@ def gerar_minuta_zel_controlada(atendimento=None, pergunta_livre="", fontes=None
 
 
 
-def gerar_minuta_zel_para_atendimento(atendimento):
-    fontes = fontes_relevantes_zel(atendimento=atendimento, limite=12)
-    bases = []
+
+def zel2_limpar_texto(texto):
+    texto = str(texto or "").strip()
+    texto = re.sub(r"\s+", " ", texto)
+    return texto.strip()
+
+
+def zel2_tokens(texto):
+    texto_norm = str(texto or "").casefold()
+    texto_norm = re.sub(r"[^\w\sáàâãéèêíóôõúç]", " ", texto_norm)
+    stop = {
+        "qual", "quais", "como", "para", "pela", "pelo", "pelas", "pelos", "sobre", "entre",
+        "esse", "essa", "este", "esta", "isso", "isto", "deve", "pode", "ser", "são", "sao",
+        "uma", "umas", "uns", "com", "sem", "por", "que", "dos", "das", "nas", "nos",
+        "após", "apos", "fazer", "quando", "onde", "quem", "porque", "porquê"
+    }
+    tokens = []
+    for p in texto_norm.split():
+        if len(p) >= 4 and p not in stop and p not in tokens:
+            tokens.append(p)
+    return tokens[:60]
+
+
+def zel2_identificar_intencao(pergunta):
+    p = str(pergunta or "").casefold()
+
+    if "prazo" in p or "quantos dias" in p or "intima" in p:
+        return "prazo"
+    if p.startswith("o que é") or p.startswith("o que e") or "conceito" in p or "defina" in p or "significa" in p:
+        return "conceito"
+    if "diferen" in p or "disting" in p:
+        return "diferenciacao"
+    if "passo" in p or "proced" in p or "como" in p or "o que fazer" in p or "providência" in p or "providencia" in p:
+        return "procedimento"
+    if "modelo" in p or "minuta" in p or "texto" in p:
+        return "modelo"
+    return "orientacao"
+
+
+def zel2_pontuar_fonte(pergunta, atendimento, fonte):
+    pergunta = str(pergunta or "")
+    assunto = str((atendimento or {}).get("assunto") or "")
+    secao = normalizar_secao((atendimento or {}).get("secao") or "SEPRO")
+    texto = "\n".join([
+        str(fonte.get("titulo") or ""),
+        str(fonte.get("assunto") or ""),
+        str(fonte.get("conteudo_texto") or ""),
+        str(fonte.get("referencia") or ""),
+    ])
+
+    texto_norm = texto.casefold()
+    score = 0
+
+    for t in zel2_tokens(pergunta):
+        if t in texto_norm:
+            score += 6
+
+    for t in zel2_tokens(assunto):
+        if t in texto_norm:
+            score += 4
+
+    if assunto and assunto.casefold() in texto_norm:
+        score += 10
+
+    if secao and normalizar_secao(fonte.get("secao") or secao) == secao:
+        score += 3
+
+    # Forte bônus se o campo "Perguntas que responde" estiver no conteúdo.
+    if "perguntas que este instrumento responde" in texto_norm:
+        score += 6
+        for t in zel2_tokens(pergunta):
+            if t in texto_norm:
+                score += 3
+
+    return score
+
+
+def zel2_extrair_partes_fonte(fonte):
+    texto = str(fonte.get("conteudo_texto") or "")
+    partes = {
+        "perguntas": "",
+        "orientacao": "",
+        "fundamento": "",
+        "tema": "",
+    }
+
+    padroes = {
+        "perguntas": r"Perguntas que este instrumento responde:\s*(.*?)(?=\n[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][^:\n]{2,80}:|$)",
+        "orientacao": r"Orientação adotada:\s*(.*?)(?=\n[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][^:\n]{2,80}:|$)",
+        "fundamento": r"Fundamento normativo:\s*(.*?)(?=\n[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][^:\n]{2,80}:|$)",
+        "tema": r"Resumo da dúvida:\s*(.*?)(?=\n[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][^:\n]{2,80}:|$)",
+    }
+
+    for k, padrao in padroes.items():
+        m = re.search(padrao, texto, flags=re.S | re.I)
+        if m:
+            partes[k] = zel2_limpar_texto(m.group(1))
+
+    if not partes["orientacao"]:
+        partes["orientacao"] = zel2_limpar_texto(texto[:1200])
+
+    if not partes["fundamento"]:
+        partes["fundamento"] = zel2_limpar_texto(texto[:900])
+
+    return partes
+
+
+def zel2_resposta_humanizada_sem_base(atendimento=None, pergunta=""):
+    assunto = str((atendimento or {}).get("assunto") or "").strip()
+    tema = assunto or zel2_limpar_texto(pergunta)[:120] or "tema informado"
+    return (
+        "Não foi possível gerar uma resposta segura pela Zel.\n\n"
+        f"Motivo: ainda não existem Instrumentos de orientação cadastrados, ativos ou suficientemente aderentes para o tema: {tema}.\n\n"
+        "Providência sugerida:\n"
+        "1. cadastrar ou atualizar um Instrumento de orientação com a orientação institucional aplicável;\n"
+        "2. incluir, se possível, o campo 'Perguntas que este instrumento responde';\n"
+        "3. retornar ao atendimento e clicar em 'Refazer resposta da Zel'.\n\n"
+        "Regra de segurança: a Zel não inventa resposta e não substitui a base institucional."
+    )
+
+
+def zel2_gerar_resposta_estruturada(atendimento=None, pergunta="", fontes=None):
+    pergunta = str(pergunta or (atendimento or {}).get("descricao") or "").strip()
+    fontes = list(fontes or [])
 
     if not fontes:
-        return mensagem_zel_sem_base((atendimento or {}).get("assunto") or ""), [], []
+        return zel2_resposta_humanizada_sem_base(atendimento, pergunta), None, 0
 
-    minuta = gerar_minuta_zel_controlada(atendimento=atendimento, fontes=fontes, bases=bases)
+    fontes_pontuadas = sorted(
+        [(zel2_pontuar_fonte(pergunta, atendimento, f), f) for f in fontes],
+        key=lambda x: x[0],
+        reverse=True
+    )
 
-    texto = str(minuta or "")
-    if texto.startswith("A Zel não encontrou fundamento validado suficiente") or "A Zel bloqueou" in texto:
-        minuta = mensagem_zel_sem_base((atendimento or {}).get("assunto") or "")
+    melhor_score, melhor_fonte = fontes_pontuadas[0]
+    if melhor_score < 10:
+        return zel2_resposta_humanizada_sem_base(atendimento, pergunta), melhor_fonte, melhor_score
 
-    return minuta, fontes, bases
+    partes = zel2_extrair_partes_fonte(melhor_fonte)
+    intencao = zel2_identificar_intencao(pergunta)
+    titulo = melhor_fonte.get("titulo") or "Instrumento de orientação"
+    referencia = melhor_fonte.get("referencia") or ""
+    orientacao = partes.get("orientacao") or ""
+    fundamento = partes.get("fundamento") or ""
+
+    # A resposta deve ser útil e direta, sem copiar a íntegra da fonte.
+    if intencao == "prazo":
+        resposta_objetiva = (
+            "A resposta depende do prazo expressamente previsto no Instrumento de orientação localizado. "
+            "A unidade deve conferir o prazo indicado no fundamento utilizado e aplicar o procedimento ali descrito ao caso concreto."
+        )
+    elif intencao == "conceito":
+        resposta_objetiva = orientacao
+    elif intencao == "procedimento":
+        resposta_objetiva = orientacao
+    elif intencao == "modelo":
+        resposta_objetiva = orientacao
+    else:
+        resposta_objetiva = orientacao
+
+    resposta_objetiva = zel2_limpar_texto(resposta_objetiva)
+    if len(resposta_objetiva) > 1200:
+        resposta_objetiva = resposta_objetiva[:1200].rsplit(" ", 1)[0] + "..."
+
+    fundamento_curto = zel2_limpar_texto(fundamento)
+    if len(fundamento_curto) > 900:
+        fundamento_curto = fundamento_curto[:900].rsplit(" ", 1)[0] + "..."
+
+    texto = (
+        "Resposta objetiva:\n"
+        f"{resposta_objetiva}\n\n"
+        "Procedimento sugerido:\n"
+        "1. conferir se o caso concreto corresponde ao tema do instrumento localizado;\n"
+        "2. aplicar a orientação institucional cadastrada;\n"
+        "3. ajustar a redação final, se necessário, antes do envio à Zona;\n"
+        "4. se a orientação estiver incompleta, atualizar o instrumento e refazer a resposta da Zel.\n\n"
+        "Fundamento utilizado:\n"
+        f"- Instrumento: {titulo}\n"
+        f"- Referência: {referencia or 'Base de Conhecimento do SIGA-COR'}\n"
+        f"- Trecho aplicável: {fundamento_curto}\n\n"
+        "Observação:\n"
+        "Minuta gerada pela Zel com base exclusivamente nos Instrumentos de orientação cadastrados no SIGA-COR. "
+        "A resposta deve ser revisada pelo servidor responsável antes da gravação no atendimento."
+    )
+
+    return texto, melhor_fonte, melhor_score
+
+
+def zel2_resposta_util(texto):
+    texto = str(texto or "").strip()
+    if not texto:
+        return False
+    if texto.startswith("Não foi possível gerar uma resposta segura pela Zel"):
+        return False
+    return len(texto) >= 80
+
+
+
+def gerar_minuta_zel_para_atendimento(atendimento):
+    fontes = fontes_relevantes_zel(atendimento=atendimento, limite=12)
+    resposta, melhor_fonte, score = zel2_gerar_resposta_estruturada(
+        atendimento=atendimento,
+        pergunta=(atendimento or {}).get("descricao") or "",
+        fontes=fontes
+    )
+
+    if not fontes:
+        return resposta, [], []
+
+    fontes_usadas = [melhor_fonte] if melhor_fonte else fontes[:1]
+    return resposta, fontes_usadas, []
 
 
 def registrar_uso_zel(atendimento_id, acao, resumo):
@@ -8471,6 +8675,8 @@ def componente_zel_no_atendimento(atendimento):
                 if st.button("Gravar resposta validada", type="primary", key=f"zel_validar_resposta_final_{atendimento_id}"):
                     if not str(resposta_editada or "").strip():
                         st.warning("A resposta está vazia.")
+                    elif "zel2_resposta_util" in globals() and not zel2_resposta_util(resposta_editada):
+                        st.warning("A Zel não gerou resposta validável. Cadastre ou atualize o instrumento e clique em Refazer resposta da Zel.")
                     elif "zel_resposta_util" in globals() and not zel_resposta_util(resposta_editada):
                         st.warning("A Zel não produziu resposta útil validável. Revise a base de conhecimento ou encaminhe para análise manual.")
                     else:
