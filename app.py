@@ -3898,7 +3898,7 @@ def tela_menu_principal():
     ]
 
     cards_conhecimento = [
-        ("compass", "Orientações às Zonas", "Consultar Base de Conhecimento, modelos e orientações por assunto.", "Abrir orientações", "Orientações às Zonas", "card_orientacoes_zonas"),
+        ("compass", "Instrumentos de orientação", "Consultar Base de Conhecimento, modelos e orientações por assunto.", "Abrir orientações", "Instrumentos de orientação", "card_orientacoes_zonas"),
         ("bolt", "Zel - IA controlada", "Gerar minutas apenas com fontes cadastradas, bases validadas e respostas promovidas.", "Abrir Zel", "Zel - IA controlada", "card_zel"),
     ]
 
@@ -4342,19 +4342,19 @@ def tela_validacao_chefia():
 
 
 
+
 def tela_orientacoes_zonas():
-    st.title("Orientações às Zonas")
+    st.title("Instrumentos de orientação")
     st.caption(
-        "Ambiente único de registro da memória institucional da unidade. "
-        "Tudo que for cadastrado aqui compõe a Base de Conhecimento e pode ser usado pela Zel."
+        "Tela única da Base de Conhecimento do SIGA-COR e fonte institucional da Zel."
     )
 
     st.info(
-        "A lógica foi unificada: não há mais uma área separada para 'Instrumentos de Orientação'. "
-        "Instrumento de Orientação agora é um tipo de registro dentro da Base de Conhecimento, junto com entendimento, texto-padrão e modelo de resposta."
+        "A lógica foi simplificada: Instrumentos de orientação é o único local de cadastro da base de conhecimento. "
+        "Todo registro ativo cadastrado aqui compõe o acervo do sistema e pode ser utilizado pela Zel."
     )
 
-    st.subheader("Cadastrar orientação / fonte da Zel")
+    st.subheader("Cadastrar instrumento / fonte da Zel")
 
     with st.form("form_base_unica_zel", clear_on_submit=True):
         col1, col2 = st.columns(2)
@@ -4364,19 +4364,20 @@ def tela_orientacoes_zonas():
             tipo_registro = st.selectbox(
                 "Tipo de registro",
                 [
-                    "Entendimento / Base de Conhecimento",
-                    "Instrumento de Orientação",
+                    "Instrumento de orientação",
+                    "Entendimento / Base de conhecimento",
                     "Texto-padrão",
-                    "Modelo de Resposta",
+                    "Modelo de resposta",
                     "Manual / Tutorial",
-                    "Nota técnica / Orientação interna",
+                    "Nota técnica / orientação interna",
                     "Outro",
                 ],
                 index=0,
-                help="O tipo organiza a base, mas todos os registros ativos podem servir de fonte para a Zel."
+                help="O tipo organiza a base, mas todo registro ativo pode servir de fonte para a Zel."
             )
+
         with col2:
-            titulo = st.text_input("Título da orientação", placeholder="Ex.: Procedimento após pagamento de multa")
+            titulo = st.text_input("Título do instrumento", placeholder="Ex.: Procedimento após pagamento de multa")
             arquivo = st.file_uploader(
                 "Upload de documento de apoio",
                 type=["txt", "md", "csv", "json", "sql", "py", "html", "htm", "pdf", "docx", "doc"],
@@ -4391,7 +4392,7 @@ def tela_orientacoes_zonas():
             "Tema / situação de uso",
             value=titulo or "",
             height=100,
-            placeholder="Descreva a dúvida, o tema, a situação recorrente ou a finalidade da orientação."
+            placeholder="Descreva a dúvida, o tema, a situação recorrente ou a finalidade do instrumento."
         )
 
         orientacao_adotada = st.text_area(
@@ -4407,7 +4408,7 @@ def tela_orientacoes_zonas():
             placeholder="Cole o fundamento, trecho normativo, manual, decisão, roteiro, texto-padrão ou conteúdo extraído do arquivo."
         )
 
-        salvar = st.form_submit_button("Cadastrar na Base de Conhecimento e disponibilizar para a Zel", type="primary")
+        salvar = st.form_submit_button("Cadastrar instrumento e disponibilizar para a Zel", type="primary")
 
     if salvar:
         if not str(orientacao_adotada or "").strip() and not str(fundamento_normativo or "").strip():
@@ -4428,11 +4429,11 @@ def tela_orientacoes_zonas():
                 atendimento_id=None
             )
             if dados is not None:
-                st.success("Registro cadastrado na Base de Conhecimento. Ele já passa a ser fonte da Zel.")
+                st.success("Instrumento cadastrado. Ele já compõe a Base de Conhecimento e a fonte da Zel.")
                 st.rerun()
 
     st.divider()
-    st.subheader("Consultar Base de Conhecimento / Fontes da Zel")
+    st.subheader("Consultar instrumentos / fontes da Zel")
 
     try:
         bases = base_conhecimento_rows(incluir_superadas=False)
@@ -4447,12 +4448,12 @@ def tela_orientacoes_zonas():
             "Filtrar por tipo",
             [
                 "Todos",
-                "Entendimento / Base de Conhecimento",
-                "Instrumento de Orientação",
+                "Instrumento de orientação",
+                "Entendimento / Base de conhecimento",
                 "Texto-padrão",
-                "Modelo de Resposta",
+                "Modelo de resposta",
                 "Manual / Tutorial",
-                "Nota técnica / Orientação interna",
+                "Nota técnica / orientação interna",
                 "Outro",
             ],
             index=0
@@ -4487,14 +4488,14 @@ def tela_orientacoes_zonas():
                 codigo = b.get("id")
 
             resumo = str(b.get("resumo_duvida") or "")
-            tipo_detectado = "Base de Conhecimento"
+            tipo_detectado = "Instrumento de orientação"
             for tipo in [
-                "Instrumento de Orientação",
+                "Instrumento de orientação",
                 "Texto-padrão",
-                "Modelo de Resposta",
+                "Modelo de resposta",
                 "Manual / Tutorial",
-                "Nota técnica / Orientação interna",
-                "Entendimento / Base de Conhecimento",
+                "Nota técnica / orientação interna",
+                "Entendimento / Base de conhecimento",
             ]:
                 if tipo.casefold() in resumo.casefold():
                     tipo_detectado = tipo
@@ -6537,7 +6538,7 @@ def tela_zel_ia_controlada():
         """
         <div class="zel-banner">
             <strong>Regra de uso da Zel:</strong><br>
-            A Zel não possui acervo paralelo. Orientações às Zonas é a tela única de cadastro da Base de Conhecimento, que é a fonte única da Zel.
+            A Zel não possui acervo paralelo. Instrumentos de orientação é a tela única de cadastro da Base de Conhecimento, que é a fonte única da Zel.
             Se não houver base aderente ao tema, a Zel informará isso de forma clara e humanizada.
         </div>
         """,
@@ -6545,7 +6546,7 @@ def tela_zel_ia_controlada():
     )
 
     st.info(
-        "Para alimentar a Zel, cadastre o entendimento em Orientações às Zonas ou transforme uma resposta validada do atendimento em Base de Conhecimento."
+        "Para alimentar a Zel, cadastre o entendimento em Instrumentos de orientação ou transforme uma resposta validada do atendimento em Base de Conhecimento."
     )
 
     tela_validacao_zel()
@@ -6640,7 +6641,7 @@ def tela_diagnostico_sistema():
         ("Novo atendimento", "tela_novo_atendimento"),
         ("Em atendimento", "tela_status"),
         ("Atendimento realizado", "tela_status"),
-        ("Orientações às Zonas", "tela_orientacoes_zonas"),
+        ("Instrumentos de orientação", "tela_orientacoes_zonas"),
         ("Zel - IA controlada", "tela_zel_ia_controlada"),
         ("Portal das Zonas", "tela_portal_zonas_eleitorais"),
         ("Usuários internos", "tela_usuarios"),
@@ -6781,7 +6782,7 @@ def sidebar_menu():
     with st.sidebar.expander("Conhecimento e orientações", expanded=True):
         botoes_conhecimento = [
             ("Zel - IA controlada", "Zel - IA controlada"),
-            ("Orientações às Zonas", "Orientações às Zonas"),
+            ("Instrumentos de orientação", "Instrumentos de orientação"),
         ]
         if usuario_pode_ver_governanca():
             botoes_conhecimento += [
@@ -11396,19 +11397,9 @@ def tela_demandas_a_escalar():
 
 
 
+
 def tela_instrumentos_orientacao():
-    """
-    Fluxo unificado.
-    Instrumento de Orientação agora é tipo de registro dentro de Orientações às Zonas.
-    """
-    st.subheader("Instrumentos de Orientação")
-    st.info(
-        "Esta área foi unificada com 'Orientações às Zonas'. "
-        "Para cadastrar instrumento, use Orientações às Zonas e selecione o tipo 'Instrumento de Orientação'."
-    )
-    if st.button("Abrir Orientações às Zonas", type="primary"):
-        st.session_state["pagina_atual"] = "Orientações às Zonas"
-        st.rerun()
+    tela_orientacoes_zonas()
 
 
 def tela_curadoria_portal():
@@ -12344,7 +12335,7 @@ def main():
     elif escolha == "Zel - IA controlada":
         tela_zel_ia_controlada()
 
-    elif escolha == "Orientações às Zonas":
+    elif escolha == "Instrumentos de orientação":
         tela_orientacoes_zonas()
 
     elif escolha == "Triagem":
