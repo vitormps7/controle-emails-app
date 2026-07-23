@@ -1845,21 +1845,92 @@ def tipologia_do_assunto(nome_assunto, secao=None):
 
     return normalizar_tipologia_assunto(None, nome_assunto)
 
+
+def assunto_rows_atualizados():
+    """
+    Carrega assuntos diretamente do Supabase para evitar cache antigo.
+    Usado especialmente em telas dependentes da seção selecionada.
+    """
+    rows = supabase_get("assuntos", {"select": "*", "order": "secao.asc,nome.asc"})
+    registros = []
+
+    for row in (rows or []):
+        if row.get("ativo") is False:
+            continue
+
+        nome = str(row.get("nome") or "").strip()
+        if not nome:
+            continue
+
+        tipologia = normalizar_tipologia_assunto(row.get("categoria"), nome)
+        registros.append({
+            "id": row.get("id"),
+            "nome": nome,
+            "secao": normalizar_secao(row.get("secao") or "SEPRO"),
+            "categoria": tipologia,
+            "tipologia": tipologia,
+            "subcategoria": row.get("subcategoria") or "",
+            "ordem": row.get("ordem") or 0,
+            "ativo": True,
+        })
+
+    if not registros:
+        try:
+            return assunto_rows()
+        except Exception:
+            return []
+
+    return sorted(
+        registros,
+        key=lambda r: (
+            r.get("secao", "SEPRO"),
+            0 if r.get("nome") == "Não informado" else 1,
+            str(r.get("nome", "")).casefold()
+        )
+    )
+
+
+def assuntos_da_secao(secao):
+    """
+    Retorna somente os assuntos da seção selecionada.
+    Sempre inclui 'Não informado' como opção inicial.
+    """
+    secao_norm = normalizar_secao(secao)
+    lista = []
+
+    for r in assunto_rows_atualizados():
+        nome = str(r.get("nome") or "").strip()
+        if not nome or nome == "Não informado":
+            continue
+
+        if normalizar_secao(r.get("secao")) == secao_norm:
+            lista.append(nome)
+
+    lista = sorted(set(lista), key=lambda x: x.casefold())
+    return ["Não informado"] + lista
+
+
+
 def assuntos(secao=None):
-    registros = assunto_rows()
-    secao_norm = normalizar_secao(secao) if secao else None
+    """
+    Lista assuntos.
+    Quando houver seção informada, retorna apenas assuntos daquela seção.
+    Usa consulta atualizada para que assunto recém-cadastrado apareça sem aguardar cache.
+    """
+    if secao:
+        return assuntos_da_secao(secao)
+
+    try:
+        registros = assunto_rows_atualizados()
+    except Exception:
+        registros = assunto_rows()
 
     lista = []
     for r in registros:
         nome = str(r.get("nome", "")).strip()
-        if not nome:
+        if not nome or nome == "Não informado":
             continue
-
-        if nome == "Não informado":
-            continue
-
-        if secao_norm is None or normalizar_secao(r.get("secao")) == secao_norm:
-            lista.append(nome)
+        lista.append(nome)
 
     lista = sorted(set(lista), key=lambda x: x.casefold())
     return ["Não informado"] + lista
@@ -4356,11 +4427,28 @@ def tela_orientacoes_zonas():
 
     st.subheader("Cadastrar instrumento / fonte da Zel")
 
+    secoes_disponiveis = secoes_atendimento() if "secoes_atendimento" in globals() else list(SECOES_ATENDIMENTO)
+    secao_selecionada = st.selectbox(
+        "Unidade responsável",
+        secoes_disponiveis,
+        index=0,
+        key="instrumento_secao_base_unica",
+        help="Ao trocar a unidade, a lista de assuntos abaixo é atualizada apenas com os assuntos cadastrados para ela."
+    )
+
+    assuntos_disponiveis = assuntos_da_secao(secao_selecionada)
+
+    if len(assuntos_disponiveis) <= 1:
+        st.warning(
+            f"Não há assuntos cadastrados para {secao_selecionada}. "
+            "Cadastre o assunto em Parâmetros > Assuntos ou selecione outra unidade."
+        )
+
     with st.form("form_base_unica_zel", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            secao = st.selectbox("Seção responsável", SECOES_ATENDIMENTO, index=0)
-            assunto = st.selectbox("Assunto", assuntos(secao), index=0)
+            secao = secao_selecionada
+            assunto = st.selectbox("Assunto", assuntos_disponiveis, index=0, key="instrumento_assunto_filtrado")
             tipo_registro = st.selectbox(
                 "Tipo de registro",
                 [
