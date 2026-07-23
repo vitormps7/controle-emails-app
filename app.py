@@ -8842,106 +8842,164 @@ def atendimento_textbox_html(titulo, conteudo):
 
 
 
-def componente_zel_no_atendimento(atendimento):
+def componente_zel_no_atendimento(atendimento, chave_prefixo="zel_atendimento"):
     """
-    Usa a Zel dentro do próprio atendimento, como opção de resposta.
+    Zel no atendimento: botão sempre visível para gerar/refazer resposta.
+    Usa exclusivamente Instrumentos de orientação/Base de Conhecimento.
     """
-    if not atendimento:
-        return
-    if usuario_eh_zona_eleitoral():
-        return
-    if not usuario_pode_editar_atendimentos():
+    if not atendimento or usuario_eh_zona_eleitoral():
         return
 
     atendimento_id = atendimento.get("id")
-    if not atendimento_id:
+    if atendimento_id is None:
         return
 
-    if atendimento.get("status") == STATUS_REALIZADO:
-        return
+    resultado_key = f"zel_minuta_resultado_{atendimento_id}"
+    fontes_key = f"zel_minuta_fontes_{atendimento_id}"
+    bases_key = f"zel_minuta_bases_{atendimento_id}"
+    minuta_valor = st.session_state.get(resultado_key, "")
 
     with st.expander("Zel - usar agente controlada para gerar resposta", expanded=False):
-        st.caption("A Zel usa apenas Base de Conhecimento validada e documentos de apoio validados. A resposta só é gravada após validação humana.")
+        st.caption(
+            "A Zel usa exclusivamente os Instrumentos de orientação cadastrados no SIGA-COR. "
+            "Após cadastrar ou atualizar a base, clique em 'Refazer resposta da Zel'."
+        )
 
-        resultado_key = f"zel_minuta_gerada_texto_{atendimento_id}"
-        fontes_key = f"zel_minuta_fontes_{atendimento_id}"
+        if not str(atendimento.get("descricao") or "").strip():
+            st.warning("Informe a descrição/pergunta do atendimento antes de usar a Zel.")
+            return
 
-        if st.button("Usar Zel para gerar resposta" if not minuta_valor else "Refazer resposta da Zel", type="primary", key=f"zel_gerar_no_atendimento_{atendimento_id}"):
-            minuta, fontes, bases = gerar_minuta_zel_para_atendimento(atendimento)
-            st.session_state[resultado_key] = minuta
-            st.session_state[fontes_key] = resumo_fontes_zel(fontes, bases)
-            registrar_uso_zel(
-                atendimento_id,
-                "Minuta gerada no módulo de atendimento",
-                f"Fontes usadas: {resumo_fontes_zel(fontes, bases) or 'nenhuma'}"
-            )
+        rotulo = "Usar Zel para gerar resposta" if not minuta_valor else "Refazer resposta da Zel"
+
+        if st.button(rotulo, type="primary", key=f"{chave_prefixo}_botao_zel_{atendimento_id}"):
+            try:
+                minuta, fontes, bases = gerar_minuta_zel_para_atendimento(atendimento)
+            except Exception as e:
+                minuta = (
+                    "Não foi possível gerar uma resposta segura pela Zel.\n\n"
+                    f"Motivo técnico: {type(e).__name__}: {e}\n\n"
+                    "Cadastre ou revise o Instrumento de orientação aplicável e tente novamente."
+                )
+                fontes, bases = [], []
+
+            st.session_state[resultado_key] = minuta or ""
+            st.session_state[fontes_key] = fontes or []
+            st.session_state[bases_key] = bases or []
+            st.rerun()
 
         minuta_valor = st.session_state.get(resultado_key, "")
-        if minuta_valor:
-            resposta_editada = st.text_area(
-                "Minuta da Zel para revisar",
-                value=minuta_valor,
-                height=360,
-                key=f"zel_minuta_revisao_{atendimento_id}"
+        if not minuta_valor:
+            st.info("Nenhuma resposta da Zel foi gerada ainda para este atendimento.")
+            return
+
+        st.markdown("#### Minuta da Zel para revisão")
+        resposta_editada = st.text_area(
+            "Resposta sugerida pela Zel",
+            value=minuta_valor,
+            height=360,
+            key=f"{chave_prefixo}_resposta_zel_{atendimento_id}",
+        )
+
+        fontes = st.session_state.get(fontes_key, []) or []
+        if fontes:
+            with st.expander("Instrumentos utilizados pela Zel", expanded=False):
+                for i, f in enumerate(fontes, start=1):
+                    st.markdown(f"**{i}. {f.get('titulo') or 'Instrumento de orientação'}**")
+                    if f.get("assunto"):
+                        st.caption(f"Assunto: {f.get('assunto')}")
+                    if f.get("referencia"):
+                        st.caption(f"Referência: {f.get('referencia')}")
+
+        bloqueio = str(resposta_editada or "").strip().startswith("Não foi possível gerar uma resposta segura pela Zel")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            salvar_base = st.checkbox(
+                "Salvar também como Instrumento de orientação",
+                value=False if bloqueio else True,
+                disabled=bloqueio,
+                key=f"{chave_prefixo}_salvar_base_zel_{atendimento_id}",
+            )
+        with col2:
+            encerrar = st.checkbox(
+                "Mover para realizado após gravar",
+                value=False,
+                disabled=bloqueio,
+                key=f"{chave_prefixo}_encerrar_zel_{atendimento_id}",
             )
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                gerar_base = st.checkbox(
-                    "Salvar como Base de Conhecimento",
-                    value=True,
-                    key=f"zel_validar_base_{atendimento_id}"
-                )
-            with col_b:
-                encerrar = st.checkbox(
-                    "Encerrar atendimento",
-                    value=True,
-                    key=f"zel_validar_encerrar_{atendimento_id}"
-                )
+        if bloqueio:
+            st.warning(
+                "A Zel não gerou resposta validável. Cadastre ou atualize um Instrumento de orientação para o tema "
+                "e clique em 'Refazer resposta da Zel'."
+            )
 
-            col_g1, col_g2 = st.columns(2)
-            with col_g1:
-                if st.button("Gravar resposta validada", type="primary", key=f"zel_validar_resposta_final_{atendimento_id}"):
-                    if not str(resposta_editada or "").strip():
-                        st.warning("A resposta está vazia.")
-                    elif "zel2_resposta_util" in globals() and not zel2_resposta_util(resposta_editada):
-                        st.warning("A Zel não gerou resposta validável. Cadastre ou atualize o instrumento e clique em Refazer resposta da Zel.")
-                    elif "zel_resposta_util" in globals() and not zel_resposta_util(resposta_editada):
-                        st.warning("A Zel não produziu resposta útil validável. Revise a base de conhecimento ou encaminhe para análise manual.")
-                    else:
-                        ok, msg = validar_minuta_zel_em_atendimento(
-                            atendimento_id,
-                            resposta_editada,
-                            gerar_base=gerar_base,
-                            gerar_fonte=False,
-                            encerrar=encerrar
+        if st.button(
+            "Gravar resposta validada",
+            type="primary",
+            disabled=bloqueio,
+            key=f"{chave_prefixo}_gravar_zel_{atendimento_id}",
+        ):
+            if not str(resposta_editada or "").strip():
+                st.warning("A resposta está vazia.")
+                return
+
+            if "zel2_resposta_util" in globals() and not zel2_resposta_util(resposta_editada):
+                st.warning("A resposta gerada não é validável. Atualize a base e refaça a resposta da Zel.")
+                return
+
+            ok, msg = False, ""
+            try:
+                ok, msg = validar_minuta_zel_em_atendimento(
+                    atendimento,
+                    resposta_editada,
+                    fontes,
+                    st.session_state.get(bases_key, []) or [],
+                    salvar_base=salvar_base,
+                    encerrar=encerrar,
+                )
+            except TypeError:
+                try:
+                    ok, msg = validar_minuta_zel_em_atendimento(
+                        atendimento,
+                        resposta_editada,
+                        fontes,
+                        st.session_state.get(bases_key, []) or [],
+                    )
+                except Exception as e:
+                    ok, msg = False, f"Erro ao gravar resposta validada: {type(e).__name__}: {e}"
+
+                if ok and salvar_base and "cadastrar_base_conhecimento_unica" in globals():
+                    try:
+                        cadastrar_base_conhecimento_unica(
+                            titulo=f"Resposta validada do atendimento {atendimento_id}",
+                            secao=atendimento.get("secao") or "SEPRO",
+                            assunto=atendimento.get("assunto") or "Não informado",
+                            resumo_duvida=atendimento.get("descricao") or "",
+                            orientacao_adotada=resposta_editada,
+                            fundamento_normativo=resumo_fontes_zel(fontes, []),
+                            atendimento_id=atendimento_id,
                         )
-                        if ok:
-                            st.success(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
+                    except Exception:
+                        pass
 
-            with col_g2:
-                if st.button("Salvar como pendente de validação", key=f"zel_salvar_pendente_{atendimento_id}"):
-                    lista_at = atendimentos()
-                    for item in lista_at:
-                        if int(item.get("id", 0)) == int(atendimento_id):
-                            item["providencia_adotada"] = resposta_editada
-                            item["situacao_validacao"] = STATUS_VALIDACAO_Zel
-                            item["observacoes"] = (
-                                (item.get("observacoes") or "")
-                                + f"\n\nZel: minuta gerada e pendente de validação. Fontes: {st.session_state.get(fontes_key, '')}"
-                            ).strip()
-                            item["atualizado_em"] = agora_iso()
-                            break
-                    salvar_atendimentos(lista_at)
-                    registrar_uso_zel(atendimento_id, "Minuta salva como pendente de validação", st.session_state.get(fontes_key, ""))
-                    limpar_estado_zel_atendimento(atendimento_id)
-                    st.success("Minuta salva como pendente de validação.")
-                    st.rerun()
+                if ok and encerrar and "atualizar_status_atendimento" in globals():
+                    try:
+                        atualizar_status_atendimento(atendimento_id, STATUS_REALIZADO)
+                    except Exception:
+                        pass
 
+            except Exception as e:
+                ok, msg = False, f"Erro ao gravar resposta validada: {type(e).__name__}: {e}"
 
+            if ok:
+                st.success(msg or "Resposta validada gravada no atendimento.")
+                st.session_state.pop(resultado_key, None)
+                st.session_state.pop(fontes_key, None)
+                st.session_state.pop(bases_key, None)
+                st.rerun()
+            else:
+                st.error(msg or "Não foi possível gravar a resposta validada.")
 
 
 def limpar_html_residual_card(texto):
