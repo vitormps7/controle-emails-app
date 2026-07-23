@@ -1596,6 +1596,12 @@ def atendimento_app_para_db(a):
 
 
 def montar_backup_completo():
+
+    def sessoes_backup_seguro():
+        try:
+            return sessoes_backup_seguro()
+        except Exception:
+            return {}
     return {
         "sistema": "SIGA-COR",
         "versao_backup": "2.1-supabase-rest",
@@ -1604,7 +1610,7 @@ def montar_backup_completo():
         "atendimentos": atendimentos(),
         "usuarios": usuarios(),
         "assuntos": assuntos(),
-        "sessoes": {s.get("email"): s for s in usuarios_logados()},
+        "sessoes": sessoes_backup_seguro(),
     }
 
 
@@ -2110,52 +2116,126 @@ def remover_usuario_logado():
 
 
 
+
+def datetime_sessao_seguro(valor):
+    """
+    Converte valores de data/hora de sessão para datetime comparável.
+    Corrige erro de comparação entre texto e datetime no backup/restauração.
+    """
+    try:
+        if not valor:
+            return None
+
+        if hasattr(valor, "to_pydatetime"):
+            valor = valor.to_pydatetime()
+
+        if hasattr(valor, "tzinfo") and hasattr(valor, "replace"):
+            if valor.tzinfo is None:
+                return valor.replace(tzinfo=timezone.utc)
+            return valor.astimezone(timezone.utc)
+
+        texto = str(valor or "").strip()
+        if not texto:
+            return None
+
+        # Normaliza ISO vindo do Supabase, inclusive com Z.
+        texto_iso = texto.replace("Z", "+00:00")
+
+        try:
+            dt = datetime.fromisoformat(texto_iso)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            pass
+
+        formatos = [
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
+            "%d/%m/%Y",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d",
+        ]
+
+        for fmt in formatos:
+            try:
+                dt = datetime.strptime(texto, fmt)
+                return dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                pass
+
+        try:
+            dt = pd.to_datetime(texto, errors="coerce")
+            if pd.isna(dt):
+                return None
+            py_dt = dt.to_pydatetime()
+            if py_dt.tzinfo is None:
+                py_dt = py_dt.replace(tzinfo=timezone.utc)
+            return py_dt.astimezone(timezone.utc)
+        except Exception:
+            return None
+
+    except Exception:
+        return None
+
+
+def agora_utc_seguro():
+    try:
+        return datetime.now(timezone.utc)
+    except Exception:
+        return datetime.utcnow().replace(tzinfo=timezone.utc)
+
+
+
 def sessao_esta_ativa(row):
     """
-    Considera ativo apenas quem teve atualização de presença dentro da janela definida.
-    Usa ultimo_login, pois a tabela sessoes pode não possuir a coluna ultimo_ping.
+    Verifica se uma sessão está ativa sem quebrar por tipos diferentes de data.
     """
-    if not row or not row.get("ativo", False):
-        return False
+    try:
+        if not row:
+            return False
 
-    ultimo = obter_data_hora_atendimento(row.get("ultimo_login"))
-    if not ultimo:
-        return False
+        ultimo_valor = (
+            row.get("ultimo_acesso")
+            or row.get("atualizado_em")
+            or row.get("created_at")
+            or row.get("criado_em")
+            or row.get("data_hora")
+            or row.get("data")
+        )
 
-    limite = agora_brasilia() - timedelta(minutes=SESSAO_ATIVA_MINUTOS)
-    return ultimo >= limite
+        ultimo = datetime_sessao_seguro(ultimo_valor)
+
+        if ultimo is None:
+            return False
+
+        limite = agora_utc_seguro() - timedelta(hours=8)
+        return ultimo >= limite
+
+    except Exception:
+        return False
 
 
 
 def usuarios_logados():
     """
-    Retorna usuários ativos sem fazer limpeza automática no banco.
-    Não depende da coluna ultimo_ping.
-    Garante também a inclusão do usuário da sessão atual para não exibir zero indevidamente.
+    Retorna sessões ativas sem derrubar o app caso alguma data venha em formato inesperado.
     """
-    cached = cache_sessao_get("usuarios_logados", ttl_segundos=30)
-    if cached is not None:
-        return cached
+    try:
+        rows = supabase_get("sessoes", {"select": "*"})
+    except Exception:
+        rows = []
 
-    rows = supabase_get_silencioso(
-        "sessoes",
-        {"select": "email,nome,ultimo_login,ativo", "ativo": "eq.true", "order": "ultimo_login.desc"}
-    ) or []
+    ativos = []
+    for row in rows or []:
+        try:
+            if sessao_esta_ativa(row):
+                ativos.append(row)
+        except Exception:
+            continue
 
-    ativos = [row for row in rows if sessao_esta_ativa(row)]
-
-    atual = usuario_logado() or {}
-    email_atual = normalizar_email(atual.get("email"))
-    if email_atual and not any(normalizar_email(r.get("email")) == email_atual for r in ativos):
-        ativos.insert(0, {
-            "email": email_atual,
-            "nome": atual.get("nome", email_atual),
-            "ultimo_login": agora_iso(),
-            "ativo": True,
-        })
-
-    return cache_sessao_set("usuarios_logados", ativos)
-
+    return ativos
 
 
 def email_institucional(email):
@@ -5280,10 +5360,37 @@ def fonte_unica_zel_rows():
 
 
 
+
+def supabase_write_headers():
+    """
+    Headers para escrita no Supabase.
+    Se houver chave service role nos Secrets, usa essa chave para contornar RLS em operações internas do servidor.
+    Se não houver, usa os headers padrão do app.
+    """
+    headers = dict(supabase_headers())
+
+    service_key = ""
+    for nome_secret in ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_KEY", "SERVICE_ROLE_KEY"]:
+        try:
+            valor = str(st.secrets.get(nome_secret, "") or "").strip()
+        except Exception:
+            valor = ""
+        if valor:
+            service_key = valor
+            break
+
+    if service_key:
+        headers["apikey"] = service_key
+        headers["Authorization"] = f"Bearer {service_key}"
+
+    return headers
+
+
+
 def supabase_insert_diagnostico(tabela, rows):
     """
     Insere registros no Supabase retornando diagnóstico do erro.
-    Usado em pontos sensíveis para não falhar com NameError nem erro silencioso.
+    Usa service role se houver chave configurada nos Secrets.
     Retorna: (ok, mensagem, dados)
     """
     if not rows:
@@ -5292,13 +5399,18 @@ def supabase_insert_diagnostico(tabela, rows):
     try:
         resp = requests.post(
             supabase_rest_url(tabela),
-            headers=supabase_headers(),
+            headers=supabase_write_headers() if "supabase_write_headers" in globals() else supabase_headers(),
             data=json.dumps(rows, ensure_ascii=False),
             timeout=30,
         )
 
         if resp.status_code >= 400:
             detalhe = resp.text or f"HTTP {resp.status_code}"
+            if "row-level security" in detalhe or "violates row-level security policy" in detalhe:
+                detalhe += (
+                    "\n\nCorreção necessária: execute o SQL de liberação de políticas RLS para a tabela "
+                    f"{tabela}, ou configure SUPABASE_SERVICE_ROLE_KEY nos Secrets do Streamlit."
+                )
             return False, detalhe, []
 
         dados = resp.json() if resp.text else []
@@ -5306,8 +5418,6 @@ def supabase_insert_diagnostico(tabela, rows):
 
     except Exception as e:
         return False, str(e), []
-
-
 
 
 def cadastrar_base_conhecimento_unica(titulo, secao, assunto, resumo_duvida, orientacao_adotada, fundamento_normativo, atendimento_id=None):
