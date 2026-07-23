@@ -5279,6 +5279,37 @@ def fonte_unica_zel_rows():
     return fontes
 
 
+
+def supabase_insert_diagnostico(tabela, rows):
+    """
+    Insere registros no Supabase retornando diagnóstico do erro.
+    Usado em pontos sensíveis para não falhar com NameError nem erro silencioso.
+    Retorna: (ok, mensagem, dados)
+    """
+    if not rows:
+        return False, "Nenhum registro para inserir.", []
+
+    try:
+        resp = requests.post(
+            supabase_rest_url(tabela),
+            headers=supabase_headers(),
+            data=json.dumps(rows, ensure_ascii=False),
+            timeout=30,
+        )
+
+        if resp.status_code >= 400:
+            detalhe = resp.text or f"HTTP {resp.status_code}"
+            return False, detalhe, []
+
+        dados = resp.json() if resp.text else []
+        return True, "Registro inserido com sucesso.", dados
+
+    except Exception as e:
+        return False, str(e), []
+
+
+
+
 def cadastrar_base_conhecimento_unica(titulo, secao, assunto, resumo_duvida, orientacao_adotada, fundamento_normativo, atendimento_id=None):
     """
     Cadastro único de conhecimento institucional. Tudo que entra aqui vira fonte da Zel.
