@@ -4547,6 +4547,65 @@ def atualizar_instrumento_orientacao_base(row_id, secao, assunto, resumo_duvida,
     return ok, msg, dados
 
 
+
+def supabase_delete_diagnostico(tabela, row_id):
+    """
+    Exclui fisicamente um registro no Supabase retornando diagnóstico.
+    Usado apenas como fallback quando a exclusão lógica não for possível.
+    """
+    if not row_id:
+        return False, "ID do registro não informado.", []
+
+    try:
+        url = f"{supabase_rest_url(tabela)}?id=eq.{row_id}"
+        headers = supabase_write_headers() if "supabase_write_headers" in globals() else supabase_headers()
+        headers = dict(headers)
+        headers["Prefer"] = "return=representation"
+
+        resp = requests.delete(url, headers=headers, timeout=30)
+
+        if resp.status_code >= 400:
+            detalhe = resp.text or f"HTTP {resp.status_code}"
+            return False, detalhe, []
+
+        dados = resp.json() if resp.text else []
+        return True, "Registro excluído com sucesso.", dados
+
+    except Exception as e:
+        return False, str(e), []
+
+
+def excluir_instrumento_orientacao_base(row_id):
+    """
+    Exclui um instrumento da base ativa da Zel.
+    Primeiro tenta exclusão lógica: ativo=false e superada=true.
+    Se a tabela não tiver essas colunas, faz exclusão física como fallback.
+    """
+    if not row_id:
+        return False, "ID do instrumento não informado.", []
+
+    updates = {
+        "ativo": False,
+        "superada": True,
+        "atualizado_em": agora_iso(),
+    }
+
+    if "supabase_update_diagnostico" in globals():
+        ok, msg, dados = supabase_update_diagnostico("base_conhecimento", row_id, updates)
+        if ok:
+            return True, "Instrumento excluído da base ativa da Zel.", dados
+
+        msg_lower = str(msg or "").casefold()
+
+        # Fallback se a tabela não tiver colunas ativo/superada/atualizado_em.
+        if "ativo" in msg_lower or "superada" in msg_lower or "atualizado_em" in msg_lower or "column" in msg_lower or "schema cache" in msg_lower:
+            return supabase_delete_diagnostico("base_conhecimento", row_id)
+
+        return False, msg, dados
+
+    return supabase_delete_diagnostico("base_conhecimento", row_id)
+
+
 def tela_orientacoes_zonas():
     st.title("Instrumentos de orientação")
     st.caption(
@@ -4752,6 +4811,33 @@ def tela_orientacoes_zonas():
                     st.rerun()
             with col_edit_2:
                 st.caption("Registro ativo desta base é fonte da Zel.")
+
+
+            with st.expander("Excluir instrumento", expanded=False):
+                st.warning(
+                    "A exclusão retira este registro da base ativa da Zel. "
+                    "Após excluir, ele não será mais usado para gerar respostas."
+                )
+                confirmar_exclusao = st.checkbox(
+                    "Confirmo que desejo excluir este instrumento da base da Zel",
+                    key=f"confirmar_excluir_instrumento_{b.get('id')}"
+                )
+
+                if st.button(
+                    "Excluir instrumento",
+                    type="secondary",
+                    disabled=not confirmar_exclusao,
+                    key=f"excluir_instrumento_{b.get('id')}"
+                ):
+                    ok, msg, dados = excluir_instrumento_orientacao_base(b.get("id"))
+                    if ok:
+                        st.success(msg or "Instrumento excluído.")
+                        if st.session_state.get("instrumento_editando_id") == b.get("id"):
+                            st.session_state.pop("instrumento_editando_id", None)
+                        st.rerun()
+                    else:
+                        st.error("Não foi possível excluir o instrumento.")
+                        st.code(str(msg))
 
             if st.session_state.get("instrumento_editando_id") == b.get("id"):
                 st.divider()
