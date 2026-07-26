@@ -7170,9 +7170,187 @@ def testar_openai_api():
         return False, f"Falha ao testar OpenAI API: {type(e).__name__}: {e}", ""
 
 
+
+def zel_api_post_responses(input_text, modelo=None, max_output_tokens=900):
+    ok_chave, chave = openai_api_key_configurada()
+    if not ok_chave:
+        return False, "OPENAI_API_KEY não foi encontrada nos Secrets do Streamlit.", ""
+
+    modelo = modelo or modelo_zel_api()
+
+    try:
+        url = "https://api.openai.com/v1/responses"
+        headers = {
+            "Authorization": f"Bearer {chave}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": modelo,
+            "input": input_text,
+            "max_output_tokens": max_output_tokens,
+        }
+
+        resp = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=90)
+
+        if resp.status_code >= 400:
+            return False, f"Falha na OpenAI API: HTTP {resp.status_code} - {resp.text}", ""
+
+        dados = resp.json()
+        texto = dados.get("output_text", "") or ""
+
+        if not texto:
+            partes = []
+            for item in dados.get("output", []) or []:
+                for content in item.get("content", []) or []:
+                    if isinstance(content, dict):
+                        if content.get("type") == "output_text" and content.get("text"):
+                            partes.append(content.get("text"))
+                        elif content.get("text"):
+                            partes.append(content.get("text"))
+            texto = "\n".join(partes).strip()
+
+        if not texto:
+            texto = "Resposta recebida, mas sem texto extraído."
+
+        return True, "Resposta gerada com sucesso pela Zel API.", texto
+
+    except Exception as e:
+        return False, f"Erro ao chamar Zel API: {type(e).__name__}: {e}", ""
+
+
+def zel_api_instrumentos_ativos():
+    try:
+        rows = base_conhecimento_rows(incluir_superadas=False)
+    except Exception:
+        rows = []
+
+    instrumentos = []
+    for b in rows or []:
+        try:
+            codigo = codigo_base_conhecimento(b)
+        except Exception:
+            codigo = str(b.get("id") or "")
+
+        titulo = f"{codigo} — {b.get('assunto') or 'Não informado'}"
+        conteudo = "\n".join([
+            f"Código: {codigo}",
+            f"Seção: {b.get('secao') or 'Não informada'}",
+            f"Assunto: {b.get('assunto') or 'Não informado'}",
+            f"Tema / situação de uso: {b.get('resumo_duvida') or ''}",
+            f"Orientação institucional: {b.get('orientacao_adotada') or ''}",
+            f"Fundamento / conteúdo de apoio: {b.get('fundamento_normativo') or ''}",
+        ]).strip()
+
+        if conteudo:
+            instrumentos.append({
+                "id": b.get("id"),
+                "titulo": titulo,
+                "conteudo": conteudo,
+                "assunto": b.get("assunto") or "Não informado",
+                "secao": b.get("secao") or "Não informada",
+            })
+
+    return instrumentos
+
+
+def zel_api_tokenizar(texto):
+    texto = str(texto or "").casefold()
+    texto = re.sub(r"[^\w\sáàâãéêíóôõúç]", " ", texto)
+    stop = {"qual", "quais", "como", "para", "pela", "pelo", "pelas", "pelos", "sobre", "entre", "esse", "essa", "este", "esta", "isso", "isto", "deve", "pode", "ser", "são", "sao", "uma", "umas", "uns", "com", "sem", "por", "que", "dos", "das", "nas", "nos", "após", "apos", "fazer", "quando", "onde", "quem"}
+    return [t for t in texto.split() if len(t) >= 4 and t not in stop][:80]
+
+
+def zel_api_pontuar_instrumento(pergunta, instrumento):
+    pergunta_norm = str(pergunta or "").casefold()
+    texto = str(instrumento.get("conteudo") or "").casefold()
+    assunto = str(instrumento.get("assunto") or "").casefold()
+
+    score = 0
+    for t in set(zel_api_tokenizar(pergunta_norm)):
+        if t in texto:
+            score += 5
+        if t in assunto:
+            score += 3
+
+    if assunto and assunto in pergunta_norm:
+        score += 10
+
+    return score
+
+
+def zel_api_selecionar_instrumentos(pergunta, limite=4):
+    instrumentos = zel_api_instrumentos_ativos()
+    pontuados = sorted(
+        [(zel_api_pontuar_instrumento(pergunta, inst), inst) for inst in instrumentos],
+        key=lambda x: x[0],
+        reverse=True,
+    )
+    return [inst for score, inst in pontuados if score > 0][:limite]
+
+
+def zel_api_gerar_resposta_piloto(pergunta, instrumentos=None):
+    pergunta = str(pergunta or "").strip()
+    instrumentos = instrumentos or zel_api_selecionar_instrumentos(pergunta, limite=4)
+
+    if not pergunta:
+        return False, "Informe uma pergunta.", ""
+
+    if not instrumentos:
+        return False, "Não foi possível gerar uma resposta segura pela Zel API, pois não foram encontrados Instrumentos de orientação aderentes ao tema.", ""
+
+    blocos = []
+    for i, inst in enumerate(instrumentos, start=1):
+        conteudo = str(inst.get("conteudo") or "")
+        if len(conteudo) > 5000:
+            conteudo = conteudo[:5000] + "\n[conteúdo truncado para teste]"
+        blocos.append(f"INSTRUMENTO {i}: {inst.get('titulo')}\n{conteudo}")
+
+    base = "\n\n---\n\n".join(blocos)
+
+    prompt = f"""
+Você é a Zel, agente institucional controlada do SIGA-COR, utilizado pela SEPRO e SEOCE.
+
+REGRA ABSOLUTA:
+- Responda somente com base nos Instrumentos de orientação fornecidos.
+- Não invente prazo, rito, fundamento, sistema, providência ou conclusão.
+- Se os instrumentos não forem suficientes para responder com segurança, diga claramente que não há base suficiente.
+- Não copie o documento inteiro.
+- Use linguagem objetiva, institucional e útil para orientar Zona Eleitoral.
+- Responda em português do Brasil.
+
+PERGUNTA DO ATENDIMENTO:
+{pergunta}
+
+INSTRUMENTOS DE ORIENTAÇÃO DISPONÍVEIS:
+{base}
+
+FORMATO OBRIGATÓRIO DA RESPOSTA:
+
+Resposta objetiva:
+[resposta direta à pergunta]
+
+Procedimento sugerido:
+1. ...
+2. ...
+3. ...
+
+Fundamento utilizado:
+- Instrumento:
+- Trecho aplicável:
+
+Nível de confiança:
+[Alta, Média, Baixa ou Sem base suficiente]
+
+Alerta:
+[se houver limitação, exceção ou necessidade de conferência humana]
+""".strip()
+
+    return zel_api_post_responses(prompt, modelo=modelo_zel_api(), max_output_tokens=1000)
+
+
 def tela_diagnostico_zel_api():
     st.title("Diagnóstico da Zel API")
-    st.caption("Teste inicial de conexão com a OpenAI API. Esta etapa não altera a Zel atual.")
+    st.caption("Teste de conexão e primeiro teste de resposta com os Instrumentos de orientação cadastrados.")
 
     ok_chave, chave = openai_api_key_configurada()
     modelo = modelo_zel_api()
@@ -7191,6 +7369,7 @@ def tela_diagnostico_zel_api():
 
     st.divider()
 
+    st.subheader("1. Teste simples de conexão")
     if st.button("Testar conexão da Zel API", type="primary"):
         with st.spinner("Testando conexão com a OpenAI API..."):
             ok, msg, texto = testar_openai_api()
@@ -7201,6 +7380,45 @@ def tela_diagnostico_zel_api():
         else:
             st.error(msg)
             st.info("Confira se a chave foi salva nos Secrets, se o app foi reiniciado e se há crédito/limite disponível na OpenAI API.")
+
+    st.divider()
+
+    st.subheader("2. Teste piloto com Instrumentos de orientação")
+    st.caption("Este teste ainda não grava resposta no atendimento. Serve apenas para validar a qualidade da Zel API.")
+
+    instrumentos = zel_api_instrumentos_ativos()
+    st.metric("Instrumentos/Base disponíveis", len(instrumentos))
+
+    pergunta = st.text_area(
+        "Pergunta de teste",
+        height=120,
+        placeholder="Ex.: O que acontece com o código do local quando todos os dados são alterados por alteração de local de votação?",
+        key="zel_api_pergunta_teste"
+    )
+
+    if st.button("Gerar resposta piloto com Zel API", type="primary"):
+        with st.spinner("A Zel API está consultando os instrumentos e gerando a resposta..."):
+            selecionados = zel_api_selecionar_instrumentos(pergunta, limite=4)
+            ok, msg, resposta = zel_api_gerar_resposta_piloto(pergunta, selecionados)
+
+        if selecionados:
+            with st.expander("Instrumentos enviados para a Zel API", expanded=False):
+                for i, inst in enumerate(selecionados, start=1):
+                    st.markdown(f"**{i}. {inst.get('titulo')}**")
+                    st.caption(f"Seção: {inst.get('secao')} | Assunto: {inst.get('assunto')}")
+
+        if ok:
+            st.success(msg)
+            st.text_area("Resposta piloto da Zel API", value=resposta, height=420)
+        else:
+            st.warning(msg)
+            if resposta:
+                st.text_area("Retorno", value=resposta, height=220)
+
+    st.info(
+        "Próxima etapa: depois de validarmos boas respostas nesta tela, a Zel API será integrada ao botão "
+        "'Usar Zel para gerar resposta' dentro do atendimento."
+    )
 
 
 def tela_zel_ia_controlada():
