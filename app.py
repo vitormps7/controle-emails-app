@@ -7430,6 +7430,7 @@ def sidebar_menu():
     with st.sidebar.expander("Conhecimento e orientações", expanded=True):
         botoes_conhecimento = [
             ("Zel - IA controlada", "Zel - IA controlada"),
+            ("Diagnóstico Zel API", "Diagnóstico Zel API"),
             ("Instrumentos de orientação", "Instrumentos de orientação"),
         ]
         if usuario_pode_ver_governanca():
