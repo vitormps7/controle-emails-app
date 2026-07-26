@@ -7118,22 +7118,54 @@ def modelo_zel_api():
 
 
 def testar_openai_api():
+    """
+    Faz uma chamada mínima à OpenAI API sem depender do pacote externo 'openai'.
+    Usa requests, que já é dependência do SIGA-COR.
+    """
     ok_chave, chave = openai_api_key_configurada()
     if not ok_chave:
         return False, "OPENAI_API_KEY não foi encontrada nos Secrets do Streamlit.", ""
 
     modelo = modelo_zel_api()
+
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=chave)
-        resposta = client.responses.create(
-            model=modelo,
-            input="Responda exatamente: Conexão da Zel API realizada com sucesso.",
-        )
-        texto = getattr(resposta, "output_text", "") or ""
+        url = "https://api.openai.com/v1/responses"
+        headers = {
+            "Authorization": f"Bearer {chave}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": modelo,
+            "input": "Responda exatamente: Conexão da Zel API realizada com sucesso.",
+            "max_output_tokens": 80,
+        }
+
+        resp = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=60)
+
+        if resp.status_code >= 400:
+            detalhe = resp.text or f"HTTP {resp.status_code}"
+            return False, f"Falha na OpenAI API: HTTP {resp.status_code} - {detalhe}", ""
+
+        dados = resp.json()
+
+        texto = dados.get("output_text", "") or ""
+
+        if not texto:
+            partes = []
+            for item in dados.get("output", []) or []:
+                for content in item.get("content", []) or []:
+                    if isinstance(content, dict):
+                        if content.get("type") == "output_text" and content.get("text"):
+                            partes.append(content.get("text"))
+                        elif content.get("text"):
+                            partes.append(content.get("text"))
+            texto = "\n".join(partes).strip()
+
         if not texto:
             texto = "Resposta recebida, mas sem texto extraído."
+
         return True, f"OpenAI API conectada com sucesso usando o modelo {modelo}.", texto
+
     except Exception as e:
         return False, f"Falha ao testar OpenAI API: {type(e).__name__}: {e}", ""
 
@@ -7168,7 +7200,7 @@ def tela_diagnostico_zel_api():
             st.text_area("Resposta recebida", value=texto, height=120)
         else:
             st.error(msg)
-            st.info("Confira se a chave foi salva nos Secrets e se o app foi reiniciado.")
+            st.info("Confira se a chave foi salva nos Secrets, se o app foi reiniciado e se há crédito/limite disponível na OpenAI API.")
 
 
 def tela_zel_ia_controlada():
