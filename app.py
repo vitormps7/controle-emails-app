@@ -4494,6 +4494,59 @@ def tela_validacao_chefia():
 
 
 
+
+def supabase_update_diagnostico(tabela, row_id, updates):
+    if not row_id:
+        return False, "ID do registro não informado.", []
+    if not updates:
+        return False, "Nenhuma alteração para salvar.", []
+
+    try:
+        url = f"{supabase_rest_url(tabela)}?id=eq.{row_id}"
+        headers = supabase_write_headers() if "supabase_write_headers" in globals() else supabase_headers()
+        headers = dict(headers)
+        headers["Prefer"] = "return=representation"
+
+        resp = requests.patch(
+            url,
+            headers=headers,
+            data=json.dumps(updates, ensure_ascii=False),
+            timeout=30,
+        )
+
+        if resp.status_code >= 400:
+            detalhe = resp.text or f"HTTP {resp.status_code}"
+            return False, detalhe, []
+
+        dados = resp.json() if resp.text else []
+        return True, "Registro atualizado com sucesso.", dados
+
+    except Exception as e:
+        return False, str(e), []
+
+
+def atualizar_instrumento_orientacao_base(row_id, secao, assunto, resumo_duvida, orientacao_adotada, fundamento_normativo):
+    updates = {
+        "secao": normalizar_secao(secao),
+        "assunto": assunto or "Não informado",
+        "resumo_duvida": str(resumo_duvida or "").strip(),
+        "orientacao_adotada": str(orientacao_adotada or "").strip(),
+        "fundamento_normativo": str(fundamento_normativo or "").strip(),
+        "atualizado_em": agora_iso(),
+    }
+
+    ok, msg, dados = supabase_update_diagnostico("base_conhecimento", row_id, updates)
+    if ok:
+        return True, msg, dados
+
+    msg_lower = str(msg or "").casefold()
+    if "atualizado_em" in msg_lower or "column" in msg_lower or "schema cache" in msg_lower:
+        updates.pop("atualizado_em", None)
+        return supabase_update_diagnostico("base_conhecimento", row_id, updates)
+
+    return ok, msg, dados
+
+
 def tela_orientacoes_zonas():
     st.title("Instrumentos de orientação")
     st.caption(
@@ -4691,7 +4744,88 @@ def tela_orientacoes_zonas():
                 with st.expander("Fundamento / conteúdo de apoio", expanded=False):
                     st.write(b.get("fundamento_normativo"))
 
-            st.caption("Registro ativo desta base é fonte da Zel.")
+
+            col_edit_1, col_edit_2 = st.columns([1, 3])
+            with col_edit_1:
+                if st.button("Editar", key=f"editar_instrumento_{b.get('id')}"):
+                    st.session_state["instrumento_editando_id"] = b.get("id")
+                    st.rerun()
+            with col_edit_2:
+                st.caption("Registro ativo desta base é fonte da Zel.")
+
+            if st.session_state.get("instrumento_editando_id") == b.get("id"):
+                st.divider()
+                st.markdown("#### Editar instrumento")
+
+                secoes_edit = secoes_atendimento() if "secoes_atendimento" in globals() else list(SECOES_ATENDIMENTO)
+                secao_atual = normalizar_secao(b.get("secao") or "SEPRO")
+                if secao_atual not in secoes_edit:
+                    secoes_edit.insert(0, secao_atual)
+
+                nova_secao = st.selectbox(
+                    "Unidade responsável",
+                    secoes_edit,
+                    index=secoes_edit.index(secao_atual) if secao_atual in secoes_edit else 0,
+                    key=f"edit_secao_{b.get('id')}",
+                )
+
+                assuntos_edit = assuntos_da_secao(nova_secao) if "assuntos_da_secao" in globals() else assuntos(nova_secao)
+                assunto_atual = b.get("assunto") or "Não informado"
+                if assunto_atual not in assuntos_edit:
+                    assuntos_edit.insert(0, assunto_atual)
+
+                novo_assunto = st.selectbox(
+                    "Assunto",
+                    assuntos_edit,
+                    index=assuntos_edit.index(assunto_atual) if assunto_atual in assuntos_edit else 0,
+                    key=f"edit_assunto_{b.get('id')}",
+                )
+
+                novo_resumo = st.text_area(
+                    "Tema / situação de uso e perguntas respondidas",
+                    value=b.get("resumo_duvida") or "",
+                    height=160,
+                    key=f"edit_resumo_{b.get('id')}",
+                )
+
+                nova_orientacao = st.text_area(
+                    "Orientação institucional adotada",
+                    value=b.get("orientacao_adotada") or "",
+                    height=180,
+                    key=f"edit_orientacao_{b.get('id')}",
+                )
+
+                novo_fundamento = st.text_area(
+                    "Fundamento / conteúdo de apoio",
+                    value=b.get("fundamento_normativo") or "",
+                    height=240,
+                    key=f"edit_fundamento_{b.get('id')}",
+                )
+
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    if st.button("Salvar alterações", type="primary", key=f"salvar_edit_instrumento_{b.get('id')}"):
+                        ok, msg, dados = atualizar_instrumento_orientacao_base(
+                            row_id=b.get("id"),
+                            secao=nova_secao,
+                            assunto=novo_assunto,
+                            resumo_duvida=novo_resumo,
+                            orientacao_adotada=nova_orientacao,
+                            fundamento_normativo=novo_fundamento,
+                        )
+                        if ok:
+                            st.success("Instrumento atualizado com sucesso.")
+                            st.session_state.pop("instrumento_editando_id", None)
+                            st.rerun()
+                        else:
+                            st.error("Não foi possível atualizar o instrumento.")
+                            st.code(str(msg))
+
+                with col_s2:
+                    if st.button("Cancelar edição", key=f"cancelar_edit_instrumento_{b.get('id')}"):
+                        st.session_state.pop("instrumento_editando_id", None)
+                        st.rerun()
+
 
 
 def demandas_da_zona(zona):
