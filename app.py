@@ -7101,6 +7101,76 @@ def limpar_estado_zel_atendimento(atendimento_id=None):
 
 
 
+
+def openai_api_key_configurada():
+    try:
+        chave = str(st.secrets.get("OPENAI_API_KEY", "") or "").strip()
+        return bool(chave), chave
+    except Exception:
+        return False, ""
+
+
+def modelo_zel_api():
+    try:
+        return str(st.secrets.get("OPENAI_MODEL_ZEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
+    except Exception:
+        return "gpt-4.1-mini"
+
+
+def testar_openai_api():
+    ok_chave, chave = openai_api_key_configurada()
+    if not ok_chave:
+        return False, "OPENAI_API_KEY não foi encontrada nos Secrets do Streamlit.", ""
+
+    modelo = modelo_zel_api()
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=chave)
+        resposta = client.responses.create(
+            model=modelo,
+            input="Responda exatamente: Conexão da Zel API realizada com sucesso.",
+        )
+        texto = getattr(resposta, "output_text", "") or ""
+        if not texto:
+            texto = "Resposta recebida, mas sem texto extraído."
+        return True, f"OpenAI API conectada com sucesso usando o modelo {modelo}.", texto
+    except Exception as e:
+        return False, f"Falha ao testar OpenAI API: {type(e).__name__}: {e}", ""
+
+
+def tela_diagnostico_zel_api():
+    st.title("Diagnóstico da Zel API")
+    st.caption("Teste inicial de conexão com a OpenAI API. Esta etapa não altera a Zel atual.")
+
+    ok_chave, chave = openai_api_key_configurada()
+    modelo = modelo_zel_api()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("OPENAI_API_KEY", "Configurada" if ok_chave else "Não configurada")
+    with col2:
+        st.metric("Modelo da Zel", modelo)
+
+    if ok_chave:
+        final = chave[-6:] if len(chave) >= 6 else "******"
+        st.info(f"Chave detectada nos Secrets. Final da chave: ...{final}")
+    else:
+        st.warning("A chave OPENAI_API_KEY ainda não foi encontrada nos Secrets.")
+
+    st.divider()
+
+    if st.button("Testar conexão da Zel API", type="primary"):
+        with st.spinner("Testando conexão com a OpenAI API..."):
+            ok, msg, texto = testar_openai_api()
+
+        if ok:
+            st.success(msg)
+            st.text_area("Resposta recebida", value=texto, height=120)
+        else:
+            st.error(msg)
+            st.info("Confira se a chave foi salva nos Secrets e se o app foi reiniciado.")
+
+
 def tela_zel_ia_controlada():
     st.subheader("Zel - agente controlada")
     st.caption(
@@ -12979,6 +13049,9 @@ def main():
         else:
             st.warning("O Portal das Zonas é visível apenas para usuários com perfil Zona Eleitoral.")
             tela_menu_principal()
+
+    elif escolha == "Diagnóstico Zel API":
+        tela_diagnostico_zel_api()
 
     elif escolha == "Zel - IA controlada":
         tela_zel_ia_controlada()
