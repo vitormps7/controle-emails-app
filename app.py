@@ -6649,7 +6649,97 @@ def zel2_resposta_util(texto):
 
 
 
+
+def gerar_minuta_zel_api_para_atendimento(atendimento):
+    """
+    Gera minuta da Zel usando OpenAI API e Instrumentos de orientação.
+    Esta é a lógica preferencial quando a OPENAI_API_KEY está configurada.
+    """
+    pergunta = str((atendimento or {}).get("descricao") or "").strip()
+    if not pergunta:
+        return "Não foi possível gerar resposta segura pela Zel API, pois o atendimento não possui descrição/pergunta.", [], []
+
+    instrumentos = zel_api_selecionar_instrumentos(pergunta, limite=4)
+
+    if not instrumentos:
+        return (
+            "Não foi possível gerar uma resposta segura pela Zel.\n\n"
+            "Motivo: não foram encontrados Instrumentos de orientação aderentes ao tema da pergunta.\n\n"
+            "Providência sugerida: cadastre ou complemente um Instrumento de orientação específico sobre o tema "
+            "e clique em 'Refazer resposta da Zel'."
+        ), [], []
+
+    blocos = []
+    for i, inst in enumerate(instrumentos, start=1):
+        conteudo = str(inst.get("conteudo") or "")
+        if len(conteudo) > 6500:
+            conteudo = conteudo[:6500] + "\n[conteúdo truncado para envio à Zel API]"
+        blocos.append(f"INSTRUMENTO {i}: {inst.get('titulo')}\n{conteudo}")
+
+    base = "\n\n---\n\n".join(blocos)
+
+    prompt = f"""
+Você é a Zel, agente institucional controlada do SIGA-COR, utilizado pela SEPRO e SEOCE.
+
+REGRA ABSOLUTA:
+- Responda somente com base nos Instrumentos de orientação fornecidos.
+- Não invente resposta.
+- Não use conhecimento externo.
+- Não force relação entre a pergunta e um instrumento apenas por palavra parecida.
+- Se o instrumento não tratar diretamente do tema perguntado, responda: "Sem base suficiente".
+- Se a pergunta mencionar Caixa/CEF, operação bancária, União, GRU, recolhimento ou erro de operação, só responda se os instrumentos fornecidos tratarem expressamente desse tema.
+- Não copie documento inteiro.
+- A resposta deve ser útil, objetiva e institucional.
+
+DADOS DO ATENDIMENTO:
+Seção: {(atendimento or {}).get("secao") or "Não informada"}
+Assunto: {(atendimento or {}).get("assunto") or "Não informado"}
+Pergunta: {pergunta}
+
+INSTRUMENTOS DE ORIENTAÇÃO FORNECIDOS:
+{base}
+
+FORMATO OBRIGATÓRIO:
+
+Resposta objetiva:
+[responda diretamente; se não houver base direta, escreva: Não foi possível responder com segurança, pois os instrumentos cadastrados não tratam diretamente do tema.]
+
+Procedimento sugerido:
+1. ...
+2. ...
+3. ...
+
+Fundamento utilizado:
+- Instrumento:
+- Trecho aplicável:
+
+Nível de confiança:
+[Alta, Média, Baixa ou Sem base suficiente]
+
+Alerta:
+[indique limitação, necessidade de validação humana ou necessidade de cadastrar instrumento específico]
+""".strip()
+
+    ok, msg, resposta = zel_api_post_responses(prompt, modelo=modelo_zel_api(), max_output_tokens=1100)
+    if not ok:
+        return (
+            "Não foi possível acionar a Zel API.\n\n"
+            f"Motivo técnico: {msg}\n\n"
+            "Providência sugerida: tente novamente ou utilize a análise manual enquanto a API estiver indisponível."
+        ), instrumentos, []
+
+    return resposta, instrumentos, []
+
+
 def gerar_minuta_zel_para_atendimento(atendimento):
+    """
+    Gera minuta da Zel.
+    Preferência: Zel API com OpenAI, quando configurada.
+    Fallback: lógica local antiga, apenas se API não estiver configurada.
+    """
+    if "zel_api_disponivel" in globals() and zel_api_disponivel():
+        return gerar_minuta_zel_api_para_atendimento(atendimento)
+
     fontes = fontes_relevantes_zel(atendimento=atendimento, limite=12)
     resposta, melhor_fonte, score = zel2_gerar_resposta_estruturada(
         atendimento=atendimento,
@@ -7476,24 +7566,70 @@ def zel_api_instrumentos_ativos():
 def zel_api_tokenizar(texto):
     texto = str(texto or "").casefold()
     texto = re.sub(r"[^\w\sáàâãéêíóôõúç]", " ", texto)
-    stop = {"qual", "quais", "como", "para", "pela", "pelo", "pelas", "pelos", "sobre", "entre", "esse", "essa", "este", "esta", "isso", "isto", "deve", "pode", "ser", "são", "sao", "uma", "umas", "uns", "com", "sem", "por", "que", "dos", "das", "nas", "nos", "após", "apos", "fazer", "quando", "onde", "quem"}
-    return [t for t in texto.split() if len(t) >= 4 and t not in stop][:80]
+    stop = {
+        "qual", "quais", "como", "para", "pela", "pelo", "pelas", "pelos", "sobre",
+        "entre", "esse", "essa", "este", "esta", "isso", "isto", "deve", "pode",
+        "ser", "são", "sao", "uma", "umas", "uns", "com", "sem", "por", "que",
+        "dos", "das", "nas", "nos", "após", "apos", "fazer", "quando", "onde",
+        "quem", "erro", "correto", "certo", "está", "esta", "não", "nao", "quer",
+        "teria", "deveria", "ocorre", "acontece"
+    }
+    tokens = []
+    for t in texto.split():
+        if len(t) >= 4 and t not in stop and t not in tokens:
+            tokens.append(t)
+    return tokens[:80]
 
 
 def zel_api_pontuar_instrumento(pergunta, instrumento):
+    """
+    Pontuação mais rígida para evitar resposta fora de contexto.
+    Exige termos substantivos aderentes ao conteúdo do instrumento.
+    """
     pergunta_norm = str(pergunta or "").casefold()
     texto = str(instrumento.get("conteudo") or "").casefold()
     assunto = str(instrumento.get("assunto") or "").casefold()
+    titulo = str(instrumento.get("titulo") or "").casefold()
+
+    termos = zel_api_tokenizar(pergunta_norm)
+    if not termos:
+        return 0
 
     score = 0
-    for t in set(zel_api_tokenizar(pergunta_norm)):
+    encontrados = 0
+
+    for t in set(termos):
         if t in texto:
             score += 5
+            encontrados += 1
         if t in assunto:
+            score += 4
+            encontrados += 1
+        if t in titulo:
             score += 3
+            encontrados += 1
 
-    if assunto and assunto in pergunta_norm:
-        score += 10
+    # Bônus para expressões compostas relevantes.
+    expressoes = [
+        "caixa", "cef", "operação", "operacao", "união", "uniao", "gru",
+        "recolhimento", "recolher", "multa", "depósito", "deposito",
+        "fundo partidário", "fundo partidario", "local de votação", "local de votacao",
+        "código do local", "codigo do local", "de-para", "elo"
+    ]
+    for exp in expressoes:
+        if exp in pergunta_norm and exp in texto:
+            score += 8
+
+    # Se a pergunta fala de CEF/Caixa/operação/União e o instrumento não fala disso,
+    # derruba a pontuação para evitar puxar norma eleitoral genérica.
+    pergunta_financeira = any(x in pergunta_norm for x in ["caixa", "cef", "operação", "operacao", "união", "uniao", "recolh", "gru"])
+    texto_financeiro = any(x in texto for x in ["caixa", "cef", "operação", "operacao", "união", "uniao", "recolh", "gru", "fundo partid"])
+    if pergunta_financeira and not texto_financeiro:
+        return 0
+
+    # Exige pelo menos 2 aderências ou pontuação forte.
+    if encontrados < 2 and score < 18:
+        return 0
 
     return score
 
@@ -7505,7 +7641,9 @@ def zel_api_selecionar_instrumentos(pergunta, limite=4):
         key=lambda x: x[0],
         reverse=True,
     )
-    return [inst for score, inst in pontuados if score > 0][:limite]
+
+    selecionados = [inst for score, inst in pontuados if score >= 10][:limite]
+    return selecionados
 
 
 def zel_api_gerar_resposta_piloto(pergunta, instrumentos=None):
