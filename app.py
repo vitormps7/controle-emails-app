@@ -6651,10 +6651,6 @@ def zel2_resposta_util(texto):
 
 
 def gerar_minuta_zel_api_para_atendimento(atendimento):
-    """
-    Gera minuta da Zel usando OpenAI API e Instrumentos de orientação.
-    Esta é a lógica preferencial quando a OPENAI_API_KEY está configurada.
-    """
     pergunta = str((atendimento or {}).get("descricao") or "").strip()
     if not pergunta:
         return "Não foi possível gerar resposta segura pela Zel API, pois o atendimento não possui descrição/pergunta.", [], []
@@ -6679,30 +6675,29 @@ def gerar_minuta_zel_api_para_atendimento(atendimento):
     base = "\n\n---\n\n".join(blocos)
 
     prompt = f"""
-Você é a Zel, agente institucional controlada do SIGA-COR, utilizado pela SEPRO e SEOCE.
+Você é a Zel, agente institucional controlada do SIGA-COR, utilizada pela SEPRO e SEOCE em funcionamento oficial no ambiente de testes do sistema.
 
 REGRA ABSOLUTA:
 - Responda somente com base nos Instrumentos de orientação fornecidos.
-- Não invente resposta.
 - Não use conhecimento externo.
-- Não force relação entre a pergunta e um instrumento apenas por palavra parecida.
-- Se o instrumento não tratar diretamente do tema perguntado, responda: "Sem base suficiente".
-- Se a pergunta mencionar Caixa/CEF, operação bancária, União, GRU, recolhimento ou erro de operação, só responda se os instrumentos fornecidos tratarem expressamente desse tema.
+- Não invente.
+- Não aproveite instrumento genérico para responder tema específico.
+- Se os instrumentos não tratarem diretamente da pergunta, responda que não há base suficiente e não apresente orientação conclusiva.
+- Se a pergunta mencionar Caixa, CEF, União, operação bancária, GRU, recolhimento ou depósito, somente responda se o instrumento tratar expressamente disso.
 - Não copie documento inteiro.
-- A resposta deve ser útil, objetiva e institucional.
 
 DADOS DO ATENDIMENTO:
 Seção: {(atendimento or {}).get("secao") or "Não informada"}
 Assunto: {(atendimento or {}).get("assunto") or "Não informado"}
 Pergunta: {pergunta}
 
-INSTRUMENTOS DE ORIENTAÇÃO FORNECIDOS:
+INSTRUMENTOS FORNECIDOS:
 {base}
 
-FORMATO OBRIGATÓRIO:
+FORMATO:
 
 Resposta objetiva:
-[responda diretamente; se não houver base direta, escreva: Não foi possível responder com segurança, pois os instrumentos cadastrados não tratam diretamente do tema.]
+[responda diretamente; se não houver base direta, diga: Não foi possível responder com segurança, pois os instrumentos cadastrados não tratam diretamente do tema.]
 
 Procedimento sugerido:
 1. ...
@@ -6717,7 +6712,7 @@ Nível de confiança:
 [Alta, Média, Baixa ou Sem base suficiente]
 
 Alerta:
-[indique limitação, necessidade de validação humana ou necessidade de cadastrar instrumento específico]
+[limitação ou necessidade de cadastrar instrumento específico]
 """.strip()
 
     ok, msg, resposta = zel_api_post_responses(prompt, modelo=modelo_zel_api(), max_output_tokens=1100)
@@ -6725,7 +6720,7 @@ Alerta:
         return (
             "Não foi possível acionar a Zel API.\n\n"
             f"Motivo técnico: {msg}\n\n"
-            "Providência sugerida: tente novamente ou utilize a análise manual enquanto a API estiver indisponível."
+            "Providência sugerida: tente novamente ou utilize análise manual enquanto a API estiver indisponível."
         ), instrumentos, []
 
     return resposta, instrumentos, []
@@ -6733,25 +6728,18 @@ Alerta:
 
 def gerar_minuta_zel_para_atendimento(atendimento):
     """
-    Gera minuta da Zel.
-    Preferência: Zel API com OpenAI, quando configurada.
-    Fallback: lógica local antiga, apenas se API não estiver configurada.
+    Gera minuta da Zel em funcionamento oficial.
+    Usa obrigatoriamente a Zel API quando OPENAI_API_KEY estiver configurada.
+    Sem API configurada, bloqueia a resposta automática.
     """
     if "zel_api_disponivel" in globals() and zel_api_disponivel():
         return gerar_minuta_zel_api_para_atendimento(atendimento)
 
-    fontes = fontes_relevantes_zel(atendimento=atendimento, limite=12)
-    resposta, melhor_fonte, score = zel2_gerar_resposta_estruturada(
-        atendimento=atendimento,
-        pergunta=(atendimento or {}).get("descricao") or "",
-        fontes=fontes
-    )
-
-    if not fontes:
-        return resposta, [], []
-
-    fontes_usadas = [melhor_fonte] if melhor_fonte else fontes[:1]
-    return resposta, fontes_usadas, []
+    return (
+        "Não foi possível gerar uma resposta automática segura.\n\n"
+        "Motivo: a Zel API não está configurada neste ambiente. "
+        "Configure OPENAI_API_KEY nos Secrets para usar a Zel."
+    ), [], []
 
 
 def registrar_uso_zel(atendimento_id, acao, resumo):
@@ -7427,61 +7415,18 @@ def modelo_zel_api():
         return "gpt-4.1-mini"
 
 
-def testar_openai_api():
-    """
-    Faz uma chamada mínima à OpenAI API sem depender do pacote externo 'openai'.
-    Usa requests, que já é dependência do SIGA-COR.
-    """
-    ok_chave, chave = openai_api_key_configurada()
-    if not ok_chave:
-        return False, "OPENAI_API_KEY não foi encontrada nos Secrets do Streamlit.", ""
 
-    modelo = modelo_zel_api()
 
+
+def zel_api_disponivel():
     try:
-        url = "https://api.openai.com/v1/responses"
-        headers = {
-            "Authorization": f"Bearer {chave}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": modelo,
-            "input": "Responda exatamente: Conexão da Zel API realizada com sucesso.",
-            "max_output_tokens": 80,
-        }
-
-        resp = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=60)
-
-        if resp.status_code >= 400:
-            detalhe = resp.text or f"HTTP {resp.status_code}"
-            return False, f"Falha na OpenAI API: HTTP {resp.status_code} - {detalhe}", ""
-
-        dados = resp.json()
-
-        texto = dados.get("output_text", "") or ""
-
-        if not texto:
-            partes = []
-            for item in dados.get("output", []) or []:
-                for content in item.get("content", []) or []:
-                    if isinstance(content, dict):
-                        if content.get("type") == "output_text" and content.get("text"):
-                            partes.append(content.get("text"))
-                        elif content.get("text"):
-                            partes.append(content.get("text"))
-            texto = "\n".join(partes).strip()
-
-        if not texto:
-            texto = "Resposta recebida, mas sem texto extraído."
-
-        return True, f"OpenAI API conectada com sucesso usando o modelo {modelo}.", texto
-
-    except Exception as e:
-        return False, f"Falha ao testar OpenAI API: {type(e).__name__}: {e}", ""
+        ok, _ = openai_api_key_configurada()
+        return bool(ok)
+    except Exception:
+        return False
 
 
-
-def zel_api_post_responses(input_text, modelo=None, max_output_tokens=900):
+def zel_api_post_responses(input_text, modelo=None, max_output_tokens=1200):
     ok_chave, chave = openai_api_key_configurada()
     if not ok_chave:
         return False, "OPENAI_API_KEY não foi encontrada nos Secrets do Streamlit.", ""
@@ -7500,7 +7445,12 @@ def zel_api_post_responses(input_text, modelo=None, max_output_tokens=900):
             "max_output_tokens": max_output_tokens,
         }
 
-        resp = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=90)
+        resp = requests.post(
+            url,
+            headers=headers,
+            data=json.dumps(payload, ensure_ascii=False),
+            timeout=120,
+        )
 
         if resp.status_code >= 400:
             return False, f"Falha na OpenAI API: HTTP {resp.status_code} - {resp.text}", ""
@@ -7519,10 +7469,7 @@ def zel_api_post_responses(input_text, modelo=None, max_output_tokens=900):
                             partes.append(content.get("text"))
             texto = "\n".join(partes).strip()
 
-        if not texto:
-            texto = "Resposta recebida, mas sem texto extraído."
-
-        return True, "Resposta gerada com sucesso pela Zel API.", texto
+        return True, "Resposta gerada com sucesso pela Zel API.", texto or "Resposta recebida, mas sem texto extraído."
 
     except Exception as e:
         return False, f"Erro ao chamar Zel API: {type(e).__name__}: {e}", ""
@@ -7572,7 +7519,7 @@ def zel_api_tokenizar(texto):
         "ser", "são", "sao", "uma", "umas", "uns", "com", "sem", "por", "que",
         "dos", "das", "nas", "nos", "após", "apos", "fazer", "quando", "onde",
         "quem", "erro", "correto", "certo", "está", "esta", "não", "nao", "quer",
-        "teria", "deveria", "ocorre", "acontece"
+        "caixa", "cef", "união", "uniao"
     }
     tokens = []
     for t in texto.split():
@@ -7581,15 +7528,56 @@ def zel_api_tokenizar(texto):
     return tokens[:80]
 
 
+
+def zel_api_classificar_tema(pergunta):
+    p = str(pergunta or "").casefold()
+
+    if any(x in p for x in ["caixa", "cef", "união", "uniao", "operação", "operacao", "recolh", "gru", "depósito", "deposito"]):
+        return "financeiro_caixa_recolhimento"
+
+    if any(x in p for x in ["local de votação", "local de votacao", "código do local", "codigo do local", "de-para", "elo", "seção", "secao"]):
+        return "local_votacao_elo"
+
+    if any(x in p for x in ["multa", "parcelamento", "cumprimento de sentença", "cumprimento de sentenca"]):
+        return "multas"
+
+    if any(x in p for x in ["mesário", "mesario", "mesa receptora", "eleição", "eleicao"]):
+        return "atos_eleitorais"
+
+    return "geral"
+
+
+def zel_api_instrumento_trata_tema(instrumento, tema):
+    texto = (
+        str(instrumento.get("conteudo") or "").casefold()
+        + " " + str(instrumento.get("titulo") or "").casefold()
+        + " " + str(instrumento.get("assunto") or "").casefold()
+    )
+
+    grupos = {
+        "financeiro_caixa_recolhimento": ["caixa", "cef", "união", "uniao", "operação", "operacao", "gru", "recolh", "depósito", "deposito", "fundo partidário", "fundo partidario"],
+        "local_votacao_elo": ["local de votação", "local de votacao", "código do local", "codigo do local", "de-para", "elo", "seção eleitoral", "secao eleitoral"],
+        "multas": ["multa", "parcelamento", "cumprimento de sentença", "cumprimento de sentenca", "execução", "execucao"],
+        "atos_eleitorais": ["mesa receptora", "mesário", "mesario", "seção eleitoral", "secao eleitoral", "eleição", "eleicao"],
+        "geral": [],
+    }
+
+    termos = grupos.get(tema, [])
+    if not termos:
+        return True
+
+    return any(t in texto for t in termos)
+
+
 def zel_api_pontuar_instrumento(pergunta, instrumento):
-    """
-    Pontuação mais rígida para evitar resposta fora de contexto.
-    Exige termos substantivos aderentes ao conteúdo do instrumento.
-    """
     pergunta_norm = str(pergunta or "").casefold()
     texto = str(instrumento.get("conteudo") or "").casefold()
     assunto = str(instrumento.get("assunto") or "").casefold()
     titulo = str(instrumento.get("titulo") or "").casefold()
+
+    tema = zel_api_classificar_tema(pergunta_norm)
+    if not zel_api_instrumento_trata_tema(instrumento, tema):
+        return 0
 
     termos = zel_api_tokenizar(pergunta_norm)
     if not termos:
@@ -7597,10 +7585,9 @@ def zel_api_pontuar_instrumento(pergunta, instrumento):
 
     score = 0
     encontrados = 0
-
     for t in set(termos):
         if t in texto:
-            score += 5
+            score += 6
             encontrados += 1
         if t in assunto:
             score += 4
@@ -7609,26 +7596,13 @@ def zel_api_pontuar_instrumento(pergunta, instrumento):
             score += 3
             encontrados += 1
 
-    # Bônus para expressões compostas relevantes.
-    expressoes = [
-        "caixa", "cef", "operação", "operacao", "união", "uniao", "gru",
-        "recolhimento", "recolher", "multa", "depósito", "deposito",
-        "fundo partidário", "fundo partidario", "local de votação", "local de votacao",
-        "código do local", "codigo do local", "de-para", "elo"
-    ]
-    for exp in expressoes:
-        if exp in pergunta_norm and exp in texto:
-            score += 8
+    if tema == "financeiro_caixa_recolhimento":
+        termos_financeiros = ["caixa", "cef", "união", "uniao", "operação", "operacao", "gru", "recolh", "depósito", "deposito"]
+        texto_ok = any(x in texto or x in titulo or x in assunto for x in termos_financeiros)
+        if not texto_ok:
+            return 0
 
-    # Se a pergunta fala de CEF/Caixa/operação/União e o instrumento não fala disso,
-    # derruba a pontuação para evitar puxar norma eleitoral genérica.
-    pergunta_financeira = any(x in pergunta_norm for x in ["caixa", "cef", "operação", "operacao", "união", "uniao", "recolh", "gru"])
-    texto_financeiro = any(x in texto for x in ["caixa", "cef", "operação", "operacao", "união", "uniao", "recolh", "gru", "fundo partid"])
-    if pergunta_financeira and not texto_financeiro:
-        return 0
-
-    # Exige pelo menos 2 aderências ou pontuação forte.
-    if encontrados < 2 and score < 18:
+    if encontrados < 2 and score < 20:
         return 0
 
     return score
@@ -7636,175 +7610,88 @@ def zel_api_pontuar_instrumento(pergunta, instrumento):
 
 def zel_api_selecionar_instrumentos(pergunta, limite=4):
     instrumentos = zel_api_instrumentos_ativos()
-    pontuados = sorted(
-        [(zel_api_pontuar_instrumento(pergunta, inst), inst) for inst in instrumentos],
-        key=lambda x: x[0],
-        reverse=True,
-    )
+    tema = zel_api_classificar_tema(pergunta)
 
-    selecionados = [inst for score, inst in pontuados if score >= 10][:limite]
-    return selecionados
+    pontuados = []
+    for inst in instrumentos:
+        score = zel_api_pontuar_instrumento(pergunta, inst)
+        if score > 0:
+            pontuados.append((score, inst))
 
+    pontuados = sorted(pontuados, key=lambda x: x[0], reverse=True)
 
-def zel_api_gerar_resposta_piloto(pergunta, instrumentos=None):
-    pergunta = str(pergunta or "").strip()
-    instrumentos = instrumentos or zel_api_selecionar_instrumentos(pergunta, limite=4)
-
-    if not pergunta:
-        return False, "Informe uma pergunta.", ""
-
-    if not instrumentos:
-        return False, "Não foi possível gerar uma resposta segura pela Zel API, pois não foram encontrados Instrumentos de orientação aderentes ao tema.", ""
-
-    blocos = []
-    for i, inst in enumerate(instrumentos, start=1):
-        conteudo = str(inst.get("conteudo") or "")
-        if len(conteudo) > 5000:
-            conteudo = conteudo[:5000] + "\n[conteúdo truncado para teste]"
-        blocos.append(f"INSTRUMENTO {i}: {inst.get('titulo')}\n{conteudo}")
-
-    base = "\n\n---\n\n".join(blocos)
-
-    prompt = f"""
-Você é a Zel, agente institucional controlada do SIGA-COR, utilizado pela SEPRO e SEOCE.
-
-REGRA ABSOLUTA:
-- Responda somente com base nos Instrumentos de orientação fornecidos.
-- Não invente prazo, rito, fundamento, sistema, providência ou conclusão.
-- Se os instrumentos não forem suficientes para responder com segurança, diga claramente que não há base suficiente.
-- Não copie o documento inteiro.
-- Use linguagem objetiva, institucional e útil para orientar Zona Eleitoral.
-- Responda em português do Brasil.
-
-PERGUNTA DO ATENDIMENTO:
-{pergunta}
-
-INSTRUMENTOS DE ORIENTAÇÃO DISPONÍVEIS:
-{base}
-
-FORMATO OBRIGATÓRIO DA RESPOSTA:
-
-Resposta objetiva:
-[resposta direta à pergunta]
-
-Procedimento sugerido:
-1. ...
-2. ...
-3. ...
-
-Fundamento utilizado:
-- Instrumento:
-- Trecho aplicável:
-
-Nível de confiança:
-[Alta, Média, Baixa ou Sem base suficiente]
-
-Alerta:
-[se houver limitação, exceção ou necessidade de conferência humana]
-""".strip()
-
-    return zel_api_post_responses(prompt, modelo=modelo_zel_api(), max_output_tokens=1000)
+    minimo = 20 if tema == "financeiro_caixa_recolhimento" else 12
+    return [inst for score, inst in pontuados if score >= minimo][:limite]
 
 
-def tela_diagnostico_zel_api():
-    st.title("Diagnóstico da Zel API")
-    st.caption("Teste de conexão e primeiro teste de resposta com os Instrumentos de orientação cadastrados.")
 
-    ok_chave, chave = openai_api_key_configurada()
-    modelo = modelo_zel_api()
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("OPENAI_API_KEY", "Configurada" if ok_chave else "Não configurada")
-    with col2:
-        st.metric("Modelo da Zel", modelo)
-
-    if ok_chave:
-        final = chave[-6:] if len(chave) >= 6 else "******"
-        st.info(f"Chave detectada nos Secrets. Final da chave: ...{final}")
-    else:
-        st.warning("A chave OPENAI_API_KEY ainda não foi encontrada nos Secrets.")
-
-    st.divider()
-
-    st.subheader("1. Teste simples de conexão")
-    if st.button("Testar conexão da Zel API", type="primary"):
-        with st.spinner("Testando conexão com a OpenAI API..."):
-            ok, msg, texto = testar_openai_api()
-
-        if ok:
-            st.success(msg)
-            st.text_area("Resposta recebida", value=texto, height=120)
-        else:
-            st.error(msg)
-            st.info("Confira se a chave foi salva nos Secrets, se o app foi reiniciado e se há crédito/limite disponível na OpenAI API.")
-
-    st.divider()
-
-    st.subheader("2. Teste piloto com Instrumentos de orientação")
-    st.caption("Este teste ainda não grava resposta no atendimento. Serve apenas para validar a qualidade da Zel API.")
-
-    instrumentos = zel_api_instrumentos_ativos()
-    st.metric("Instrumentos/Base disponíveis", len(instrumentos))
-
-    pergunta = st.text_area(
-        "Pergunta de teste",
-        height=120,
-        placeholder="Ex.: O que acontece com o código do local quando todos os dados são alterados por alteração de local de votação?",
-        key="zel_api_pergunta_teste"
-    )
-
-    if st.button("Gerar resposta piloto com Zel API", type="primary"):
-        with st.spinner("A Zel API está consultando os instrumentos e gerando a resposta..."):
-            selecionados = zel_api_selecionar_instrumentos(pergunta, limite=4)
-            ok, msg, resposta = zel_api_gerar_resposta_piloto(pergunta, selecionados)
-
-        if selecionados:
-            with st.expander("Instrumentos enviados para a Zel API", expanded=False):
-                for i, inst in enumerate(selecionados, start=1):
-                    st.markdown(f"**{i}. {inst.get('titulo')}**")
-                    st.caption(f"Seção: {inst.get('secao')} | Assunto: {inst.get('assunto')}")
-
-        if ok:
-            st.success(msg)
-            st.text_area("Resposta piloto da Zel API", value=resposta, height=420)
-        else:
-            st.warning(msg)
-            if resposta:
-                st.text_area("Retorno", value=resposta, height=220)
-
-    st.info(
-        "Próxima etapa: depois de validarmos boas respostas nesta tela, a Zel API será integrada ao botão "
-        "'Usar Zel para gerar resposta' dentro do atendimento."
-    )
 
 
 def tela_zel_ia_controlada():
-    st.subheader("Zel - agente controlada")
+    st.title("Zel - IA controlada")
     st.caption(
-        "A Zel usa exclusivamente a Base de Conhecimento do SIGA-COR. "
-        "A geração da resposta ocorre dentro do atendimento."
+        "Agente institucional do SIGA-COR para geração de minutas com base nos Instrumentos de orientação da SEPRO/SEOCE."
     )
 
     if usuario_eh_zona_eleitoral():
         st.warning("Este módulo é interno e não está disponível para usuários de Zona Eleitoral.")
         return
 
+    api_ok = False
+    try:
+        api_ok = zel_api_disponivel()
+    except Exception:
+        api_ok = False
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Modo da Zel", "API ativa" if api_ok else "API não configurada")
+    with col2:
+        try:
+            st.metric("Modelo", modelo_zel_api() if api_ok else "Não informado")
+        except Exception:
+            st.metric("Modelo", "Não informado")
+
+    if api_ok:
+        st.success(
+            "A Zel está funcionando por API. As respostas são geradas diretamente dentro do atendimento, "
+            "no botão 'Usar Zel para gerar resposta' ou 'Refazer resposta da Zel'."
+        )
+    else:
+        st.error(
+            "A Zel API não está configurada. Configure OPENAI_API_KEY nos Secrets do Streamlit para habilitar a geração automática."
+        )
+
     st.markdown(
         """
         <div class="zel-banner">
             <strong>Regra de uso da Zel:</strong><br>
-            A Zel não possui acervo paralelo. Instrumentos de orientação é a tela única de cadastro da Base de Conhecimento, que é a fonte única da Zel.
-            Se não houver base aderente ao tema, a Zel informará isso de forma clara e humanizada.
+            A Zel usa somente Instrumentos de orientação cadastrados no SIGA-COR.
+            Se não houver instrumento aderente ao tema, a resposta deve ser bloqueada e encaminhada para complementação da base.
         </div>
         """,
         unsafe_allow_html=True
     )
 
     st.info(
-        "Para alimentar a Zel, cadastre o entendimento em Instrumentos de orientação ou transforme uma resposta validada do atendimento em Base de Conhecimento."
+        "Para melhorar as respostas da Zel, cadastre ou edite os Instrumentos de orientação com: "
+        "perguntas respondidas, orientação institucional objetiva, procedimento e fundamento aplicável."
     )
 
+    st.subheader("Fluxo operacional")
+    st.markdown(
+        """
+        1. Cadastre ou revise o Instrumento de orientação.
+        2. Abra o atendimento.
+        3. Clique em **Usar Zel para gerar resposta**.
+        4. Revise a minuta.
+        5. Grave a resposta validada no atendimento.
+        6. Quando necessário, salve também como Instrumento de orientação.
+        """
+    )
+
+    st.divider()
+    st.subheader("Pendências de respostas da Zel")
     tela_validacao_zel()
 
 
@@ -8038,7 +7925,6 @@ def sidebar_menu():
     with st.sidebar.expander("Conhecimento e orientações", expanded=True):
         botoes_conhecimento = [
             ("Zel - IA controlada", "Zel - IA controlada"),
-            ("Diagnóstico Zel API", "Diagnóstico Zel API"),
             ("Instrumentos de orientação", "Instrumentos de orientação"),
         ]
         if usuario_pode_ver_governanca():
@@ -9678,14 +9564,14 @@ def componente_zel_no_atendimento(atendimento, chave_prefixo="zel_atendimento"):
     if atendimento_id is None:
         return
 
-    resultado_key = f"zel_minuta_resultado_{atendimento_id}"
-    fontes_key = f"zel_minuta_fontes_{atendimento_id}"
-    bases_key = f"zel_minuta_bases_{atendimento_id}"
+    resultado_key = f"zel_api_oficial_minuta_resultado_{atendimento_id}"
+    fontes_key = f"zel_api_oficial_minuta_fontes_{atendimento_id}"
+    bases_key = f"zel_api_oficial_minuta_bases_{atendimento_id}"
     minuta_valor = st.session_state.get(resultado_key, "")
 
     with st.expander("Zel - usar agente controlada para gerar resposta", expanded=False):
         st.caption(
-            "A Zel usa exclusivamente os Instrumentos de orientação cadastrados no SIGA-COR. "
+            "A Zel usa os Instrumentos de orientação da SEPRO/SEOCE e gera resposta por API, com bloqueio quando não houver base aderente. "
             "Após cadastrar ou atualizar a base, clique em 'Refazer resposta da Zel'."
         )
 
@@ -9712,6 +9598,13 @@ def componente_zel_no_atendimento(atendimento, chave_prefixo="zel_atendimento"):
             st.rerun()
 
         minuta_valor = st.session_state.get(resultado_key, "")
+        if st.button("Limpar resposta da Zel", key=f"{chave_prefixo}_limpar_zel_api_{atendimento_id}"):
+            st.session_state.pop(resultado_key, None)
+            st.session_state.pop(fontes_key, None)
+            st.session_state.pop(bases_key, None)
+            st.rerun()
+
+
         if not minuta_valor:
             st.info("Nenhuma resposta da Zel foi gerada ainda para este atendimento.")
             return
@@ -13658,9 +13551,6 @@ def main():
         else:
             st.warning("O Portal das Zonas é visível apenas para usuários com perfil Zona Eleitoral.")
             tela_menu_principal()
-
-    elif escolha == "Diagnóstico Zel API":
-        tela_diagnostico_zel_api()
 
     elif escolha == "Zel - IA controlada":
         tela_zel_ia_controlada()
