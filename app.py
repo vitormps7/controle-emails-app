@@ -640,11 +640,20 @@ def supabase_get(tabela, params=None):
             supabase_rest_url(tabela),
             headers=supabase_headers(),
             params=params or {},
-            timeout=30,
+            timeout=20,
         )
         resp.raise_for_status()
         return resp.json()
     except Exception as erro:
+        # A tabela de assuntos é usada em telas de entrada.
+        # Se o Supabase/requests oscilar, não podemos quebrar o Novo Atendimento.
+        if str(tabela) == "assuntos":
+            st.warning(
+                "Não foi possível carregar a lista completa de assuntos neste momento. "
+                "O sistema usará a lista mínima para não interromper o cadastro."
+            )
+            return []
+
         url, _ = supabase_config()
         st.error("Erro ao acessar o Supabase.")
         st.warning("O aplicativo tentou acessar este endereço do Supabase pela API REST:")
@@ -900,7 +909,7 @@ def supabase_get_silencioso(tabela, params=None):
             supabase_rest_url(tabela),
             headers=supabase_headers(),
             params=params or {},
-            timeout=30,
+            timeout=20,
         )
         resp.raise_for_status()
         return resp.json()
@@ -1869,14 +1878,38 @@ def excluir_atendimento_por_id(id_atendimento):
 
 
 
+
+def assuntos_fallback_rows(secao=None):
+    """
+    Lista mínima de assuntos para manter o sistema funcionando se a leitura do Supabase falhar.
+    Não grava nada no banco.
+    """
+    secao_norm = normalizar_secao(secao or "SEPRO")
+    nomes = list(ASSUNTOS_PADRAO) if "ASSUNTOS_PADRAO" in globals() else ["Não informado"]
+    if "Não informado" not in nomes:
+        nomes.insert(0, "Não informado")
+
+    return [
+        {
+            "id": None,
+            "nome": nome,
+            "secao": secao_norm,
+            "categoria": normalizar_tipologia_assunto(None, nome),
+            "tipologia": normalizar_tipologia_assunto(None, nome),
+            "subcategoria": "",
+            "ordem": 0,
+            "ativo": True,
+        }
+        for nome in nomes
+    ]
+
+
 def assunto_rows():
-    cached = cache_sessao_get("assuntos_rows", ttl_segundos=300)
+    cached = cache_sessao_get("assuntos_rows", ttl_segundos=180)
     if cached is not None:
         return cached
 
-    # Busca todos os assuntos. O filtro de ativo é feito em Python para evitar
-    # inconsistências caso algum registro antigo esteja sem o campo ativo.
-    rows = supabase_get("assuntos", {"select": "*", "order": "secao.asc,nome.asc"})
+    rows = supabase_get_silencioso("assuntos", {"select": "*", "order": "secao.asc,nome.asc"})
     registros = []
 
     for row in (rows or []):
@@ -1887,7 +1920,7 @@ def assunto_rows():
         if not nome:
             continue
 
-        tipologia = normalizar_tipologia_assunto(row.get("categoria"), nome)
+        tipologia = normalizar_tipologia_assunto(row.get("categoria") or row.get("tipologia"), nome)
         registros.append({
             "id": row.get("id"),
             "nome": nome,
@@ -1900,17 +1933,7 @@ def assunto_rows():
         })
 
     if not registros:
-        registros = [
-            {
-                "nome": nome,
-                "secao": "SEPRO",
-                "categoria": normalizar_tipologia_assunto(None, nome),
-                "tipologia": normalizar_tipologia_assunto(None, nome),
-                "ativo": True,
-            }
-            for nome in ASSUNTOS_PADRAO
-        ]
-        salvar_assuntos_registros(registros)
+        registros = assuntos_fallback_rows("SEPRO")
 
     registros = sorted(
         registros,
@@ -1921,7 +1944,6 @@ def assunto_rows():
         )
     )
     return cache_sessao_set("assuntos_rows", registros)
-
 
 
 def tipologia_do_assunto(nome_assunto, secao=None):
@@ -1940,10 +1962,14 @@ def tipologia_do_assunto(nome_assunto, secao=None):
 
 def assunto_rows_atualizados():
     """
-    Carrega assuntos diretamente do Supabase para evitar cache antigo.
-    Usado especialmente em telas dependentes da seção selecionada.
+    Carrega assuntos do Supabase de forma tolerante a falha.
+    Não usa supabase_get com st.stop, para não quebrar Novo Atendimento.
     """
-    rows = supabase_get("assuntos", {"select": "*", "order": "secao.asc,nome.asc"})
+    cached = cache_sessao_get("assuntos_rows_atualizados", ttl_segundos=180)
+    if cached is not None:
+        return cached
+
+    rows = supabase_get_silencioso("assuntos", {"select": "*", "order": "secao.asc,nome.asc"})
     registros = []
 
     for row in (rows or []):
@@ -1954,7 +1980,7 @@ def assunto_rows_atualizados():
         if not nome:
             continue
 
-        tipologia = normalizar_tipologia_assunto(row.get("categoria"), nome)
+        tipologia = normalizar_tipologia_assunto(row.get("categoria") or row.get("tipologia"), nome)
         registros.append({
             "id": row.get("id"),
             "nome": nome,
@@ -1967,12 +1993,9 @@ def assunto_rows_atualizados():
         })
 
     if not registros:
-        try:
-            return assunto_rows()
-        except Exception:
-            return []
+        registros = assuntos_fallback_rows("SEPRO")
 
-    return sorted(
+    registros = sorted(
         registros,
         key=lambda r: (
             r.get("secao", "SEPRO"),
@@ -1981,33 +2004,49 @@ def assunto_rows_atualizados():
         )
     )
 
+    return cache_sessao_set("assuntos_rows_atualizados", registros)
+
 
 def assuntos_da_secao(secao):
     """
     Retorna somente os assuntos da seção selecionada.
-    Sempre inclui 'Não informado' como opção inicial.
+    Se a leitura do Supabase falhar, retorna lista mínima sem quebrar a tela.
     """
     secao_norm = normalizar_secao(secao)
+    cache_key = f"assuntos_da_secao_{secao_norm}"
+    cached = cache_sessao_get(cache_key, ttl_segundos=180)
+    if cached is not None:
+        return cached
+
     lista = []
+    try:
+        for r in assunto_rows_atualizados():
+            nome = str(r.get("nome") or "").strip()
+            if not nome or nome == "Não informado":
+                continue
 
-    for r in assunto_rows_atualizados():
-        nome = str(r.get("nome") or "").strip()
-        if not nome or nome == "Não informado":
-            continue
-
-        if normalizar_secao(r.get("secao")) == secao_norm:
-            lista.append(nome)
+            if normalizar_secao(r.get("secao")) == secao_norm:
+                lista.append(nome)
+    except Exception:
+        lista = []
 
     lista = sorted(set(lista), key=lambda x: x.casefold())
-    return ["Não informado"] + lista
 
+    if not lista and secao_norm == "SEPRO":
+        lista = [
+            str(r.get("nome") or "")
+            for r in assuntos_fallback_rows(secao_norm)
+            if str(r.get("nome") or "") != "Não informado"
+        ]
+
+    resultado = ["Não informado"] + lista
+    return cache_sessao_set(cache_key, resultado)
 
 
 def assuntos(secao=None):
     """
     Lista assuntos.
     Quando houver seção informada, retorna apenas assuntos daquela seção.
-    Usa consulta atualizada para que assunto recém-cadastrado apareça sem aguardar cache.
     """
     if secao:
         return assuntos_da_secao(secao)
@@ -2015,7 +2054,7 @@ def assuntos(secao=None):
     try:
         registros = assunto_rows_atualizados()
     except Exception:
-        registros = assunto_rows()
+        registros = assuntos_fallback_rows("SEPRO")
 
     lista = []
     for r in registros:
@@ -2126,7 +2165,10 @@ def salvar_assuntos_registros(registros):
                 st.code(str(msg))
                 st.stop()
 
-    cache_sessao_limpar("assuntos_rows")
+    cache_sessao_limpar("assuntos_rows", "assuntos_rows_atualizados")
+    for _k in list(st.session_state.get("_cache_leve_siga_cor", {}).keys()):
+        if str(_k).startswith("assuntos_da_secao_"):
+            st.session_state["_cache_leve_siga_cor"].pop(_k, None)
     criar_backup_automatico("apos_salvar_assuntos")
 
 
