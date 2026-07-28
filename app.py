@@ -1596,12 +1596,12 @@ def atendimento_app_para_db(a):
 
 
 def montar_backup_completo():
-
     def sessoes_backup_seguro():
         try:
-            return sessoes_backup_seguro()
+            return {s.get("email"): s for s in usuarios_logados()}
         except Exception:
             return {}
+
     return {
         "sistema": "SIGA-COR",
         "versao_backup": "2.1-supabase-rest",
@@ -1609,7 +1609,7 @@ def montar_backup_completo():
         "observacao": "Backup completo gerado a partir do banco Supabase.",
         "atendimentos": atendimentos(),
         "usuarios": usuarios(),
-        "assuntos": assuntos(),
+        "assuntos": assunto_rows_atualizados() if "assunto_rows_atualizados" in globals() else assuntos(),
         "sessoes": sessoes_backup_seguro(),
     }
 
@@ -1755,19 +1755,105 @@ def atendimentos():
     return cache_sessao_set("atendimentos", dados)
 
 
+
+def supabase_upsert_many_diagnostico(tabela, rows, on_conflict="id"):
+    """
+    Upsert seguro no Supabase, usando service role se configurada.
+    Retorna (ok, mensagem, dados), sem derrubar a aplicação com st.stop().
+    """
+    if not rows:
+        return True, "Nenhum registro para gravar.", []
+
+    try:
+        headers = supabase_write_headers() if "supabase_write_headers" in globals() else supabase_headers()
+        headers = dict(headers)
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+
+        resp = requests.post(
+            supabase_rest_url(tabela),
+            headers=headers,
+            params={"on_conflict": on_conflict},
+            data=json.dumps(rows, ensure_ascii=False),
+            timeout=45,
+        )
+
+        if resp.status_code >= 400:
+            detalhe = resp.text or f"HTTP {resp.status_code}"
+
+            if tabela == "assuntos" and ("assuntos_nome_key" in detalhe or "duplicate key" in detalhe):
+                detalhe += (
+                    "\n\nO banco ainda possui a regra antiga assuntos_nome_key, que impede o mesmo assunto "
+                    "em seções diferentes. Execute o SQL 'sql_corrigir_assuntos_por_secao.sql'."
+                )
+
+            if "row-level security" in detalhe or "violates row-level security policy" in detalhe:
+                detalhe += (
+                    f"\n\nA tabela {tabela} está bloqueada por RLS. Execute as policies SQL ou configure "
+                    "SUPABASE_SERVICE_ROLE_KEY nos Secrets do Streamlit."
+                )
+
+            return False, detalhe, []
+
+        dados = resp.json() if resp.text else []
+        return True, "Registros gravados com sucesso.", dados
+
+    except Exception as e:
+        return False, str(e), []
+
+
+def supabase_insert_many_diagnostico(tabela, rows):
+    """
+    Insert seguro no Supabase, usando service role se configurada.
+    """
+    if not rows:
+        return True, "Nenhum registro para inserir.", []
+
+    try:
+        headers = supabase_write_headers() if "supabase_write_headers" in globals() else supabase_headers()
+        headers = dict(headers)
+        headers["Prefer"] = "return=representation"
+
+        resp = requests.post(
+            supabase_rest_url(tabela),
+            headers=headers,
+            data=json.dumps(rows, ensure_ascii=False),
+            timeout=45,
+        )
+
+        if resp.status_code >= 400:
+            detalhe = resp.text or f"HTTP {resp.status_code}"
+
+            if tabela == "assuntos" and ("assuntos_nome_key" in detalhe or "duplicate key" in detalhe):
+                detalhe += (
+                    "\n\nO banco ainda possui a regra antiga assuntos_nome_key, que impede o mesmo assunto "
+                    "em seções diferentes. Execute o SQL 'sql_corrigir_assuntos_por_secao.sql'."
+                )
+
+            return False, detalhe, []
+
+        dados = resp.json() if resp.text else []
+        return True, "Registros inseridos com sucesso.", dados
+
+    except Exception as e:
+        return False, str(e), []
+
+
 def salvar_atendimentos(lista):
+    """
+    Salva/atualiza atendimentos sem apagar registros antigos por efeito colateral.
+    A exclusão de atendimento deve ocorrer pela função própria de excluir atendimento.
+    """
     criar_backup_automatico("antes_salvar_atendimentos")
+
     rows = [atendimento_app_para_db(a) for a in lista]
     rows = [r for r in rows if r.get("assunto") or r.get("descricao") or r.get("origem")]
 
     if rows:
-        # Grava/atualiza primeiro. Somente depois remove registros antigos.
-        supabase_upsert_many("atendimentos", rows, on_conflict="id")
-        ids = [r.get("id") for r in rows if r.get("id") not in ("", None)]
-        if ids:
-            supabase_delete_not_in("atendimentos", "id", ids)
-    else:
-        supabase_delete_all("atendimentos")
+        ok, msg, dados = supabase_upsert_many_diagnostico("atendimentos", rows, on_conflict="id")
+        if not ok:
+            st.error("Não foi possível gravar o atendimento.")
+            st.code(str(msg))
+            st.stop()
 
     cache_sessao_limpar("atendimentos", "usuarios_logados")
     criar_backup_automatico("apos_salvar_atendimentos")
@@ -1943,8 +2029,13 @@ def assuntos(secao=None):
 
 
 def salvar_assuntos_registros(registros):
+    """
+    Salva assuntos por seção.
+    Regra correta: o mesmo nome de assunto pode existir em seções diferentes,
+    mas não pode duplicar dentro da mesma seção.
+    Requer SQL para substituir a constraint antiga assuntos_nome_key por (nome, secao).
+    """
     criar_backup_automatico("antes_salvar_assuntos")
-    supabase_delete_all("assuntos")
 
     normalizados = []
     vistos = set()
@@ -1956,12 +2047,14 @@ def salvar_assuntos_registros(registros):
             tipologia = normalizar_tipologia_assunto(r.get("tipologia") or r.get("categoria"), nome)
             subcategoria = str(r.get("subcategoria") or "").strip()
             ordem = int(r.get("ordem") or 0)
+            ativo = bool(r.get("ativo", True))
         else:
             nome = str(r or "").strip()
             secao = "SEPRO"
             tipologia = normalizar_tipologia_assunto(None, nome)
             subcategoria = ""
             ordem = 0
+            ativo = True
 
         if not nome:
             continue
@@ -1975,45 +2068,64 @@ def salvar_assuntos_registros(registros):
             "nome": nome,
             "secao": secao,
             "categoria": tipologia,
+            "tipologia": tipologia,
             "subcategoria": subcategoria,
             "ordem": ordem,
-            "ativo": True,
-            "criado_em": agora_iso(),
+            "ativo": ativo,
+            "criado_em": r.get("criado_em") if isinstance(r, dict) and r.get("criado_em") else agora_iso(),
         })
 
-    if not any(r["nome"] == "Não informado" for r in normalizados):
-        normalizados.append({
-            "nome": "Não informado",
-            "secao": "SEPRO",
-            "categoria": "Não classificado",
-            "subcategoria": "",
-            "ordem": 0,
-            "ativo": True,
-            "criado_em": agora_iso(),
-        })
+    # Garante "Não informado" para cada seção, porque o assunto é filtrado por unidade.
+    for secao_padrao in secoes_atendimento() if "secoes_atendimento" in globals() else list(SECOES_ATENDIMENTO):
+        chave = ("não informado", normalizar_secao(secao_padrao))
+        if chave not in vistos:
+            normalizados.append({
+                "nome": "Não informado",
+                "secao": normalizar_secao(secao_padrao),
+                "categoria": "Não classificado",
+                "tipologia": "Não classificado",
+                "subcategoria": "",
+                "ordem": 0,
+                "ativo": True,
+                "criado_em": agora_iso(),
+            })
+            vistos.add(chave)
 
     normalizados = sorted(
         normalizados,
-        key=lambda r: (0 if r["nome"] == "Não informado" else 1, r["secao"], r["nome"].casefold())
+        key=lambda r: (
+            r["secao"],
+            0 if r["nome"] == "Não informado" else 1,
+            r["nome"].casefold()
+        )
     )
 
     if normalizados:
-        try:
-            supabase_insert("assuntos", normalizados)
-        except Exception:
-            # Compatibilidade com bancos antigos sem colunas categoria/subcategoria/ordem.
-            # Nesse caso, o assunto permanece cadastrado, mas a tipologia só será persistida
-            # após a migração opcional da tabela assuntos.
-            basicos = [
-                {
-                    "nome": r.get("nome"),
-                    "secao": r.get("secao"),
-                    "ativo": r.get("ativo", True),
-                    "criado_em": r.get("criado_em", agora_iso()),
-                }
-                for r in normalizados
-            ]
-            supabase_insert("assuntos", basicos)
+        ok, msg, dados = supabase_upsert_many_diagnostico("assuntos", normalizados, on_conflict="nome,secao")
+
+        if not ok:
+            # Compatibilidade se a tabela ainda não tiver as colunas novas.
+            msg_lower = str(msg or "").casefold()
+            if "categoria" in msg_lower or "tipologia" in msg_lower or "subcategoria" in msg_lower or "ordem" in msg_lower or "schema cache" in msg_lower:
+                basicos = [
+                    {
+                        "nome": r.get("nome"),
+                        "secao": r.get("secao"),
+                        "ativo": r.get("ativo", True),
+                        "criado_em": r.get("criado_em", agora_iso()),
+                    }
+                    for r in normalizados
+                ]
+                ok2, msg2, dados2 = supabase_upsert_many_diagnostico("assuntos", basicos, on_conflict="nome,secao")
+                if not ok2:
+                    st.error("Não foi possível gravar os assuntos.")
+                    st.code(str(msg2))
+                    st.stop()
+            else:
+                st.error("Não foi possível gravar os assuntos.")
+                st.code(str(msg))
+                st.stop()
+
     cache_sessao_limpar("assuntos_rows")
     criar_backup_automatico("apos_salvar_assuntos")
 
@@ -2579,7 +2691,8 @@ DADOS DO ATENDIMENTO
 ID: {atendimento.get('id')}
 Data do atendimento: {data_para_exibir(atendimento.get('data'))}
 Seção: {normalizar_secao(atendimento.get('secao'))}
-Fonte/canal: {atendimento.get('fonte') or atendimento.get('origem') or 'Não informado'}
+Fonte/canal: {atendimento.get('fonte') or 'Não informado'}
+Servidor demandante: {servidor_demandante_atendimento(atendimento)}
 Zona eleitoral: {atendimento.get('zona_eleitoral') or 'Não informado'}
 Assunto: {atendimento.get('assunto') or 'Não informado'}
 Responsável: {atendimento.get('servidor') or 'Não informado'}
@@ -4366,11 +4479,31 @@ def assuntos_por_tipologia(secao, tipologia):
 
 
 
+
+def servidor_demandante_atendimento(atendimento):
+    """
+    No SIGA-COR, o campo técnico 'origem' passa a guardar o servidor demandante.
+    O canal de entrada fica exclusivamente em 'fonte'.
+    Para registros antigos em que origem repetia fonte/canal, não exibe como demandante.
+    """
+    atendimento = atendimento or {}
+    valor = str(atendimento.get("servidor_demandante") or atendimento.get("origem") or "").strip()
+    fonte = str(atendimento.get("fonte") or "").strip()
+
+    if not valor:
+        return "Não informado"
+
+    if fonte and valor.casefold() == fonte.casefold():
+        return "Não informado"
+
+    return valor
+
+
 def tela_novo_atendimento():
     """
     Porta de entrada da demanda.
     Registra apenas dados essenciais:
-    data, fonte/canal, zona eleitoral, seção responsável, assunto e descrição da pergunta.
+    data, fonte/canal, servidor demandante, zona eleitoral, seção responsável, assunto e descrição da pergunta.
     Os demais campos são preenchidos na fase Em atendimento.
     """
     exibir_mensagem_sistema()
@@ -4383,6 +4516,24 @@ def tela_novo_atendimento():
 
     usuario = usuario_logado() or {}
 
+    # Unidade fora do formulário para atualizar imediatamente os assuntos.
+    secoes_disponiveis = secoes_atendimento() if "secoes_atendimento" in globals() else list(SECOES_ATENDIMENTO)
+    secao = st.selectbox(
+        "Seção responsável",
+        secoes_disponiveis,
+        index=0,
+        key="novo_atendimento_secao_responsavel",
+        help="Ao trocar a seção, o campo Assunto mostra apenas assuntos cadastrados para a unidade selecionada."
+    )
+
+    assuntos_disponiveis = assuntos_da_secao(secao) if "assuntos_da_secao" in globals() else assuntos(secao)
+
+    if len(assuntos_disponiveis) <= 1:
+        st.warning(
+            f"Não há assuntos cadastrados para {secao}. "
+            "Cadastre o assunto em Administração/Parâmetros ou selecione outra unidade."
+        )
+
     with st.form("form_novo_atendimento_entrada_minima", clear_on_submit=True):
         col1, col2 = st.columns(2)
 
@@ -4392,8 +4543,12 @@ def tela_novo_atendimento():
             zona_eleitoral = st.selectbox("Zona Eleitoral", zonas_eleitorais_dropdown(), index=0)
 
         with col2:
-            secao = st.selectbox("Seção responsável", SECOES_ATENDIMENTO, index=0)
-            assunto = st.selectbox("Assunto", assuntos(secao), index=0)
+            st.text_input("Seção responsável", value=secao, disabled=True)
+            assunto = st.selectbox("Assunto", assuntos_disponiveis, index=0, key="novo_atendimento_assunto_filtrado")
+            servidor_demandante = st.text_input(
+                "Servidor demandante",
+                placeholder="Nome do servidor, unidade ou pessoa que apresentou a demanda."
+            )
 
         descricao = st.text_area(
             "Descrição da pergunta",
@@ -4425,7 +4580,7 @@ def tela_novo_atendimento():
             "fonte": fonte_canal or "Não informado",
             "assunto": assunto or "Não informado",
             "zona_eleitoral": "" if zona_eleitoral == "Não informada" else zona_eleitoral,
-            "origem": fonte_canal or "",
+            "origem": str(servidor_demandante or "").strip(),
             "protocolo": "",
             "prioridade": "Normal",
             "complexidade": "Não informada",
@@ -4460,7 +4615,7 @@ def tela_novo_atendimento():
                 novo.get("id"),
                 "Cadastro",
                 "Atendimento cadastrado",
-                f"Novo atendimento cadastrado por {usuario.get('nome') or usuario.get('email') or 'usuário'}."
+                f"Novo atendimento cadastrado por {usuario.get('nome') or usuario.get('email') or 'usuário'}. Servidor demandante: {servidor_demandante or 'Não informado'}."
             )
         except Exception:
             pass
@@ -4473,7 +4628,6 @@ def tela_novo_atendimento():
 
         st.session_state["pagina_atual"] = "Em atendimento"
         st.rerun()
-
 
 
 def tela_validacao_chefia():
@@ -9921,7 +10075,8 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
     assunto = atendimento.get("assunto") or "Sem assunto"
     zona = atendimento.get("zona_eleitoral") or "Zona não informada"
     secao = normalizar_secao(atendimento.get("secao"))
-    fonte_canal = atendimento.get("fonte") or atendimento.get("origem") or "Fonte/canal não informado"
+    fonte_canal = atendimento.get("fonte") or "Fonte/canal não informado"
+    servidor_demandante = servidor_demandante_atendimento(atendimento)
 
     grid_html = "\n".join([
         atendimento_campo_html("ID", atendimento.get("id")),
@@ -9930,6 +10085,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
         atendimento_campo_html("Zona", zona),
         atendimento_campo_html("Responsável", atendimento.get("servidor") or "Não informado"),
         atendimento_campo_html("Fonte/canal", fonte_canal),
+        atendimento_campo_html("Servidor demandante", servidor_demandante),
         atendimento_campo_html("Complexidade", atendimento.get("complexidade") or "Não informada"),
         atendimento_campo_html("Prazo", data_para_exibir(atendimento.get("prazo_limite")) if atendimento.get("prazo_limite") else "Não informado"),
         atendimento_campo_html("Validação", atendimento.get("situacao_validacao") or "Não requerida"),
@@ -10009,18 +10165,30 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 index=opcoes_servidor.index(atendimento.get("servidor")) if atendimento.get("servidor") in opcoes_servidor else 0,
                 key=f"{chave_prefixo}_servidor_{atendimento.get('id')}"
             )
+            assuntos_edicao = assuntos_da_secao(nova_secao) if "assuntos_da_secao" in globals() else assuntos(nova_secao)
+            assunto_atual = atendimento.get("assunto") or "Não informado"
+            if assunto_atual and assunto_atual not in assuntos_edicao:
+                assuntos_edicao.insert(0, assunto_atual)
+
             novo_assunto = st.selectbox(
                 "Assunto",
-                assuntos(nova_secao),
-                index=assuntos(nova_secao).index(atendimento.get("assunto")) if atendimento.get("assunto") in assuntos(nova_secao) else 0,
+                assuntos_edicao,
+                index=assuntos_edicao.index(assunto_atual) if assunto_atual in assuntos_edicao else 0,
                 key=f"{chave_prefixo}_assunto_{atendimento.get('id')}"
             )
-            opcoes_fonte = tipos_fonte_dropdown(atendimento.get("fonte") or atendimento.get("origem") or "")
+            opcoes_fonte = tipos_fonte_dropdown(atendimento.get("fonte") or "")
             novo_fonte = st.selectbox(
                 "Fonte/canal",
                 opcoes_fonte,
                 index=opcoes_fonte.index(atendimento.get("fonte")) if atendimento.get("fonte") in opcoes_fonte else 0,
                 key=f"{chave_prefixo}_fonte_{atendimento.get('id')}"
+            )
+
+            novo_servidor_demandante = st.text_input(
+                "Servidor demandante",
+                value=servidor_demandante_atendimento(atendimento) if servidor_demandante_atendimento(atendimento) != "Não informado" else "",
+                key=f"{chave_prefixo}_servidor_demandante_{atendimento.get('id')}",
+                placeholder="Nome do servidor, unidade ou pessoa que apresentou a demanda."
             )
 
             opcoes_zona = zonas_eleitorais_dropdown()
@@ -10103,7 +10271,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                         item["servidor"] = novo_servidor
                         item["assunto"] = novo_assunto
                         item["fonte"] = novo_fonte
-                        item["origem"] = novo_fonte
+                        item["origem"] = str(novo_servidor_demandante or "").strip()
                         item["descricao"] = nova_descricao
                         item["complexidade"] = nova_complexidade
                         item["prazo_limite"] = prazo_limite_para_texto_seguro(manter_prazo, novo_prazo)
@@ -10921,7 +11089,7 @@ def tela_assuntos():
         st.warning("Apenas administradores podem gerenciar assuntos.")
         return
 
-    registros = assunto_rows()
+    registros = assunto_rows_atualizados() if "assunto_rows_atualizados" in globals() else assunto_rows()
 
     st.markdown("### Incluir novo assunto")
     with st.form("form_assunto"):
