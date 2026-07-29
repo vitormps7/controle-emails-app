@@ -4541,6 +4541,61 @@ def servidor_demandante_atendimento(atendimento):
     return valor
 
 
+def assuntos_da_secao_direto_supabase(secao):
+    """
+    Busca os assuntos da seção diretamente no Supabase.
+    Usado no Novo Atendimento para garantir que o dropdown reflita a base cadastrada.
+    Não usa cache e não chama assunto_rows_atualizados(), evitando recursão e lista desatualizada.
+    """
+    secao_norm = normalizar_secao(secao)
+    registros = []
+
+    try:
+        params = {
+            "select": "nome,secao,ativo,categoria,tipologia,ordem",
+            "secao": f"eq.{secao_norm}",
+            "order": "nome.asc",
+        }
+
+        rows = supabase_get_silencioso("assuntos", params) or []
+
+        for row in rows:
+            if row.get("ativo") is False:
+                continue
+
+            nome = str(row.get("nome") or "").strip()
+            if nome and nome != "Não informado":
+                registros.append(nome)
+
+    except Exception:
+        registros = []
+
+    registros = sorted(set(registros), key=lambda x: x.casefold())
+    return ["Não informado"] + registros
+
+
+def assuntos_da_secao_para_cadastro(secao):
+    """
+    Lista oficial usada no Novo Atendimento.
+    Primeiro busca direto no Supabase por seção.
+    Depois, se necessário, usa a função geral de assuntos como fallback.
+    """
+    secao_norm = normalizar_secao(secao)
+
+    lista = assuntos_da_secao_direto_supabase(secao_norm)
+
+    if len(lista) > 1:
+        return lista
+
+    try:
+        fallback = assuntos_da_secao(secao_norm)
+        if fallback and len(fallback) > 1:
+            return fallback
+    except Exception:
+        pass
+
+    return lista
+
 def tela_novo_atendimento():
     """
     Porta de entrada da demanda.
@@ -4549,6 +4604,9 @@ def tela_novo_atendimento():
     Os demais campos são preenchidos na fase Em atendimento.
     """
     exibir_mensagem_sistema()
+    # Garante que assuntos recém-cadastrados apareçam no dropdown.
+    cache_sessao_limpar("assuntos_rows", "assuntos_rows_atualizados")
+
     st.subheader("Novo atendimento")
     st.caption("Registre apenas a entrada da demanda. Os demais campos serão preenchidos na fase Em atendimento.")
 
@@ -4568,12 +4626,12 @@ def tela_novo_atendimento():
         help="Ao trocar a seção, o campo Assunto mostra apenas assuntos cadastrados para a unidade selecionada."
     )
 
-    assuntos_disponiveis = assuntos_da_secao(secao) if "assuntos_da_secao" in globals() else assuntos(secao)
+    assuntos_disponiveis = assuntos_da_secao_para_cadastro(secao)
 
     if len(assuntos_disponiveis) <= 1:
         st.warning(
-            f"Não há assuntos cadastrados para {secao}. "
-            "Cadastre o assunto em Administração/Parâmetros ou selecione outra unidade."
+            f"Não foram encontrados assuntos ativos cadastrados para {secao}. "
+            "Verifique se o assunto foi cadastrado com a mesma seção e se o SQL de assuntos por seção foi executado."
         )
 
     with st.form("form_novo_atendimento_entrada_minima", clear_on_submit=True):
@@ -10207,7 +10265,7 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
                 index=opcoes_servidor.index(atendimento.get("servidor")) if atendimento.get("servidor") in opcoes_servidor else 0,
                 key=f"{chave_prefixo}_servidor_{atendimento.get('id')}"
             )
-            assuntos_edicao = assuntos_da_secao(nova_secao) if "assuntos_da_secao" in globals() else assuntos(nova_secao)
+            assuntos_edicao = assuntos_da_secao_para_cadastro(nova_secao)
             assunto_atual = atendimento.get("assunto") or "Não informado"
             if assunto_atual and assunto_atual not in assuntos_edicao:
                 assuntos_edicao.insert(0, assunto_atual)
