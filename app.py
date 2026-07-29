@@ -4541,54 +4541,140 @@ def servidor_demandante_atendimento(atendimento):
     return valor
 
 
-def assuntos_da_secao_direto_supabase(secao):
+
+
+
+
+
+
+def normalizar_secao_livre(valor):
     """
-    Busca os assuntos da seção diretamente no Supabase.
-    Usado no Novo Atendimento para garantir que o dropdown reflita a base cadastrada.
-    Não usa cache e não chama assunto_rows_atualizados(), evitando recursão e lista desatualizada.
+    Normaliza sigla de seção sem substituir valor desconhecido por SEPRO.
+    Usada para comparar dados vindos do banco.
     """
-    secao_norm = normalizar_secao(secao)
-    registros = []
+    texto = str(valor or "").strip().upper()
+    if not texto:
+        return ""
 
     try:
-        params = {
-            "select": "nome,secao,ativo,categoria,tipologia,ordem",
-            "secao": f"eq.{secao_norm}",
-            "order": "nome.asc",
-        }
+        texto = SECOES_LEGADAS.get(texto, texto)
+    except Exception:
+        pass
 
-        rows = supabase_get_silencioso("assuntos", params) or []
+    # Remove descrições longas que possam ter sido gravadas junto com a sigla.
+    for sigla in ["SEPRO", "SEOCE", "SEORZE", "COSCAD", "COAJUC", "COORZE", "SCR", "CGE", "CRE"]:
+        if texto == sigla or texto.startswith(sigla + " ") or texto.startswith(sigla + " -") or texto.startswith(sigla + "–"):
+            if sigla == "SEORZE":
+                return "SEOCE"
+            return sigla
+
+    return texto
+
+
+def supabase_get_admin_silencioso(tabela, params=None):
+    """
+    Leitura silenciosa usando service role quando configurada.
+    Ajuda quando RLS impede leitura pelo anon key.
+    """
+    try:
+        headers = supabase_write_headers() if "supabase_write_headers" in globals() else supabase_headers()
+        resp = requests.get(
+            supabase_rest_url(tabela),
+            headers=headers,
+            params=params or {},
+            timeout=25,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        try:
+            return supabase_get_silencioso(tabela, params) or []
+        except Exception:
+            return []
+
+
+def assuntos_da_secao_direto_supabase(secao):
+    """
+    Monta a lista real de assuntos da seção selecionada.
+
+    Fonte 1: tabela assuntos.
+    Fonte 2: instrumentos/base_conhecimento ativos da mesma seção.
+
+    Não usa cache antigo. Filtra localmente para evitar falha por diferença de caixa,
+    espaço, sigla legada ou formato da seção no banco.
+    """
+    secao_norm = normalizar_secao_livre(secao)
+    encontrados = []
+
+    # 1. Tabela assuntos
+    try:
+        rows = supabase_get_admin_silencioso(
+            "assuntos",
+            {
+                "select": "nome,secao,ativo,categoria,tipologia,ordem",
+                "order": "nome.asc",
+            }
+        ) or []
 
         for row in rows:
             if row.get("ativo") is False:
                 continue
 
             nome = str(row.get("nome") or "").strip()
-            if nome and nome != "Não informado":
-                registros.append(nome)
+            secao_row = normalizar_secao_livre(row.get("secao") or "SEPRO")
+
+            if not nome or nome == "Não informado":
+                continue
+
+            if secao_row == secao_norm:
+                encontrados.append(nome)
 
     except Exception:
-        registros = []
+        pass
 
-    registros = sorted(set(registros), key=lambda x: x.casefold())
-    return ["Não informado"] + registros
+    # 2. Instrumentos de orientação / base_conhecimento
+    try:
+        bases = supabase_get_admin_silencioso(
+            "base_conhecimento",
+            {
+                "select": "assunto,secao,ativo,superada",
+                "order": "assunto.asc",
+            }
+        ) or []
+
+        for b in bases:
+            if b.get("ativo") is False or b.get("superada") is True:
+                continue
+
+            assunto = str(b.get("assunto") or "").strip()
+            secao_base = normalizar_secao_livre(b.get("secao") or "SEPRO")
+
+            if not assunto or assunto == "Não informado":
+                continue
+
+            if secao_base == secao_norm:
+                encontrados.append(assunto)
+
+    except Exception:
+        pass
+
+    encontrados = sorted(set(encontrados), key=lambda x: x.casefold())
+    return ["Não informado"] + encontrados
 
 
 def assuntos_da_secao_para_cadastro(secao):
     """
-    Lista oficial usada no Novo Atendimento.
-    Primeiro busca direto no Supabase por seção.
-    Depois, se necessário, usa a função geral de assuntos como fallback.
+    Lista usada no Novo Atendimento e na edição.
+    Deve refletir a base institucional cadastrada para a seção.
     """
-    secao_norm = normalizar_secao(secao)
-
-    lista = assuntos_da_secao_direto_supabase(secao_norm)
+    lista = assuntos_da_secao_direto_supabase(secao)
 
     if len(lista) > 1:
         return lista
 
+    # Fallback de segurança: usa função geral, mas só se trouxer algo além de Não informado.
     try:
-        fallback = assuntos_da_secao(secao_norm)
+        fallback = assuntos_da_secao(secao)
         if fallback and len(fallback) > 1:
             return fallback
     except Exception:
@@ -4630,8 +4716,8 @@ def tela_novo_atendimento():
 
     if len(assuntos_disponiveis) <= 1:
         st.warning(
-            f"Não foram encontrados assuntos ativos cadastrados para {secao}. "
-            "Verifique se o assunto foi cadastrado com a mesma seção e se o SQL de assuntos por seção foi executado."
+            f"Não foram encontrados assuntos ativos para {secao}. "
+            "Cadastre o assunto em Administração do sistema > Assuntos ou cadastre um Instrumento de orientação dessa seção."
         )
 
     with st.form("form_novo_atendimento_entrada_minima", clear_on_submit=True):
