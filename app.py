@@ -8049,7 +8049,6 @@ def sidebar_nav_button(label, destino, key_prefix):
 
 def paginas_admin_sistema():
     return {
-        "Assuntos",
         "Usuários",
         "Usuários das Zonas",
         "Parâmetros nacionais",
@@ -8073,6 +8072,9 @@ def pagina_permitida_para_usuario(pagina):
         return pagina in paginas_exclusivas_zona()
 
     if pagina in paginas_exclusivas_zona():
+        return False
+
+    if pagina == "Assuntos" and not usuario_pode_gerenciar_assuntos():
         return False
 
     if pagina in paginas_admin_sistema() and not usuario_pode_ver_parametros():
@@ -8315,16 +8317,22 @@ def sidebar_menu():
                     ir_para_pagina(destino)
                     st.rerun()
 
-    if usuario_pode_ver_parametros():
+    if usuario_pode_ver_parametros() or usuario_pode_gerenciar_assuntos():
         with st.sidebar.expander("Administração do sistema", expanded=False):
-            botoes_admin = [
-                ("Assuntos", "Assuntos"),
-                ("Usuários internos", "Usuários"),
-                ("Usuários das Zonas", "Usuários das Zonas"),
-                ("Parâmetros nacionais", "Parâmetros nacionais"),
-                ("Diagnóstico do sistema", "Diagnóstico do sistema"),
-                ("Backup e restauração", "Backup e restauração"),
-            ]
+            botoes_admin = []
+
+            if usuario_pode_gerenciar_assuntos():
+                botoes_admin.append(("Assuntos", "Assuntos"))
+
+            if usuario_pode_ver_parametros():
+                botoes_admin += [
+                    ("Usuários internos", "Usuários"),
+                    ("Usuários das Zonas", "Usuários das Zonas"),
+                    ("Parâmetros nacionais", "Parâmetros nacionais"),
+                    ("Diagnóstico do sistema", "Diagnóstico do sistema"),
+                    ("Backup e restauração", "Backup e restauração"),
+                ]
+
             for label, destino in botoes_admin:
                 if st.button(label, key=f"side_admin_{destino}", use_container_width=True):
                     ir_para_pagina(destino)
@@ -8661,6 +8669,41 @@ def usuario_pode_ver_governanca():
 def usuario_pode_ver_memoria_avancada():
     return usuario_eh_gestor() or usuario_eh_admin_ou_coorze()
 
+
+def usuario_pode_gerenciar_assuntos():
+    """
+    Permite gestão de assuntos para:
+    - Administrador geral/Administrador;
+    - Chefias de seção.
+    Não libera as demais rotinas administrativas.
+    """
+    perfil = perfil_atual()
+    return usuario_eh_admin_ou_coorze() or str(perfil or "").startswith("Chefia")
+
+
+def secoes_assuntos_permitidas_usuario():
+    """
+    Administrador pode gerir assuntos de todas as seções.
+    Chefia de seção pode gerir apenas os assuntos da própria seção.
+    """
+    if usuario_eh_admin_ou_coorze():
+        return secoes_atendimento()
+
+    usuario = usuario_logado() or {}
+    perfil = perfil_atual()
+
+    secao = ""
+    if str(perfil or "").startswith("Chefia "):
+        secao = perfil.replace("Chefia ", "", 1)
+    if not secao:
+        secao = usuario.get("secao_operador") or usuario.get("secao") or ""
+
+    secao = normalizar_secao(secao)
+
+    if secao in secoes_atendimento():
+        return [secao]
+
+    return []
 
 def usuario_pode_ver_parametros():
     return usuario_eh_admin_ou_coorze()
@@ -11269,10 +11312,19 @@ def tela_relatorios_exportacao():
 
 def tela_assuntos():
     st.subheader("Assuntos")
-    st.caption("Área exclusiva do administrador. Os assuntos agora são organizados por tipologia, que funciona como gênero/classificação superior.")
+    st.caption(
+        "Cadastro de assuntos por seção. Administradores podem gerenciar todas as seções; "
+        "chefias de seção podem gerenciar apenas os assuntos da própria unidade."
+    )
 
-    if not eh_admin():
-        st.warning("Apenas administradores podem gerenciar assuntos.")
+    if not usuario_pode_gerenciar_assuntos():
+        st.warning("Apenas administradores e chefias de seção podem gerenciar assuntos.")
+        return
+
+    secoes_permitidas = secoes_assuntos_permitidas_usuario()
+
+    if not secoes_permitidas:
+        st.warning("Seu perfil não possui seção vinculada para gerenciamento de assuntos.")
         return
 
     registros = assunto_rows_atualizados() if "assunto_rows_atualizados" in globals() else assunto_rows()
@@ -11283,7 +11335,12 @@ def tela_assuntos():
         with col_a:
             novo = st.text_input("Novo assunto")
         with col_b:
-            secao_novo = st.selectbox("Seção do assunto", secoes_atendimento())
+            secao_novo = st.selectbox(
+                "Seção do assunto",
+                secoes_permitidas,
+                index=0,
+                disabled=len(secoes_permitidas) == 1
+            )
         with col_c:
             tipologia_nova = st.selectbox(
                 "Tipologia",
@@ -11293,12 +11350,16 @@ def tela_assuntos():
 
         if st.form_submit_button("Adicionar assunto", type="primary"):
             novo = novo.strip()
+            secao_novo = normalizar_secao(secao_novo)
             tipologia_nova = normalizar_tipologia_assunto(tipologia_nova, novo)
+
             if not novo:
                 st.warning("Informe um assunto.")
+            elif secao_novo not in secoes_permitidas:
+                st.warning("Seu perfil não permite cadastrar assunto para esta seção.")
             elif any(
-                r["nome"].casefold() == novo.casefold()
-                and normalizar_secao(r["secao"]) == secao_novo
+                str(r.get("nome", "")).casefold() == novo.casefold()
+                and normalizar_secao(r.get("secao")) == secao_novo
                 for r in registros
             ):
                 st.warning("Este assunto já está cadastrado para esta seção.")
@@ -11318,11 +11379,15 @@ def tela_assuntos():
 
     st.divider()
     st.markdown("#### Assuntos cadastrados por seção")
-    st.caption("Use as abas abaixo para visualizar e editar separadamente os assuntos da SEPRO e da SEOCE.")
 
-    abas = st.tabs(secoes_atendimento())
+    if usuario_eh_admin_ou_coorze():
+        st.caption("Use as abas abaixo para visualizar e editar separadamente os assuntos de cada seção.")
+    else:
+        st.caption("A chefia de seção visualiza e edita apenas os assuntos da própria unidade.")
 
-    for aba, secao_exibida in zip(abas, secoes_atendimento()):
+    abas = st.tabs(secoes_permitidas)
+
+    for aba, secao_exibida in zip(abas, secoes_permitidas):
         with aba:
             registros_secao = [
                 r for r in registros
@@ -11391,9 +11456,10 @@ def tela_assuntos():
                     with col2:
                         nova_secao = st.selectbox(
                             "Seção",
-                            secoes_atendimento(),
-                            index=secoes_atendimento().index(secao_atual) if secao_atual in secoes_atendimento() else 0,
-                            key=f"assunto_secao_{secao_exibida}_{idx_global}_{assunto}"
+                            secoes_permitidas,
+                            index=secoes_permitidas.index(secao_atual) if secao_atual in secoes_permitidas else 0,
+                            key=f"assunto_secao_{secao_exibida}_{idx_global}_{assunto}",
+                            disabled=len(secoes_permitidas) == 1
                         )
 
                     with col3:
@@ -11409,13 +11475,17 @@ def tela_assuntos():
                         st.write("")
                         if st.button("Salvar", key=f"assunto_salvar_{secao_exibida}_{idx_global}_{assunto}"):
                             editado = editado.strip()
+                            nova_secao = normalizar_secao(nova_secao)
                             nova_tipologia = normalizar_tipologia_assunto(nova_tipologia, editado)
+
                             if not editado:
                                 st.warning("O assunto não pode ficar vazio.")
+                            elif nova_secao not in secoes_permitidas:
+                                st.warning("Seu perfil não permite mover assunto para esta seção.")
                             elif any(
                                 i != idx_global
-                                and r["nome"].casefold() == editado.casefold()
-                                and normalizar_secao(r["secao"]) == nova_secao
+                                and str(r.get("nome", "")).casefold() == editado.casefold()
+                                and normalizar_secao(r.get("secao")) == nova_secao
                                 for i, r in enumerate(registros)
                             ):
                                 st.warning("Já existe outro assunto com este nome para esta seção.")
@@ -11447,8 +11517,6 @@ def tela_assuntos():
                                 salvar_assuntos_registros(novos)
                                 st.success("Assunto removido da lista de opções. Registros antigos foram preservados.")
                                 st.rerun()
-
-
 
 
 def tela_usuarios():
@@ -13985,7 +14053,7 @@ def main():
         else:
             st.warning("Backup e restauração estão disponíveis apenas para chefia e administradores.")
 
-    elif escolha == "Assuntos" and usuario_pode_ver_parametros():
+    elif escolha == "Assuntos" and usuario_pode_gerenciar_assuntos():
         tela_assuntos()
 
     elif escolha == "Usuários" and usuario_pode_ver_parametros():
