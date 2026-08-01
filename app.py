@@ -4604,6 +4604,86 @@ def css_pacote_visual_1():
                 min-height: 150px !important;
             }
         }
+
+        /* Correção final dos botões - visual institucional limpo */
+        div[data-testid="stFormSubmitButton"] button,
+        div[data-testid="stFormSubmitButton"] button *,
+        .stButton > button[kind="primary"],
+        .stButton > button[kind="primary"] *,
+        .stButton > button[kind="primaryFormSubmit"],
+        .stButton > button[kind="primaryFormSubmit"] *,
+        .stButton > button[kind="secondaryFormSubmit"],
+        .stButton > button[kind="secondaryFormSubmit"] *,
+        button[data-testid="baseButton-primary"],
+        button[data-testid="baseButton-primary"] * {
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] button,
+        .stButton > button[kind="primary"],
+        .stButton > button[kind="primaryFormSubmit"],
+        .stButton > button[kind="secondaryFormSubmit"],
+        button[data-testid="baseButton-primary"] {
+            background: #0B5CAD !important;
+            border: 1px solid #0A4F95 !important;
+            border-radius: 10px !important;
+            min-height: 38px !important;
+            padding: 0 16px !important;
+            font-weight: 800 !important;
+            box-shadow: none !important;
+            letter-spacing: 0 !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] button:hover,
+        .stButton > button[kind="primary"]:hover,
+        .stButton > button[kind="primaryFormSubmit"]:hover,
+        .stButton > button[kind="secondaryFormSubmit"]:hover,
+        button[data-testid="baseButton-primary"]:hover {
+            background: #084B8A !important;
+            border-color: #084B8A !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] button:disabled,
+        .stButton > button:disabled {
+            background: #E8EEF6 !important;
+            border: 1px solid #D3DDEB !important;
+            color: #718096 !important;
+            -webkit-text-fill-color: #718096 !important;
+            box-shadow: none !important;
+            opacity: 1 !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] button:disabled *,
+        .stButton > button:disabled * {
+            color: #718096 !important;
+            -webkit-text-fill-color: #718096 !important;
+        }
+
+        .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]):not([kind="secondaryFormSubmit"]) {
+            background: #FFFFFF !important;
+            color: #0B4A7A !important;
+            -webkit-text-fill-color: #0B4A7A !important;
+            border: 1px solid #D4E3F2 !important;
+            border-radius: 10px !important;
+            min-height: 38px !important;
+            box-shadow: none !important;
+        }
+
+        .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]):not([kind="secondaryFormSubmit"]) * {
+            color: #0B4A7A !important;
+            -webkit-text-fill-color: #0B4A7A !important;
+        }
+
+        .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]):not([kind="secondaryFormSubmit"]):hover {
+            background: #F3F8FF !important;
+            border-color: #9FC6EA !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
