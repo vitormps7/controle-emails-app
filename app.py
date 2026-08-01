@@ -3733,7 +3733,7 @@ def css_menu_institucional():
         .stDateInput input {
             border-radius: 11px !important;
             border-color: #D7E3F2 !important;
-            background: #F8FBFF !important;
+            background: #F3F7FB !important;
         }
 
         @media (max-width: 1200px) {
@@ -4107,8 +4107,8 @@ def css_pacote_visual_1():
         """
         <style>
         :root {
-            --pv-bg: #F4F8FD;
-            --pv-bg-2: #EAF3FF;
+            --pv-bg: #E8EFF7;
+            --pv-bg-2: #DCE8F5;
             --pv-navy: #061F3D;
             --pv-navy-2: #083D6E;
             --pv-blue: #1769C2;
@@ -4117,18 +4117,18 @@ def css_pacote_visual_1():
             --pv-green: #0E9F6E;
             --pv-red: #EF4444;
             --pv-amber: #F59E0B;
-            --pv-card: rgba(255,255,255,.92);
-            --pv-line: #D9E7F7;
+            --pv-card: #F7FAFD;
+            --pv-line: #C7D7EA;
             --pv-muted: #64748B;
             --pv-text: #0B2240;
-            --pv-shadow: 0 14px 38px rgba(6,31,61,.10);
-            --pv-shadow-soft: 0 8px 22px rgba(6,31,61,.07);
+            --pv-shadow: 0 10px 24px rgba(6,31,61,.08);
+            --pv-shadow-soft: 0 6px 16px rgba(6,31,61,.06);
         }
 
         html, body, [data-testid="stAppViewContainer"] {
             background:
                 radial-gradient(circle at top left, rgba(57,160,255,.16), transparent 26rem),
-                linear-gradient(180deg, #F7FBFF 0%, #F1F6FC 100%) !important;
+                linear-gradient(180deg, #EEF3F8 0%, #E6EDF5 100%) !important;
             color: var(--pv-text) !important;
         }
 
@@ -4140,7 +4140,7 @@ def css_pacote_visual_1():
         }
 
         [data-testid="stHeader"] {
-            background: rgba(247,251,255,.82) !important;
+            background: rgba(238,243,248,.90) !important;
             backdrop-filter: blur(14px);
             border-bottom: 1px solid rgba(217,231,247,.88);
         }
@@ -4352,9 +4352,8 @@ def css_pacote_visual_1():
             min-height: 176px !important;
             padding: 22px 22px 18px 22px !important;
             border-radius: 24px !important;
-            border: 1px solid rgba(193,213,236,.85) !important;
-            background:
-                linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.88)) !important;
+            border: 1px solid #C7D7EA !important;
+            background: #F7FAFD !important;
             box-shadow: var(--pv-shadow-soft) !important;
             transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
             overflow: hidden;
@@ -4471,7 +4470,7 @@ def css_pacote_visual_1():
             min-height: 40px !important;
             font-weight: 820 !important;
             border: 1px solid #D9E7F7 !important;
-            background: #F8FBFF !important;
+            background: #F3F7FB !important;
             color: #083763 !important;
             box-shadow: 0 4px 14px rgba(6,31,61,.045) !important;
         }
@@ -4481,8 +4480,8 @@ def css_pacote_visual_1():
         .atendimento-card,
         div[data-testid="stVerticalBlockBorderWrapper"] {
             border-radius: 22px !important;
-            border-color: #D9E7F7 !important;
-            box-shadow: 0 8px 24px rgba(6,31,61,.055);
+            border-color: #C7D7EA !important;
+            box-shadow: 0 4px 12px rgba(6,31,61,.05);
         }
 
         [data-testid="stTextInput"] input,
@@ -4490,8 +4489,8 @@ def css_pacote_visual_1():
         [data-baseweb="select"] > div,
         [data-testid="stDateInput"] input {
             border-radius: 14px !important;
-            border-color: #D9E7F7 !important;
-            background: rgba(255,255,255,.78) !important;
+            border-color: #C7D7EA !important;
+            background: #F8FBFD !important;
         }
 
         [data-testid="stTextInput"] input:focus,
@@ -4519,7 +4518,7 @@ def css_pacote_visual_1():
         }
 
         .atendimento-card {
-            background: rgba(255,255,255,.93) !important;
+            background: #F7FAFD !important;
             border: 1px solid #D9E7F7 !important;
             box-shadow: var(--pv-shadow-soft) !important;
             border-radius: 26px !important;
@@ -4528,7 +4527,7 @@ def css_pacote_visual_1():
         }
 
         .atendimento-card-header {
-            background: linear-gradient(90deg, rgba(234,243,255,.82), rgba(255,255,255,.9));
+            background: linear-gradient(90deg, #E7F0FA, #F7FAFD);
             border-bottom: 1px solid #E4EEF9;
             padding: 18px 20px !important;
         }
@@ -4551,8 +4550,8 @@ def css_pacote_visual_1():
         .atendimento-campo,
         .atendimento-textbox {
             border-radius: 18px !important;
-            background: #F8FBFF !important;
-            border: 1px solid #DDEAF8 !important;
+            background: #F3F7FB !important;
+            border: 1px solid #C7D7EA !important;
         }
 
         [data-testid="stAlert"] {
@@ -4682,6 +4681,33 @@ def css_pacote_visual_1():
             border-color: #9FC6EA !important;
             box-shadow: none !important;
             transform: none !important;
+        }
+
+
+
+        /* Ajuste de contraste do fundo e dos quadros */
+        [data-testid="stAppViewContainer"] .main,
+        [data-testid="stMainBlockContainer"] {
+            background: transparent !important;
+        }
+
+        [data-testid="stForm"],
+        [data-testid="stExpander"],
+        .atendimento-card,
+        div[data-testid="stVerticalBlockBorderWrapper"],
+        .siga-card-nav {
+            background: #F7FAFD !important;
+            border: 1px solid #C7D7EA !important;
+            box-shadow: 0 4px 12px rgba(6,31,61,.05) !important;
+        }
+
+        [data-testid="stTextInput"] input,
+        [data-testid="stTextArea"] textarea,
+        [data-baseweb="select"] > div,
+        [data-testid="stDateInput"] input {
+            background: #F9FBFD !important;
+            border: 1px solid #C7D7EA !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.7) !important;
         }
 
         </style>
