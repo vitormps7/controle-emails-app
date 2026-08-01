@@ -3566,6 +3566,12 @@ def css_menu_institucional():
             z-index: 1;
         }
 
+        .siga-danger-action {
+            color: #991B1B !important;
+            background: #FEF2F2 !important;
+            border: 1px solid #FECACA !important;
+        }
+
         .stButton > button {
             border-radius: 11px !important;
             border: 1px solid #E0E8F2 !important;
@@ -4434,8 +4440,16 @@ def css_pacote_visual_1():
             min-height: 42px !important;
             font-weight: 900 !important;
             border: none !important;
-            background: linear-gradient(135deg, #EF4444 0%, #F97316 100%) !important;
-            box-shadow: 0 10px 22px rgba(239,68,68,.20) !important;
+            color: #FFFFFF !important;
+            background: linear-gradient(135deg, #083D6E 0%, #1769C2 58%, #0EA5E9 100%) !important;
+            box-shadow: 0 10px 22px rgba(23,105,194,.18) !important;
+        }
+
+        .stButton > button[kind="primary"]:hover,
+        .stButton > button[data-testid="baseButton-primary"]:hover {
+            background: linear-gradient(135deg, #062B50 0%, #0B5BA8 58%, #0284C7 100%) !important;
+            box-shadow: 0 12px 26px rgba(23,105,194,.24) !important;
+            transform: translateY(-1px);
         }
 
         .stButton > button {
