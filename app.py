@@ -4435,20 +4435,34 @@ def css_pacote_visual_1():
         }
 
         .stButton > button[kind="primary"],
-        .stButton > button[data-testid="baseButton-primary"] {
+        .stButton > button[kind="primaryFormSubmit"],
+        .stButton > button[kind="secondaryFormSubmit"],
+        .stButton > button[data-testid="baseButton-primary"],
+        div[data-testid="stFormSubmitButton"] > button,
+        form button[kind="primary"],
+        form button[kind="primaryFormSubmit"],
+        form button[kind="secondaryFormSubmit"] {
             border-radius: 13px !important;
             min-height: 42px !important;
             font-weight: 900 !important;
-            border: none !important;
+            border: 1px solid #0A4F95 !important;
             color: #FFFFFF !important;
-            background: linear-gradient(135deg, #083D6E 0%, #1769C2 58%, #0EA5E9 100%) !important;
-            box-shadow: 0 10px 22px rgba(23,105,194,.18) !important;
+            background: #0B5CAD !important;
+            box-shadow: 0 8px 18px rgba(11,92,173,.18) !important;
         }
 
         .stButton > button[kind="primary"]:hover,
-        .stButton > button[data-testid="baseButton-primary"]:hover {
-            background: linear-gradient(135deg, #062B50 0%, #0B5BA8 58%, #0284C7 100%) !important;
-            box-shadow: 0 12px 26px rgba(23,105,194,.24) !important;
+        .stButton > button[kind="primaryFormSubmit"]:hover,
+        .stButton > button[kind="secondaryFormSubmit"]:hover,
+        .stButton > button[data-testid="baseButton-primary"]:hover,
+        div[data-testid="stFormSubmitButton"] > button:hover,
+        form button[kind="primary"]:hover,
+        form button[kind="primaryFormSubmit"]:hover,
+        form button[kind="secondaryFormSubmit"]:hover {
+            color: #FFFFFF !important;
+            background: #084B8A !important;
+            border-color: #084B8A !important;
+            box-shadow: 0 10px 20px rgba(8,75,138,.24) !important;
             transform: translateY(-1px);
         }
 
@@ -4456,7 +4470,9 @@ def css_pacote_visual_1():
             border-radius: 13px !important;
             min-height: 40px !important;
             font-weight: 820 !important;
-            border-color: #D9E7F7 !important;
+            border: 1px solid #D9E7F7 !important;
+            background: #F8FBFF !important;
+            color: #083763 !important;
             box-shadow: 0 4px 14px rgba(6,31,61,.045) !important;
         }
 
