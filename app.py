@@ -1868,15 +1868,142 @@ def salvar_atendimentos(lista):
     criar_backup_automatico("apos_salvar_atendimentos")
 
 
+def supabase_delete_where_diagnostico(tabela, params):
+    """
+    Exclui registros no Supabase por filtro, retornando diagnóstico.
+    Usa service role quando configurada nos Secrets.
+    """
+    try:
+        headers = supabase_write_headers() if "supabase_write_headers" in globals() else supabase_headers()
+        headers = dict(headers)
+        headers["Prefer"] = "return=minimal"
+
+        resp = requests.delete(
+            supabase_rest_url(tabela),
+            headers=headers,
+            params=params or {},
+            timeout=30,
+        )
+
+        if resp.status_code >= 400:
+            return False, resp.text or f"HTTP {resp.status_code}"
+
+        return True, "Registros excluídos com sucesso."
+    except Exception as e:
+        return False, str(e)
+
+
+def supabase_patch_where_diagnostico(tabela, params, updates):
+    """
+    Atualiza registros no Supabase por filtro, retornando diagnóstico.
+    """
+    try:
+        headers = supabase_write_headers() if "supabase_write_headers" in globals() else supabase_headers()
+        headers = dict(headers)
+        headers["Prefer"] = "return=minimal"
+
+        resp = requests.patch(
+            supabase_rest_url(tabela),
+            headers=headers,
+            params=params or {},
+            data=json.dumps(updates or {}, ensure_ascii=False),
+            timeout=30,
+        )
+
+        if resp.status_code >= 400:
+            return False, resp.text or f"HTTP {resp.status_code}"
+
+        return True, "Registros atualizados com sucesso."
+    except Exception as e:
+        return False, str(e)
+
+
+def limpar_cache_atendimentos_apos_exclusao():
+    """
+    Limpa caches e seleções relacionadas a atendimentos depois de excluir.
+    """
+    try:
+        cache_sessao_limpar("atendimentos", "usuarios_logados")
+        cache_sessao_limpar()
+    except Exception:
+        pass
+
+    for chave in [
+        "atendimento_foco_id",
+        "_atendimento_foco_id",
+        "atendimento_em_foco_id",
+        "_atendimento_em_foco_id",
+    ]:
+        try:
+            st.session_state.pop(chave, None)
+        except Exception:
+            pass
+
 def excluir_atendimento_por_id(id_atendimento):
-    lista = atendimentos()
-    nova_lista = [a for a in lista if int(a.get("id", -1)) != int(id_atendimento)]
-    if len(nova_lista) == len(lista):
+    """
+    Exclui o atendimento de forma real no Supabase.
+    A remoção passa a usar DELETE direto na tabela atendimentos.
+    """
+    if id_atendimento in ("", None):
+        st.error("ID do atendimento não informado.")
         return False
-    salvar_atendimentos(nova_lista)
+
+    try:
+        id_limpo = int(id_atendimento)
+    except Exception:
+        st.error(f"ID do atendimento inválido: {id_atendimento}")
+        return False
+
+    criar_backup_automatico("antes_excluir_atendimento")
+
+    tabelas_filhas = [
+        "historico_atendimento",
+        "auditoria_atendimentos",
+        "comentarios_atendimento",
+        "comunicacoes_atendimento",
+        "anexos_atendimento",
+        "reaberturas_atendimento",
+        "usos_base_conhecimento",
+    ]
+
+    avisos = []
+
+    for tabela in tabelas_filhas:
+        ok_filha, msg_filha = supabase_delete_where_diagnostico(
+            tabela,
+            {"atendimento_id": f"eq.{id_limpo}"}
+        )
+        if not ok_filha and "does not exist" not in str(msg_filha).lower() and "schema cache" not in str(msg_filha).lower():
+            avisos.append(f"{tabela}: {msg_filha}")
+
+    for tabela, coluna in [
+        ("base_conhecimento", "atendimento_origem_id"),
+        ("fontes_zel", "origem_atendimento_id"),
+    ]:
+        ok_patch, msg_patch = supabase_patch_where_diagnostico(
+            tabela,
+            {coluna: f"eq.{id_limpo}"},
+            {coluna: None}
+        )
+        if not ok_patch and "does not exist" not in str(msg_patch).lower() and "schema cache" not in str(msg_patch).lower():
+            avisos.append(f"{tabela}.{coluna}: {msg_patch}")
+
+    ok, msg = supabase_delete_where_diagnostico(
+        "atendimentos",
+        {"id": f"eq.{id_limpo}"}
+    )
+
+    if not ok:
+        st.error("Não foi possível excluir o atendimento no Supabase.")
+        st.code(str(msg))
+        if avisos:
+            with st.expander("Detalhes adicionais da tentativa de exclusão", expanded=False):
+                st.code("\n".join(avisos))
+        return False
+
+    limpar_cache_atendimentos_apos_exclusao()
+    criar_backup_automatico("apos_excluir_atendimento")
     return True
-
-
 
 
 def assuntos_fallback_rows(secao=None):
@@ -10645,15 +10772,6 @@ def card_atendimento(atendimento, chave_prefixo, permitir_edicao=True):
             disabled=not confirmar_exclusao
         ):
             if excluir_atendimento_por_id(atendimento.get("id")):
-                try:
-                    registrar_historico_atendimento(
-                        atendimento.get("id"),
-                        "Exclusão",
-                        "Atendimento excluído",
-                        "Atendimento excluído pelo usuário."
-                    )
-                except Exception:
-                    pass
                 registrar_mensagem_sistema("Atendimento excluído com sucesso.", "success")
                 st.rerun()
             else:
