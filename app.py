@@ -3781,6 +3781,22 @@ def css_menu_institucional():
             z-index: 2;
         }
 
+        .siga-home-strip {
+            margin: -10px 0 18px 0;
+            padding: 14px 18px;
+            border-radius: 18px;
+            color: #0A3B6E !important;
+            background: rgba(234,243,255,.88);
+            border: 1px solid #D6E8FA;
+            box-shadow: 0 6px 18px rgba(6,31,61,.045);
+            font-size: .94rem;
+            line-height: 1.5;
+        }
+
+        .siga-home-strip strong {
+            color: #052A4F !important;
+        }
+
         .siga-group-title {
             display:flex;
             align-items:center;
@@ -4075,6 +4091,495 @@ def css_menu_institucional():
 
 
 
+
+def css_pacote_visual_1():
+    """
+    Pacote Visual 1.
+    Somente camada visual/navegação. Não altera regra de negócio.
+    """
+    st.markdown(
+        """
+        <style>
+        :root {
+            --pv-bg: #F4F8FD;
+            --pv-bg-2: #EAF3FF;
+            --pv-navy: #061F3D;
+            --pv-navy-2: #083D6E;
+            --pv-blue: #1769C2;
+            --pv-blue-2: #39A0FF;
+            --pv-cyan: #0EA5E9;
+            --pv-green: #0E9F6E;
+            --pv-red: #EF4444;
+            --pv-amber: #F59E0B;
+            --pv-card: rgba(255,255,255,.92);
+            --pv-line: #D9E7F7;
+            --pv-muted: #64748B;
+            --pv-text: #0B2240;
+            --pv-shadow: 0 14px 38px rgba(6,31,61,.10);
+            --pv-shadow-soft: 0 8px 22px rgba(6,31,61,.07);
+        }
+
+        html, body, [data-testid="stAppViewContainer"] {
+            background:
+                radial-gradient(circle at top left, rgba(57,160,255,.16), transparent 26rem),
+                linear-gradient(180deg, #F7FBFF 0%, #F1F6FC 100%) !important;
+            color: var(--pv-text) !important;
+        }
+
+        .block-container {
+            max-width: 1560px !important;
+            padding-top: .75rem !important;
+            padding-left: 1.75rem !important;
+            padding-right: 1.75rem !important;
+        }
+
+        [data-testid="stHeader"] {
+            background: rgba(247,251,255,.82) !important;
+            backdrop-filter: blur(14px);
+            border-bottom: 1px solid rgba(217,231,247,.88);
+        }
+
+        h1, h2, h3 {
+            color: var(--pv-navy) !important;
+            letter-spacing: -.025em;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 3.1vw, 3.15rem) !important;
+            line-height: 1.05 !important;
+            margin-bottom: .65rem !important;
+        }
+
+        h2 {
+            font-size: clamp(1.45rem, 2.2vw, 2.05rem) !important;
+        }
+
+        h3 {
+            font-size: 1.25rem !important;
+        }
+
+        [data-testid="stCaptionContainer"],
+        .stCaptionContainer,
+        [data-testid="stMarkdownContainer"] p {
+            color: var(--pv-muted);
+        }
+
+        section[data-testid="stSidebar"] {
+            background:
+                radial-gradient(circle at top right, rgba(57,160,255,.22), transparent 10rem),
+                linear-gradient(180deg, #03162B 0%, #062B50 54%, #083B69 100%) !important;
+            border-right: 1px solid rgba(255,255,255,.10);
+            box-shadow: 14px 0 34px rgba(3,22,43,.22);
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+            gap: .35rem !important;
+        }
+
+        .siga-sidebar-title {
+            font-size: 30px !important;
+            font-weight: 950 !important;
+            letter-spacing: .5px;
+            margin: 16px 0 2px 0 !important;
+            color: #FFFFFF !important;
+            text-shadow: 0 2px 18px rgba(0,0,0,.22);
+        }
+
+        .siga-sidebar-sub {
+            color: rgba(255,255,255,.72) !important;
+            font-size: 12.5px !important;
+            line-height: 1.45 !important;
+            margin-bottom: 14px !important;
+        }
+
+        .siga-sidebar-current {
+            margin: 10px 0 14px 0;
+            padding: 11px 12px;
+            border-radius: 16px;
+            background: rgba(255,255,255,.085);
+            border: 1px solid rgba(255,255,255,.14);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+        }
+
+        .siga-sidebar-current-label {
+            display: block;
+            font-size: 10px;
+            color: rgba(255,255,255,.58) !important;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            font-weight: 850;
+            margin-bottom: 3px;
+        }
+
+        .siga-sidebar-current-page {
+            display: block;
+            color: #FFFFFF !important;
+            font-weight: 900;
+            font-size: 13.5px;
+            line-height: 1.25;
+        }
+
+        section[data-testid="stSidebar"] .stButton > button {
+            min-height: 44px !important;
+            border-radius: 15px !important;
+            border: 1px solid rgba(255,255,255,.12) !important;
+            background: rgba(255,255,255,.055) !important;
+            color: rgba(255,255,255,.93) !important;
+            font-weight: 820 !important;
+            letter-spacing: .005em;
+            box-shadow: none !important;
+            transition: transform .16s ease, background .16s ease, border-color .16s ease;
+        }
+
+        section[data-testid="stSidebar"] .stButton > button:hover {
+            transform: translateX(3px);
+            background: rgba(23,105,194,.70) !important;
+            border-color: rgba(125,184,240,.44) !important;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stExpander"] {
+            border-radius: 18px !important;
+            background: rgba(255,255,255,.055) !important;
+            border: 1px solid rgba(255,255,255,.13) !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+            overflow: hidden !important;
+            margin-bottom: .4rem;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+            font-weight: 900 !important;
+            letter-spacing: .01em;
+        }
+
+        .siga-home-hero {
+            display: block !important;
+            position: relative;
+            overflow: hidden;
+            padding: 30px 34px;
+            border-radius: 28px;
+            margin: 4px 0 26px 0;
+            color: #FFFFFF;
+            background:
+                radial-gradient(circle at 90% 0%, rgba(255,255,255,.28), transparent 14rem),
+                linear-gradient(135deg, #061F3D 0%, #0B4F8A 52%, #1588D7 100%);
+            box-shadow: var(--pv-shadow);
+            border: 1px solid rgba(255,255,255,.26);
+        }
+
+        .siga-home-hero::after {
+            content: "";
+            position: absolute;
+            right: -75px;
+            bottom: -95px;
+            width: 270px;
+            height: 270px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.12);
+        }
+
+        .siga-home-hero-title {
+            position: relative;
+            z-index: 1;
+            font-size: clamp(2rem, 3.3vw, 3.35rem);
+            font-weight: 950;
+            letter-spacing: -.04em;
+            color: #FFFFFF !important;
+            margin-bottom: 8px;
+        }
+
+        .siga-home-hero-sub {
+            position: relative;
+            z-index: 1;
+            max-width: 980px;
+            font-size: 1.05rem;
+            line-height: 1.65;
+            color: rgba(255,255,255,.86) !important;
+            font-weight: 650;
+        }
+
+        .siga-section-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 13px;
+            border-radius: 999px;
+            background: #EAF3FF;
+            border: 1px solid #D7E7FA;
+            color: #0A3B6E !important;
+            font-size: 13px !important;
+            font-weight: 950 !important;
+            letter-spacing: .04em !important;
+            text-transform: uppercase;
+            margin: .3rem 0 1rem 0 !important;
+        }
+
+        .siga-section-label::before {
+            content: "";
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--pv-blue), var(--pv-cyan));
+            box-shadow: 0 0 0 4px rgba(23,105,194,.12);
+        }
+
+        .siga-group-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 28px 0 14px 0 !important;
+            color: var(--pv-navy) !important;
+            font-size: 1.18rem !important;
+            font-weight: 950 !important;
+            letter-spacing: -.02em;
+        }
+
+        .siga-group-title span {
+            width: 11px;
+            height: 29px;
+            border-radius: 999px;
+            background: linear-gradient(180deg, var(--pv-blue), var(--pv-cyan));
+            display: inline-block;
+        }
+
+        .siga-card-nav {
+            position: relative;
+            min-height: 176px !important;
+            padding: 22px 22px 18px 22px !important;
+            border-radius: 24px !important;
+            border: 1px solid rgba(193,213,236,.85) !important;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.88)) !important;
+            box-shadow: var(--pv-shadow-soft) !important;
+            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+            overflow: hidden;
+        }
+
+        .siga-card-nav:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 18px 42px rgba(6,31,61,.15) !important;
+            border-color: rgba(23,105,194,.32) !important;
+        }
+
+        .siga-card-nav::after {
+            content: "";
+            position: absolute;
+            right: -45px;
+            bottom: -58px;
+            width: 150px;
+            height: 150px;
+            border-radius: 999px;
+            background: rgba(23,105,194,.065);
+        }
+
+        .siga-card-tag {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            color: #0D4B85 !important;
+            background: #EAF3FF;
+            border: 1px solid #D5E8FD;
+            font-size: 10.5px !important;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            font-weight: 950 !important;
+            margin-bottom: 12px;
+        }
+
+        .siga-card-title {
+            position: relative;
+            z-index: 1;
+            color: var(--pv-navy) !important;
+            font-size: 1.13rem !important;
+            font-weight: 950 !important;
+            line-height: 1.25;
+            margin-bottom: 8px;
+            letter-spacing: -.02em;
+        }
+
+        .siga-card-desc {
+            position: relative;
+            z-index: 1;
+            color: var(--pv-muted) !important;
+            font-size: .92rem !important;
+            line-height: 1.5;
+            max-width: 95%;
+        }
+
+        .siga-card-arrow {
+            position: absolute;
+            right: 18px;
+            top: 18px;
+            width: 30px;
+            height: 30px;
+            display: grid;
+            place-items: center;
+            border-radius: 999px;
+            background: #F0F7FF;
+            color: var(--pv-blue);
+            font-size: 26px;
+            font-weight: 900;
+            border: 1px solid #DCEBFA;
+        }
+
+        .siga-card-icon {
+            margin-right: 8px;
+            opacity: .92;
+        }
+
+        .stButton > button[kind="primary"],
+        .stButton > button[data-testid="baseButton-primary"] {
+            border-radius: 13px !important;
+            min-height: 42px !important;
+            font-weight: 900 !important;
+            border: none !important;
+            background: linear-gradient(135deg, #EF4444 0%, #F97316 100%) !important;
+            box-shadow: 0 10px 22px rgba(239,68,68,.20) !important;
+        }
+
+        .stButton > button {
+            border-radius: 13px !important;
+            min-height: 40px !important;
+            font-weight: 820 !important;
+            border-color: #D9E7F7 !important;
+            box-shadow: 0 4px 14px rgba(6,31,61,.045) !important;
+        }
+
+        [data-testid="stForm"],
+        [data-testid="stExpander"],
+        .atendimento-card,
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: 22px !important;
+            border-color: #D9E7F7 !important;
+            box-shadow: 0 8px 24px rgba(6,31,61,.055);
+        }
+
+        [data-testid="stTextInput"] input,
+        [data-testid="stTextArea"] textarea,
+        [data-baseweb="select"] > div,
+        [data-testid="stDateInput"] input {
+            border-radius: 14px !important;
+            border-color: #D9E7F7 !important;
+            background: rgba(255,255,255,.78) !important;
+        }
+
+        [data-testid="stTextInput"] input:focus,
+        [data-testid="stTextArea"] textarea:focus {
+            border-color: rgba(23,105,194,.58) !important;
+            box-shadow: 0 0 0 3px rgba(23,105,194,.12) !important;
+        }
+
+        div[data-testid="stMetric"] {
+            background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.84));
+            border: 1px solid #D9E7F7;
+            border-radius: 20px;
+            padding: 16px 18px;
+            box-shadow: var(--pv-shadow-soft);
+        }
+
+        div[data-testid="stMetricLabel"] {
+            color: var(--pv-muted) !important;
+            font-weight: 850;
+        }
+
+        div[data-testid="stMetricValue"] {
+            color: var(--pv-navy) !important;
+            font-weight: 950;
+        }
+
+        .atendimento-card {
+            background: rgba(255,255,255,.93) !important;
+            border: 1px solid #D9E7F7 !important;
+            box-shadow: var(--pv-shadow-soft) !important;
+            border-radius: 26px !important;
+            overflow: hidden;
+            margin-bottom: 16px;
+        }
+
+        .atendimento-card-header {
+            background: linear-gradient(90deg, rgba(234,243,255,.82), rgba(255,255,255,.9));
+            border-bottom: 1px solid #E4EEF9;
+            padding: 18px 20px !important;
+        }
+
+        .atendimento-title {
+            color: var(--pv-navy) !important;
+            font-weight: 950 !important;
+            font-size: 1.05rem !important;
+        }
+
+        .atendimento-sub {
+            color: var(--pv-muted) !important;
+            font-weight: 700;
+        }
+
+        .atendimento-grid {
+            gap: 12px !important;
+        }
+
+        .atendimento-campo,
+        .atendimento-textbox {
+            border-radius: 18px !important;
+            background: #F8FBFF !important;
+            border: 1px solid #DDEAF8 !important;
+        }
+
+        [data-testid="stAlert"] {
+            border-radius: 18px !important;
+            border: 1px solid rgba(23,105,194,.15) !important;
+            box-shadow: 0 6px 18px rgba(6,31,61,.045);
+        }
+
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 10px;
+            border-bottom: 1px solid #D9E7F7;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            border-radius: 999px 999px 0 0 !important;
+            padding: 10px 16px !important;
+            font-weight: 850 !important;
+        }
+
+        .stTabs [aria-selected="true"] {
+            background: #EAF3FF !important;
+            color: var(--pv-blue) !important;
+        }
+
+        div[data-testid="stDataFrame"] {
+            border-radius: 18px !important;
+            overflow: hidden;
+            border: 1px solid #D9E7F7;
+            box-shadow: var(--pv-shadow-soft);
+        }
+
+        hr {
+            border-color: #DDEAF8 !important;
+            margin: 1.35rem 0 !important;
+        }
+
+        @media (max-width: 900px) {
+            .block-container {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+
+            .siga-home-hero {
+                padding: 22px 20px;
+                border-radius: 22px;
+            }
+
+            .siga-card-nav {
+                min-height: 150px !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_card_navegacao(icone, titulo, descricao, texto_botao, destino, key, categoria="atendimento"):
     categoria = str(categoria or "atendimento").strip().casefold()
     if categoria not in ("atendimento", "conhecimento", "gestao", "admin"):
@@ -4306,6 +4811,7 @@ def bloco_novos_atendimentos_inicio():
 
 def tela_menu_principal():
     css_menu_institucional()
+    css_pacote_visual_1()
 
     st.markdown('<div class="siga-section-label">Início</div>', unsafe_allow_html=True)
     aviso_modo_visualizacao()
@@ -4350,6 +4856,16 @@ def tela_menu_principal():
             ("user", "Usuários das Zonas", "Cadastrar e revisar usuários externos vinculados às Zonas Eleitorais.", "Gerenciar zonas", "Usuários das Zonas", "card_usuarios_zonas"),
             ("shield", "Diagnóstico do sistema", "Verificar rotas, tabelas, configurações e integridade geral.", "Abrir diagnóstico", "Diagnóstico do sistema", "card_diagnostico"),
         ])
+
+
+    st.markdown(
+        """
+        <div class="siga-home-strip">
+            <div><strong>Fluxo recomendado:</strong> cadastrar demanda → atender → usar Zel quando cabível → validar resposta → mover para realizado.</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     render_grupo_menu("Atendimento", "atendimento", cards_atendimento)
     render_grupo_menu("Conhecimento e Zel", "conhecimento", cards_conhecimento)
@@ -8382,6 +8898,7 @@ def tela_diagnostico_sistema():
 
 def sidebar_menu():
     css_menu_institucional()
+    css_pacote_visual_1()
 
     if "pagina_atual" not in st.session_state:
         st.session_state["pagina_atual"] = "Início"
@@ -8395,6 +8912,17 @@ def sidebar_menu():
     st.sidebar.markdown("### Navegação")
     st.sidebar.caption(f"Perfil: {perfil_atual() or 'não identificado'}")
     st.sidebar.caption(f"Modo: {modo_visualizacao_atual()}")
+
+    pagina_atual_visual = st.session_state.get("pagina_atual", "Início")
+    st.sidebar.markdown(
+        f"""
+        <div class="siga-sidebar-current">
+            <span class="siga-sidebar-current-label">Página atual</span>
+            <span class="siga-sidebar-current-page">{html.escape(str(pagina_atual_visual))}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.sidebar.markdown("#### Início")
     if usuario_eh_zona_eleitoral():
@@ -9802,6 +10330,95 @@ def dataframe_resumo_por_secao(lista):
 
     return pd.DataFrame(linhas)
 
+
+def calcular_horas_atendimento_relatorio(atendimento):
+    """
+    Calcula o tempo de atendimento para o filtro dos relatórios.
+
+    Regra:
+    - Atendimentos realizados: do início do atendimento até a conclusão/realização.
+    - Atendimentos em aberto: do início do atendimento até agora.
+    - Se não houver data suficiente: retorna None.
+    """
+    atendimento = atendimento or {}
+
+    inicio_valor = (
+        atendimento.get("data_inicio_atendimento")
+        or atendimento.get("triado_em")
+        or atendimento.get("criado_em")
+        or atendimento.get("data")
+    )
+
+    status = atendimento.get("status")
+
+    if status == STATUS_REALIZADO:
+        fim_valor = (
+            atendimento.get("data_conclusao")
+            or atendimento.get("realizado_em")
+            or atendimento.get("data_realizacao")
+            or atendimento.get("atualizado_em")
+        )
+    else:
+        fim_valor = agora_brasilia()
+
+    try:
+        horas = horas_entre_datas(inicio_valor, fim_valor)
+        if horas is not None:
+            return horas
+    except Exception:
+        pass
+
+    inicio = obter_data_hora_atendimento(inicio_valor)
+    if not inicio:
+        return None
+
+    try:
+        fim = fim_valor if hasattr(fim_valor, "timestamp") else obter_data_hora_atendimento(fim_valor)
+        if not fim:
+            fim = agora_brasilia()
+
+        if getattr(inicio, "tzinfo", None) is None:
+            inicio = inicio.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+        if getattr(fim, "tzinfo", None) is None:
+            fim = fim.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+
+        horas = (fim - inicio).total_seconds() / 3600
+        return horas if horas >= 0 else None
+    except Exception:
+        return None
+
+
+def aplicar_filtro_tempo_atendimento(lista, filtro):
+    """
+    Aplica o filtro 'Tempo de atendimento' da tela Relatórios e exportação.
+    Corrige NameError quando a tela tenta aplicar o filtro.
+    """
+    if not filtro or filtro == "Todos":
+        return lista or []
+
+    resultado = []
+
+    for atendimento in lista or []:
+        horas = calcular_horas_atendimento_relatorio(atendimento)
+
+        if filtro == "Sem tempo calculado":
+            if horas is None:
+                resultado.append(atendimento)
+            continue
+
+        if horas is None:
+            continue
+
+        if filtro == "Até 24 horas" and horas <= 24:
+            resultado.append(atendimento)
+        elif filtro == "De 1 a 3 dias" and 24 < horas <= 72:
+            resultado.append(atendimento)
+        elif filtro == "De 3 a 7 dias" and 72 < horas <= 168:
+            resultado.append(atendimento)
+        elif filtro == "Acima de 7 dias" and horas > 168:
+            resultado.append(atendimento)
+
+    return resultado
 
 def aplicar_filtro_gerencial(lista, filtro):
     if not filtro or filtro == "Todos":
