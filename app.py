@@ -4107,8 +4107,8 @@ def css_pacote_visual_1():
         """
         <style>
         :root {
-            --pv-bg: #E8EFF7;
-            --pv-bg-2: #DCE8F5;
+            --pv-bg: #E2EAF3;
+            --pv-bg-2: #D7E2EE;
             --pv-navy: #061F3D;
             --pv-navy-2: #083D6E;
             --pv-blue: #1769C2;
@@ -4117,8 +4117,8 @@ def css_pacote_visual_1():
             --pv-green: #0E9F6E;
             --pv-red: #EF4444;
             --pv-amber: #F59E0B;
-            --pv-card: #F7FAFD;
-            --pv-line: #C7D7EA;
+            --pv-card: #FFFFFF;
+            --pv-line: #C4D4E5;
             --pv-muted: #64748B;
             --pv-text: #0B2240;
             --pv-shadow: 0 10px 24px rgba(6,31,61,.08);
@@ -4128,7 +4128,7 @@ def css_pacote_visual_1():
         html, body, [data-testid="stAppViewContainer"] {
             background:
                 radial-gradient(circle at top left, rgba(57,160,255,.16), transparent 26rem),
-                linear-gradient(180deg, #EEF3F8 0%, #E6EDF5 100%) !important;
+                linear-gradient(180deg, #E2EAF3 0%, #DCE6F0 100%) !important;
             color: var(--pv-text) !important;
         }
 
@@ -4140,7 +4140,7 @@ def css_pacote_visual_1():
         }
 
         [data-testid="stHeader"] {
-            background: rgba(238,243,248,.90) !important;
+            background: rgba(226,234,243,.92) !important;
             backdrop-filter: blur(14px);
             border-bottom: 1px solid rgba(217,231,247,.88);
         }
@@ -4685,22 +4685,59 @@ def css_pacote_visual_1():
 
 
 
-        /* Ajuste de contraste do fundo e dos quadros */
+        /* Ajuste final: reduzir sensação de fundo branco e destacar os blocos */
+        html, body, [data-testid="stAppViewContainer"] {
+            background:
+                radial-gradient(circle at top left, rgba(44,110,184,.10), transparent 22rem),
+                linear-gradient(180deg, #E2EAF3 0%, #DCE6F0 100%) !important;
+        }
+
+        [data-testid="stHeader"] {
+            background: rgba(226,234,243,.92) !important;
+            border-bottom: 1px solid #C6D6E6 !important;
+        }
+
         [data-testid="stAppViewContainer"] .main,
-        [data-testid="stMainBlockContainer"] {
+        [data-testid="stMainBlockContainer"],
+        .block-container {
             background: transparent !important;
         }
 
+        /* Cartões, painéis e expanders */
         [data-testid="stForm"],
         [data-testid="stExpander"],
         .atendimento-card,
-        div[data-testid="stVerticalBlockBorderWrapper"],
-        .siga-card-nav {
-            background: #F7FAFD !important;
-            border: 1px solid #C7D7EA !important;
-            box-shadow: 0 4px 12px rgba(6,31,61,.05) !important;
+        .siga-card-nav,
+        .siga-home-hero + div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(> div[data-testid="stExpander"]),
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.atendimento-card) {
+            background: #FFFFFF !important;
+            border: 1px solid #C4D4E5 !important;
+            box-shadow: 0 8px 22px rgba(8,42,82,.08) !important;
         }
 
+        /* Blocos internos de metadados dos atendimentos */
+        .atendimento-card-header {
+            background: linear-gradient(90deg, #F3F7FB 0%, #FFFFFF 100%) !important;
+            border-bottom: 1px solid #D8E3EE !important;
+        }
+
+        .atendimento-kpi,
+        .atendimento-grid > div,
+        .atendimento-meta,
+        .atendimento-meta-item {
+            background: #F6FAFD !important;
+            border: 1px solid #D2DEEA !important;
+            box-shadow: none !important;
+        }
+
+        /* Barras recolhíveis */
+        [data-testid="stExpander"] details,
+        [data-testid="stExpander"] summary {
+            background: #F7FAFD !important;
+        }
+
+        /* Campos para manter leitura e contraste */
         [data-testid="stTextInput"] input,
         [data-testid="stTextArea"] textarea,
         [data-baseweb="select"] > div,
