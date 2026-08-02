@@ -4107,8 +4107,8 @@ def css_pacote_visual_1():
         """
         <style>
         :root {
-            --pv-bg: #E2EAF3;
-            --pv-bg-2: #D7E2EE;
+            --pv-bg: #E8EFF7;
+            --pv-bg-2: #DCE8F5;
             --pv-navy: #061F3D;
             --pv-navy-2: #083D6E;
             --pv-blue: #1769C2;
@@ -4117,8 +4117,8 @@ def css_pacote_visual_1():
             --pv-green: #0E9F6E;
             --pv-red: #EF4444;
             --pv-amber: #F59E0B;
-            --pv-card: #FFFFFF;
-            --pv-line: #C4D4E5;
+            --pv-card: #F7FAFD;
+            --pv-line: #C7D7EA;
             --pv-muted: #64748B;
             --pv-text: #0B2240;
             --pv-shadow: 0 10px 24px rgba(6,31,61,.08);
@@ -4128,7 +4128,7 @@ def css_pacote_visual_1():
         html, body, [data-testid="stAppViewContainer"] {
             background:
                 radial-gradient(circle at top left, rgba(57,160,255,.16), transparent 26rem),
-                linear-gradient(180deg, #E2EAF3 0%, #DCE6F0 100%) !important;
+                linear-gradient(180deg, #EEF3F8 0%, #E6EDF5 100%) !important;
             color: var(--pv-text) !important;
         }
 
@@ -4140,7 +4140,7 @@ def css_pacote_visual_1():
         }
 
         [data-testid="stHeader"] {
-            background: rgba(226,234,243,.92) !important;
+            background: rgba(238,243,248,.90) !important;
             backdrop-filter: blur(14px);
             border-bottom: 1px solid rgba(217,231,247,.88);
         }
@@ -4685,59 +4685,22 @@ def css_pacote_visual_1():
 
 
 
-        /* Ajuste final: reduzir sensação de fundo branco e destacar os blocos */
-        html, body, [data-testid="stAppViewContainer"] {
-            background:
-                radial-gradient(circle at top left, rgba(44,110,184,.10), transparent 22rem),
-                linear-gradient(180deg, #E2EAF3 0%, #DCE6F0 100%) !important;
-        }
-
-        [data-testid="stHeader"] {
-            background: rgba(226,234,243,.92) !important;
-            border-bottom: 1px solid #C6D6E6 !important;
-        }
-
+        /* Ajuste de contraste do fundo e dos quadros */
         [data-testid="stAppViewContainer"] .main,
-        [data-testid="stMainBlockContainer"],
-        .block-container {
+        [data-testid="stMainBlockContainer"] {
             background: transparent !important;
         }
 
-        /* Cartões, painéis e expanders */
         [data-testid="stForm"],
         [data-testid="stExpander"],
         .atendimento-card,
-        .siga-card-nav,
-        .siga-home-hero + div,
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(> div[data-testid="stExpander"]),
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.atendimento-card) {
-            background: #FFFFFF !important;
-            border: 1px solid #C4D4E5 !important;
-            box-shadow: 0 8px 22px rgba(8,42,82,.08) !important;
-        }
-
-        /* Blocos internos de metadados dos atendimentos */
-        .atendimento-card-header {
-            background: linear-gradient(90deg, #F3F7FB 0%, #FFFFFF 100%) !important;
-            border-bottom: 1px solid #D8E3EE !important;
-        }
-
-        .atendimento-kpi,
-        .atendimento-grid > div,
-        .atendimento-meta,
-        .atendimento-meta-item {
-            background: #F6FAFD !important;
-            border: 1px solid #D2DEEA !important;
-            box-shadow: none !important;
-        }
-
-        /* Barras recolhíveis */
-        [data-testid="stExpander"] details,
-        [data-testid="stExpander"] summary {
+        div[data-testid="stVerticalBlockBorderWrapper"],
+        .siga-card-nav {
             background: #F7FAFD !important;
+            border: 1px solid #C7D7EA !important;
+            box-shadow: 0 4px 12px rgba(6,31,61,.05) !important;
         }
 
-        /* Campos para manter leitura e contraste */
         [data-testid="stTextInput"] input,
         [data-testid="stTextArea"] textarea,
         [data-baseweb="select"] > div,
@@ -4745,6 +4708,250 @@ def css_pacote_visual_1():
             background: #F9FBFD !important;
             border: 1px solid #C7D7EA !important;
             box-shadow: inset 0 1px 0 rgba(255,255,255,.7) !important;
+        }
+
+
+        /* Pacote Visual 2 - Moderno */
+        :root {
+            --modern-bg-a: #E9F0F8;
+            --modern-bg-b: #DDE8F4;
+            --modern-panel: rgba(248, 251, 255, .88);
+            --modern-panel-solid: #F7FAFE;
+            --modern-border: #BFD0E4;
+            --modern-border-soft: #D5E2F1;
+            --modern-text: #0A2342;
+            --modern-muted: #5F7187;
+            --modern-blue: #0B5CAD;
+            --modern-blue-dark: #063D78;
+            --modern-cyan: #12A8E8;
+            --modern-shadow: 0 14px 34px rgba(6, 31, 61, .10);
+            --modern-shadow-soft: 0 8px 20px rgba(6, 31, 61, .075);
+        }
+
+        html, body, [data-testid="stAppViewContainer"] {
+            background:
+                radial-gradient(circle at 18% 3%, rgba(18,168,232,.16), transparent 22rem),
+                radial-gradient(circle at 84% 18%, rgba(11,92,173,.12), transparent 24rem),
+                linear-gradient(180deg, var(--modern-bg-a) 0%, var(--modern-bg-b) 100%) !important;
+            color: var(--modern-text) !important;
+        }
+
+        [data-testid="stHeader"] {
+            background: rgba(233, 240, 248, .82) !important;
+            backdrop-filter: blur(18px);
+            border-bottom: 1px solid rgba(191, 208, 228, .75) !important;
+        }
+
+        .block-container {
+            padding-top: 1rem !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+        }
+
+        h1, h2, h3 {
+            color: var(--modern-text) !important;
+            letter-spacing: -.035em !important;
+        }
+
+        h1 {
+            font-weight: 950 !important;
+        }
+
+        section[data-testid="stSidebar"] {
+            background:
+                radial-gradient(circle at 90% 6%, rgba(18,168,232,.22), transparent 9rem),
+                linear-gradient(180deg, #04182F 0%, #082D53 50%, #06345F 100%) !important;
+            border-right: 1px solid rgba(255,255,255,.10) !important;
+            box-shadow: 18px 0 40px rgba(4,24,47,.20) !important;
+        }
+
+        .siga-sidebar-title {
+            font-size: 32px !important;
+            letter-spacing: 1.2px !important;
+        }
+
+        .siga-sidebar-current {
+            background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.065)) !important;
+            border: 1px solid rgba(255,255,255,.18) !important;
+            border-radius: 18px !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 10px 22px rgba(0,0,0,.08) !important;
+        }
+
+        section[data-testid="stSidebar"] .stButton > button {
+            background: rgba(255,255,255,.075) !important;
+            border: 1px solid rgba(255,255,255,.14) !important;
+            color: rgba(255,255,255,.94) !important;
+            border-radius: 16px !important;
+            min-height: 43px !important;
+            box-shadow: none !important;
+        }
+
+        section[data-testid="stSidebar"] .stButton > button:hover {
+            background: rgba(18,168,232,.22) !important;
+            border-color: rgba(95,197,241,.42) !important;
+            transform: translateX(3px) !important;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stExpander"] {
+            background: rgba(255,255,255,.06) !important;
+            border: 1px solid rgba(255,255,255,.14) !important;
+            border-radius: 20px !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08) !important;
+        }
+
+        .siga-home-hero {
+            background:
+                radial-gradient(circle at 84% 0%, rgba(255,255,255,.22), transparent 14rem),
+                linear-gradient(135deg, #04182F 0%, #0B4D88 48%, #0F94D6 100%) !important;
+            border: 1px solid rgba(255,255,255,.24) !important;
+            box-shadow: 0 18px 40px rgba(6,31,61,.16) !important;
+            border-radius: 30px !important;
+        }
+
+        .siga-home-strip {
+            background: rgba(247,250,254,.82) !important;
+            border: 1px solid var(--modern-border) !important;
+            box-shadow: var(--modern-shadow-soft) !important;
+            backdrop-filter: blur(10px);
+        }
+
+        [data-testid="stForm"],
+        [data-testid="stExpander"],
+        div[data-testid="stVerticalBlockBorderWrapper"],
+        .atendimento-card,
+        .siga-card-nav {
+            background: var(--modern-panel) !important;
+            border: 1px solid var(--modern-border) !important;
+            border-radius: 24px !important;
+            box-shadow: var(--modern-shadow-soft) !important;
+            backdrop-filter: blur(10px);
+        }
+
+        .siga-card-nav {
+            min-height: 168px !important;
+            transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease !important;
+        }
+
+        .siga-card-nav:hover {
+            transform: translateY(-3px) !important;
+            border-color: rgba(11,92,173,.42) !important;
+            box-shadow: var(--modern-shadow) !important;
+        }
+
+        .siga-card-tag {
+            background: #E4F1FF !important;
+            border: 1px solid #BFDDFB !important;
+            color: #06477F !important;
+        }
+
+        [data-testid="stTextInput"] input,
+        [data-testid="stTextArea"] textarea,
+        [data-baseweb="select"] > div,
+        [data-testid="stDateInput"] input {
+            background: #F9FBFE !important;
+            border: 1px solid var(--modern-border) !important;
+            border-radius: 14px !important;
+            color: var(--modern-text) !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.75) !important;
+        }
+
+        [data-testid="stTextInput"] input:focus,
+        [data-testid="stTextArea"] textarea:focus,
+        [data-baseweb="select"] > div:focus-within {
+            border-color: rgba(11,92,173,.64) !important;
+            box-shadow: 0 0 0 3px rgba(11,92,173,.12) !important;
+        }
+
+        [data-testid="stTextArea"] textarea {
+            min-height: 170px !important;
+        }
+
+        div[data-testid="stMetric"] {
+            background: rgba(247,250,254,.88) !important;
+            border: 1px solid var(--modern-border) !important;
+            border-radius: 22px !important;
+            box-shadow: var(--modern-shadow-soft) !important;
+        }
+
+        .atendimento-card-header {
+            background: linear-gradient(90deg, #E2ECF8, rgba(247,250,254,.90)) !important;
+            border-bottom: 1px solid var(--modern-border-soft) !important;
+        }
+
+        .atendimento-campo,
+        .atendimento-textbox {
+            background: #F1F6FC !important;
+            border: 1px solid var(--modern-border) !important;
+            border-radius: 18px !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] button,
+        div[data-testid="stFormSubmitButton"] button *,
+        .stButton > button[kind="primary"],
+        .stButton > button[kind="primary"] *,
+        .stButton > button[kind="primaryFormSubmit"],
+        .stButton > button[kind="primaryFormSubmit"] *,
+        .stButton > button[kind="secondaryFormSubmit"],
+        .stButton > button[kind="secondaryFormSubmit"] *,
+        button[data-testid="baseButton-primary"],
+        button[data-testid="baseButton-primary"] * {
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] button,
+        .stButton > button[kind="primary"],
+        .stButton > button[kind="primaryFormSubmit"],
+        .stButton > button[kind="secondaryFormSubmit"],
+        button[data-testid="baseButton-primary"] {
+            background: linear-gradient(135deg, var(--modern-blue-dark), var(--modern-blue)) !important;
+            border: 1px solid rgba(255,255,255,.10) !important;
+            border-radius: 12px !important;
+            min-height: 40px !important;
+            padding: 0 18px !important;
+            font-weight: 850 !important;
+            box-shadow: 0 10px 20px rgba(11,92,173,.20) !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] button:hover,
+        .stButton > button[kind="primary"]:hover,
+        .stButton > button[kind="primaryFormSubmit"]:hover,
+        .stButton > button[kind="secondaryFormSubmit"]:hover,
+        button[data-testid="baseButton-primary"]:hover {
+            background: linear-gradient(135deg, #052F61, #084F98) !important;
+            box-shadow: 0 12px 24px rgba(11,92,173,.26) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]):not([kind="secondaryFormSubmit"]) {
+            background: rgba(255,255,255,.84) !important;
+            color: #073B68 !important;
+            -webkit-text-fill-color: #073B68 !important;
+            border: 1px solid var(--modern-border) !important;
+            border-radius: 12px !important;
+            box-shadow: none !important;
+        }
+
+        .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]):not([kind="secondaryFormSubmit"]):hover {
+            background: #EEF6FF !important;
+            border-color: #92BDE5 !important;
+            transform: none !important;
+        }
+
+        [data-testid="stAlert"] {
+            border-radius: 18px !important;
+            border: 1px solid var(--modern-border) !important;
+            box-shadow: var(--modern-shadow-soft) !important;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            border-radius: 999px 999px 0 0 !important;
+            font-weight: 850 !important;
+        }
+
+        .stTabs [aria-selected="true"] {
+            color: var(--modern-blue) !important;
+            background: #E3F0FC !important;
         }
 
         </style>
