@@ -11058,6 +11058,48 @@ def calcular_horas_atendimento_relatorio(atendimento):
         return None
 
 
+def formatar_tempo_horas(horas):
+    """
+    Formata quantidade de horas para exibição nos relatórios.
+
+    Exemplos:
+    - None -> "Não calculado"
+    - 0.5 -> "30 min"
+    - 2 -> "2 h"
+    - 26 -> "1 dia e 2 h"
+    - 72 -> "3 dias"
+    """
+    if horas is None:
+        return "Não calculado"
+
+    try:
+        horas_float = float(horas)
+    except Exception:
+        return "Não calculado"
+
+    if horas_float < 0:
+        return "Não calculado"
+
+    minutos = int(round(horas_float * 60))
+    if minutos < 60:
+        return f"{minutos} min"
+
+    horas_int = minutos // 60
+    minutos_restantes = minutos % 60
+
+    if horas_int < 24:
+        if minutos_restantes:
+            return f"{horas_int} h {minutos_restantes} min"
+        return f"{horas_int} h"
+
+    dias = horas_int // 24
+    horas_restantes = horas_int % 24
+
+    texto_dias = "1 dia" if dias == 1 else f"{dias} dias"
+    if horas_restantes:
+        return f"{texto_dias} e {horas_restantes} h"
+    return texto_dias
+
 def calcular_horas_entre_triagem_realizacao(atendimento):
     """
     Compatibilidade para Relatórios e exportação.
@@ -12719,7 +12761,11 @@ def tela_relatorios_exportacao():
     if not df.empty:
         mapa_horas = {}
         for atendimento in lista:
-            mapa_horas[str(atendimento.get("id"))] = formatar_tempo_horas(calcular_horas_entre_triagem_realizacao(atendimento))
+            try:
+                horas_atendimento = calcular_horas_entre_triagem_realizacao(atendimento)
+                mapa_horas[str(atendimento.get("id"))] = formatar_tempo_horas(horas_atendimento)
+            except Exception:
+                mapa_horas[str(atendimento.get("id"))] = "Não calculado"
         if "ID" in df.columns:
             df["Tempo de atendimento"] = df["ID"].astype(str).map(mapa_horas).fillna("Não calculado")
 
