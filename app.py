@@ -10398,6 +10398,27 @@ def numero_br(valor):
 
 
 
+
+def percentual_br(valor, casas=1):
+    """
+    Formata percentual no padrao brasileiro.
+    Corrige NameError no Relatorio apresentavel/PDF.
+    """
+    try:
+        if valor is None:
+            valor_num = 0.0
+        elif isinstance(valor, str):
+            valor_limpo = valor.strip().replace('%', '').replace('.', '').replace(',', '.')
+            valor_num = float(valor_limpo) if valor_limpo else 0.0
+        else:
+            valor_num = float(valor)
+
+        texto = f"{valor_num:.{int(casas)}f}".replace('.', ',')
+        return f"{texto}%"
+    except Exception:
+        return "0,0%"
+
+
 def bloco_tabela_dashboard(titulo, df):
     """
     Exibe tabela de dashboard de forma segura.
@@ -12461,9 +12482,9 @@ def cabecalho_relatorio(canvas_obj, doc):
 
 def tabela_resumo_pdf(df):
     total = len(df)
-    triagem = int((df["Status"] == STATUS_CADASTRADO).sum()) if not df.empty and "Status" in df.columns else 0
-    em_atendimento = int((df["Status"] == STATUS_EM_ATENDIMENTO).sum()) if not df.empty and "Status" in df.columns else 0
-    realizado = int((df["Status"] == STATUS_REALIZADO).sum()) if not df.empty and "Status" in df.columns else 0
+    triagem = int((df["Status"].astype(str).str.casefold() == str(globals().get("STATUS_CADASTRADO", "Cadastrado")).casefold()).sum()) if not df.empty and "Status" in df.columns else 0
+    em_atendimento = int((df["Status"].astype(str).str.casefold() == str(globals().get("STATUS_EM_ATENDIMENTO", "Em atendimento")).casefold()).sum()) if not df.empty and "Status" in df.columns else 0
+    realizado = int((df["Status"].astype(str).str.casefold() == str(globals().get("STATUS_REALIZADO", "Atendimento realizado")).casefold()).sum()) if not df.empty and "Status" in df.columns else 0
     percentual = (realizado / total * 100) if total else 0
 
     dados = [
@@ -12798,15 +12819,20 @@ def tela_relatorios_exportacao():
     st.markdown("#### Relatório apresentável")
     st.caption("Gera relatório em PDF com timbre, resumo gerencial, gráficos estatísticos e tabela analítica conforme a base filtrada.")
 
-    pdf_relatorio = gerar_relatorio_pdf_sepro(df, filtros_para_pdf)
+    try:
+        pdf_relatorio = gerar_relatorio_pdf_sepro(df, filtros_para_pdf)
 
-    st.download_button(
-        "Gerar relatório PDF apresentável",
-        data=pdf_relatorio,
-        file_name=f"relatorio_siga_cor_atendimentos_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
-        mime="application/pdf",
-        type="primary"
-    )
+        st.download_button(
+            "Gerar relatório PDF apresentável",
+            data=pdf_relatorio,
+            file_name=f"relatorio_siga_cor_atendimentos_{agora_brasilia().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            type="primary"
+        )
+    except Exception as e:
+        st.error("Não foi possível gerar o PDF apresentável neste momento.")
+        st.code(str(e))
+        st.info("A base filtrada e os relatórios gerenciais abaixo continuam disponíveis para consulta e exportação.")
 
     st.divider()
 
