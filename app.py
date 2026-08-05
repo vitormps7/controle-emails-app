@@ -11058,6 +11058,66 @@ def calcular_horas_atendimento_relatorio(atendimento):
         return None
 
 
+def calcular_horas_entre_triagem_realizacao(atendimento):
+    """
+    Compatibilidade para Relatórios e exportação.
+
+    A tela de relatórios chama esta função para montar o mapa de tempo.
+    Ela calcula o intervalo entre o início da triagem/atendimento e a realização.
+    Se o atendimento ainda não foi realizado, calcula até o momento atual.
+    """
+    atendimento = atendimento or {}
+
+    try:
+        return calcular_horas_atendimento_relatorio(atendimento)
+    except Exception:
+        pass
+
+    inicio_valor = (
+        atendimento.get("data_inicio_atendimento")
+        or atendimento.get("triado_em")
+        or atendimento.get("criado_em")
+        or atendimento.get("data")
+    )
+
+    status = atendimento.get("status")
+
+    if status == STATUS_REALIZADO:
+        fim_valor = (
+            atendimento.get("data_conclusao")
+            or atendimento.get("realizado_em")
+            or atendimento.get("data_realizacao")
+            or atendimento.get("atualizado_em")
+        )
+    else:
+        fim_valor = agora_brasilia()
+
+    try:
+        horas = horas_entre_datas(inicio_valor, fim_valor)
+        if horas is not None:
+            return horas
+    except Exception:
+        pass
+
+    try:
+        inicio = obter_data_hora_atendimento(inicio_valor)
+        if not inicio:
+            return None
+
+        fim = fim_valor if hasattr(fim_valor, "timestamp") else obter_data_hora_atendimento(fim_valor)
+        if not fim:
+            fim = agora_brasilia()
+
+        if getattr(inicio, "tzinfo", None) is None:
+            inicio = inicio.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+        if getattr(fim, "tzinfo", None) is None:
+            fim = fim.replace(tzinfo=FUSO_HORARIO_BRASILIA)
+
+        horas = (fim - inicio).total_seconds() / 3600
+        return horas if horas >= 0 else None
+    except Exception:
+        return None
+
 def aplicar_filtro_tempo_atendimento(lista, filtro):
     """
     Aplica o filtro 'Tempo de atendimento' da tela Relatórios e exportação.
