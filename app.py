@@ -6046,6 +6046,620 @@ def exibir_diagnostico_assuntos_novo_atendimento(secao):
         st.write("Seções encontradas nos registros:")
         st.code(", ".join(diag.get("secoes_encontradas") or []) or "Nenhuma seção encontrada")
 
+
+# ============================================================
+# FASE 1 - ENTRADA INTELIGENTE DE ATENDIMENTOS
+# ============================================================
+
+def entrada_inteligente_limpar_texto(texto):
+    texto = str(texto or "")
+    texto = texto.replace("\r\n", "\n").replace("\r", "\n")
+    texto = re.sub(r"<[^>]+>", " ", texto)
+    texto = re.sub(r"[ \t]+", " ", texto)
+    texto = re.sub(r"\n{3,}", "\n\n", texto)
+    return texto.strip()
+
+
+def entrada_inteligente_texto_arquivo(uploaded_file):
+    """
+    Lê arquivo enviado para a Entrada Inteligente.
+    Reaproveita o extrator já usado nos Instrumentos da Zel, inclusive PDF/DOCX/DOC.
+    """
+    if uploaded_file is None:
+        return ""
+
+    try:
+        if "texto_arquivo_upload_zel" in globals():
+            return texto_arquivo_upload_zel(uploaded_file)
+    except Exception:
+        pass
+
+    try:
+        data = uploaded_file.read()
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+    except Exception:
+        return ""
+
+    for enc in ("utf-8", "latin-1", "cp1252"):
+        try:
+            return data.decode(enc)
+        except Exception:
+            pass
+
+    return ""
+
+
+def entrada_inteligente_detectar_remetente(texto):
+    texto = str(texto or "")
+    padroes = [
+        r"(?im)^\s*De:\s*(.+)$",
+        r"(?im)^\s*From:\s*(.+)$",
+        r"(?im)^\s*Remetente:\s*(.+)$",
+        r"(?im)^\s*Enviado por:\s*(.+)$",
+    ]
+    for p in padroes:
+        m = re.search(p, texto)
+        if m:
+            return entrada_inteligente_limpar_texto(m.group(1))[:180]
+
+    m = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", texto)
+    if m:
+        return m.group(0)
+
+    return ""
+
+
+def entrada_inteligente_extrair_assunto_email(texto):
+    texto = str(texto or "")
+    for p in [r"(?im)^\s*Assunto:\s*(.+)$", r"(?im)^\s*Subject:\s*(.+)$"]:
+        m = re.search(p, texto)
+        if m:
+            return entrada_inteligente_limpar_texto(m.group(1))[:220]
+    return ""
+
+
+def entrada_inteligente_sugerir_fonte(tipo_entrada, texto):
+    tipo = str(tipo_entrada or "").casefold()
+    texto_norm = str(texto or "").casefold()
+
+    if "mail" in tipo or "e-mail" in tipo or "email" in tipo:
+        return "E-mail"
+    if "whatsapp" in tipo or "zap" in tipo:
+        return "WhatsApp"
+    if "telefone" in tipo:
+        return "Telefone"
+    if "áudio" in tipo or "audio" in tipo:
+        return "Áudio"
+    if "documento" in tipo or ".pdf" in texto_norm or ".doc" in texto_norm:
+        return "Documento"
+
+    if re.search(r"(?im)^\s*(de|from|assunto|subject):", texto_norm):
+        return "E-mail"
+    if re.search(r"\[\d{1,2}/\d{1,2}/\d{2,4},?\s+\d{1,2}:\d{2}", texto_norm):
+        return "WhatsApp"
+    if "whatsapp" in texto_norm:
+        return "WhatsApp"
+    if "telefone" in texto_norm or "ligação" in texto_norm or "ligacao" in texto_norm:
+        return "Telefone"
+    return "Não informado"
+
+
+def entrada_inteligente_sugerir_zona(texto):
+    texto = str(texto or "")
+
+    padroes = [
+        r"\b(\d{1,3})\s*(?:ª|a|º|o)?\s*(?:zona|ze|zona eleitoral)\b",
+        r"\b(?:zona|ze|zona eleitoral)\s*(\d{1,3})\b",
+        r"\b(\d{1,3})\s*ª\s*ZE\b",
+    ]
+
+    numero = None
+    for p in padroes:
+        m = re.search(p, texto, flags=re.I)
+        if m:
+            try:
+                numero = int(m.group(1))
+                break
+            except Exception:
+                pass
+
+    zonas = zonas_eleitorais_dropdown() if "zonas_eleitorais_dropdown" in globals() else ["Não informada"]
+
+    if numero:
+        for z in zonas:
+            if f"{numero:03d}" in str(z) or re.search(rf"\b{numero}\b", str(z)):
+                return z
+        return f"{numero:03d}ª Zona Eleitoral - Bahia"
+
+    texto_norm = texto.casefold()
+    for z in zonas:
+        if z and z != "Não informada":
+            partes = re.split(r"[-–,]", str(z))
+            for parte in partes:
+                parte = parte.strip()
+                if len(parte) >= 5 and parte.casefold() in texto_norm:
+                    return z
+
+    return "Não informada"
+
+
+def entrada_inteligente_sugerir_secao(texto):
+    texto_norm = str(texto or "").casefold()
+    secoes = secoes_atendimento() if "secoes_atendimento" in globals() else list(SECOES_ATENDIMENTO)
+
+    for secao in secoes:
+        if str(secao or "").casefold() in texto_norm:
+            return normalizar_secao(secao)
+
+    regras = [
+        ("SEOCE", ["cadastro eleitoral", "elo", "título", "titulo", "infodip", "óbito", "obito", "direitos políticos", "direitos politicos"]),
+        ("SEPRO", ["pje", "sentença", "sentenca", "cumprimento", "multa", "sisbajud", "renajud", "infojud", "depósito judicial", "deposito judicial", "gru"]),
+        ("SEORZE", ["zona eleitoral", "cartório", "cartorio", "servidor", "plantão", "plantao", "zoneamento"]),
+    ]
+
+    for secao, palavras in regras:
+        if secao in secoes and any(p in texto_norm for p in palavras):
+            return normalizar_secao(secao)
+
+    return normalizar_secao(secoes[0] if secoes else "SEPRO")
+
+
+def entrada_inteligente_pontuar_assunto(texto, assunto):
+    texto_norm = str(texto or "").casefold()
+    assunto_norm = str(assunto or "").casefold()
+
+    if not assunto_norm or assunto_norm == "não informado":
+        return 0
+
+    score = 0
+    if assunto_norm in texto_norm:
+        score += 20
+
+    palavras = re.findall(r"[a-záàâãéêíóôõúç0-9]{4,}", assunto_norm)
+    for p in palavras:
+        if p in texto_norm:
+            score += 5
+
+    return score
+
+
+def entrada_inteligente_assuntos_secao(secao):
+    try:
+        if "assuntos_da_secao_para_cadastro" in globals():
+            return assuntos_da_secao_para_cadastro(secao)
+        if "assuntos_da_secao" in globals():
+            return assuntos_da_secao(secao)
+        return assuntos(secao)
+    except Exception:
+        return ["Não informado"]
+
+
+def entrada_inteligente_sugerir_assunto(texto, secao):
+    opcoes = entrada_inteligente_assuntos_secao(secao)
+
+    melhor = "Não informado"
+    melhor_score = 0
+
+    for assunto in opcoes:
+        score = entrada_inteligente_pontuar_assunto(texto, assunto)
+        if score > melhor_score:
+            melhor = assunto
+            melhor_score = score
+
+    texto_norm = str(texto or "").casefold()
+
+    mapa = [
+        (["multa", "cumprimento", "sentença", "sentenca", "parcelamento", "gru"], "Cumprimento de Sentença"),
+        (["sisbajud"], "Sisbajud"),
+        (["renajud"], "Renajud"),
+        (["infojud"], "Infojud"),
+        (["cnib"], "CNIB"),
+        (["infodip", "óbito", "obito", "direitos políticos", "direitos politicos"], "INFODIP"),
+        (["depósito judicial", "deposito judicial", "conta judicial", "alvará", "alvara"], "Depósito Judicial"),
+    ]
+
+    for palavras, assunto_alvo in mapa:
+        if any(p in texto_norm for p in palavras):
+            for op in opcoes:
+                if assunto_alvo.casefold() in str(op).casefold():
+                    return op
+
+    return melhor if melhor_score > 0 else "Não informado"
+
+
+def entrada_inteligente_sugerir_prazo(texto):
+    texto = str(texto or "")
+    padroes = [
+        r"\b(\d{1,2}/\d{1,2}/\d{4})\b",
+        r"\b(\d{1,2}-\d{1,2}-\d{4})\b",
+    ]
+
+    for p in padroes:
+        m = re.search(p, texto)
+        if m:
+            data_txt = m.group(1).replace("-", "/")
+            try:
+                dt = datetime.strptime(data_txt, "%d/%m/%Y")
+                return dt.strftime("%d/%m/%Y")
+            except Exception:
+                pass
+
+    texto_norm = texto.casefold()
+    if "amanhã" in texto_norm or "amanha" in texto_norm:
+        try:
+            return (agora_brasilia().date() + timedelta(days=1)).strftime("%d/%m/%Y")
+        except Exception:
+            return ""
+    if "hoje" in texto_norm:
+        try:
+            return agora_brasilia().date().strftime("%d/%m/%Y")
+        except Exception:
+            return ""
+
+    return ""
+
+
+def entrada_inteligente_sugerir_prioridade(texto):
+    texto_norm = str(texto or "").casefold()
+    termos_urgencia = ["urgente", "urgência", "urgencia", "prazo hoje", "vence hoje", "imediato", "imediata", "plantão", "plantao"]
+    if any(t in texto_norm for t in termos_urgencia):
+        return "Alta"
+    if "prazo" in texto_norm or "até" in texto_norm or "ate" in texto_norm:
+        return "Normal"
+    return "Normal"
+
+
+def entrada_inteligente_descricao(texto, tipo_entrada):
+    texto = entrada_inteligente_limpar_texto(texto)
+
+    linhas = texto.splitlines()
+    corpo = []
+    ignorar_prefixos = ("de:", "from:", "enviado:", "sent:", "para:", "to:", "cc:", "cco:", "subject:", "assunto:")
+    for linha in linhas:
+        if linha.strip().casefold().startswith(ignorar_prefixos):
+            continue
+        corpo.append(linha)
+
+    desc = "\n".join(corpo).strip()
+    if not desc:
+        desc = texto
+
+    cortes = [
+        "\nAtenciosamente,",
+        "\natt,",
+        "\nAtt,",
+        "\nEnviado do meu",
+        "\nEsta mensagem",
+    ]
+    for c in cortes:
+        idx = desc.find(c)
+        if idx > 80:
+            desc = desc[:idx].strip()
+            break
+
+    if len(desc) > 3500:
+        desc = desc[:3500].rsplit(" ", 1)[0] + "..."
+
+    return desc.strip()
+
+
+def entrada_inteligente_montar_sugestao(texto, tipo_entrada):
+    texto = entrada_inteligente_limpar_texto(texto)
+    assunto_email = entrada_inteligente_extrair_assunto_email(texto)
+    remetente = entrada_inteligente_detectar_remetente(texto)
+    secao = entrada_inteligente_sugerir_secao(texto)
+    assunto = entrada_inteligente_sugerir_assunto(" ".join([assunto_email, texto]), secao)
+    fonte = entrada_inteligente_sugerir_fonte(tipo_entrada, texto)
+    zona = entrada_inteligente_sugerir_zona(texto)
+    prazo = entrada_inteligente_sugerir_prazo(texto)
+    prioridade = entrada_inteligente_sugerir_prioridade(texto)
+
+    descricao = entrada_inteligente_descricao(texto, tipo_entrada)
+    if assunto_email and assunto_email.casefold() not in descricao.casefold():
+        descricao = f"{assunto_email}\n\n{descricao}".strip()
+
+    score = 0
+    if fonte != "Não informado":
+        score += 20
+    if zona != "Não informada":
+        score += 20
+    if assunto != "Não informado":
+        score += 25
+    if secao:
+        score += 20
+    if prazo:
+        score += 10
+    if remetente:
+        score += 5
+
+    if score >= 70:
+        confianca = "Alta"
+    elif score >= 45:
+        confianca = "Média"
+    else:
+        confianca = "Baixa"
+
+    return {
+        "data": hoje_ddmmaaaa(),
+        "fonte_canal": fonte,
+        "zona_eleitoral": zona,
+        "secao": secao,
+        "assunto": assunto,
+        "descricao": descricao,
+        "prazo_limite": prazo,
+        "prioridade": prioridade,
+        "remetente": remetente,
+        "tipo_entrada": tipo_entrada,
+        "texto_bruto": texto,
+        "confianca": confianca,
+        "score": score,
+    }
+
+
+def entrada_inteligente_index_opcao(opcoes, valor, padrao=0):
+    try:
+        if valor in opcoes:
+            return opcoes.index(valor)
+        valor_norm = str(valor or "").casefold()
+        for i, op in enumerate(opcoes):
+            if valor_norm and valor_norm == str(op).casefold():
+                return i
+    except Exception:
+        pass
+    return padrao
+
+
+def entrada_inteligente_criar_atendimento(sugestao):
+    usuario = usuario_logado() or {}
+    lista = atendimentos()
+
+    fonte_canal = sugestao.get("fonte_canal") or "Não informado"
+    zona_eleitoral = sugestao.get("zona_eleitoral") or "Não informada"
+    secao = normalizar_secao(sugestao.get("secao") or "SEPRO")
+    assunto = sugestao.get("assunto") or "Não informado"
+    descricao = sugestao.get("descricao") or ""
+    prazo_limite = sugestao.get("prazo_limite") or ""
+
+    novo = {
+        "id": proximo_id(lista),
+        "data": sugestao.get("data") or hoje_ddmmaaaa(),
+        "status": STATUS_EM_ATENDIMENTO,
+        "secao": secao,
+        "tribunal": TRIBUNAL_PADRAO,
+        "uf": UF_PADRAO,
+        "unidade_responsavel": UNIDADE_CORREGEDORIA_PADRAO,
+        "requer_validacao": False,
+        "situacao_validacao": "Não requerida",
+        "validado_por": "",
+        "validado_em": "",
+        "servidor": "Não informado",
+        "fonte": fonte_canal,
+        "assunto": assunto,
+        "zona_eleitoral": "" if zona_eleitoral == "Não informada" else zona_eleitoral,
+        "origem": fonte_canal,
+        "protocolo": "",
+        "prioridade": sugestao.get("prioridade") or "Normal",
+        "complexidade": "Não informada",
+        "prazo_limite": prazo_limite,
+        "descricao": limpar_html_residual_card(descricao) if "limpar_html_residual_card" in globals() else str(descricao or "").strip(),
+        "observacoes": (
+            "Pré-cadastrado pela Entrada Inteligente. "
+            f"Confiança: {sugestao.get('confianca') or 'Não informada'}. "
+            f"Remetente/origem identificada: {sugestao.get('remetente') or 'Não identificado'}."
+        ),
+        "providencia_adotada": "",
+        "conclusao": "",
+        "criado_por": usuario.get("email") or usuario.get("nome") or "",
+        "criado_em": agora_iso(),
+        "atualizado_em": agora_iso(),
+        "data_realizacao": "",
+        "data_inicio_atendimento": agora_iso(),
+        "data_conclusao": "",
+        "triado_por": usuario.get("email") or usuario.get("nome") or "",
+        "triado_em": agora_iso(),
+        "natureza_demanda": "Pré-triagem inteligente",
+        "eixo_competencia": "",
+        "unidade_sugerida": secao,
+        "exige_validacao_tecnica": False,
+        "unidade_tecnica_validadora": "Não necessária",
+        "status_validacao_tecnica": "Não necessária",
+        "exige_coajuc": False,
+        "motivo_escalonamento": "",
+    }
+
+    lista.append(novo)
+    salvar_atendimentos(lista)
+
+    try:
+        registrar_historico_atendimento(
+            novo.get("id"),
+            "Entrada inteligente",
+            "Atendimento pré-triado e cadastrado",
+            f"Atendimento cadastrado pela Entrada Inteligente por {usuario.get('nome') or usuario.get('email') or 'usuário'}."
+        )
+    except Exception:
+        pass
+
+    try:
+        email_ok, email_msg = enviar_email_demanda_cadastrada_unidade(novo)
+    except Exception as e:
+        email_ok, email_msg = False, str(e)
+
+    return novo, email_ok, email_msg
+
+
+def tela_entrada_inteligente():
+    exibir_mensagem_sistema()
+    st.title("Entrada inteligente")
+    st.caption("Fase 1 — importação manual inteligente de demandas para pré-cadastro de atendimento.")
+
+    if not usuario_pode_editar_atendimentos():
+        st.warning("Seu perfil não permite cadastrar atendimentos.")
+        return
+
+    st.info(
+        "Cole aqui o conteúdo recebido por e-mail, WhatsApp, telefone, áudio transcrito ou documento. "
+        "O SIGA-COR fará uma pré-triagem e só cadastrará o atendimento após confirmação humana."
+    )
+
+    tipo_entrada = st.selectbox(
+        "Tipo de entrada",
+        ["E-mail", "WhatsApp", "Telefone", "Áudio transcrito", "Documento", "Texto livre"],
+        index=0,
+        key="entrada_inteligente_tipo"
+    )
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        arquivo = st.file_uploader(
+            "Anexar documento ou e-mail salvo",
+            type=["txt", "eml", "msg", "md", "pdf", "docx", "doc"],
+            key="entrada_inteligente_arquivo",
+            help="Na Fase 1, o sistema lê textos, e-mails salvos, PDF com texto selecionável e DOCX/DOC quando possível."
+        )
+
+    with col2:
+        st.markdown("**Áudio nesta fase**")
+        st.caption(
+            "Para áudio ou ligação, use a transcrição do celular/navegador ou digite o relato. "
+            "A transcrição automática fica para a próxima fase."
+        )
+
+    texto_manual = st.text_area(
+        "Conteúdo recebido",
+        height=260,
+        placeholder=(
+            "Cole aqui o e-mail, conversa de WhatsApp, relato telefônico, transcrição de áudio ou conteúdo do documento.\n\n"
+            "Exemplo: Zona 155ª informa dúvida sobre cumprimento de sentença..."
+        ),
+        key="entrada_inteligente_texto_manual"
+    )
+
+    if st.button("Analisar entrada", type="primary", key="entrada_inteligente_analisar"):
+        texto_arquivo = entrada_inteligente_texto_arquivo(arquivo)
+        texto_total = "\n\n".join([t for t in [texto_arquivo, texto_manual] if str(t or "").strip()])
+        texto_total = entrada_inteligente_limpar_texto(texto_total)
+
+        if not texto_total:
+            st.warning("Informe um texto ou anexe um arquivo com conteúdo extraível.")
+        else:
+            st.session_state["entrada_inteligente_sugestao"] = entrada_inteligente_montar_sugestao(texto_total, tipo_entrada)
+            st.rerun()
+
+    sugestao = st.session_state.get("entrada_inteligente_sugestao")
+
+    if not sugestao:
+        st.warning("Nenhuma entrada analisada ainda.")
+        return
+
+    st.divider()
+    st.subheader("Pré-triagem sugerida")
+
+    confianca = sugestao.get("confianca", "Não informada")
+    score = sugestao.get("score", 0)
+    if confianca == "Alta":
+        st.success(f"Confiança da pré-triagem: {confianca} ({score}/100)")
+    elif confianca == "Média":
+        st.warning(f"Confiança da pré-triagem: {confianca} ({score}/100). Revise antes de cadastrar.")
+    else:
+        st.error(f"Confiança da pré-triagem: {confianca} ({score}/100). Conferência obrigatória antes de cadastrar.")
+
+    fontes = tipos_fonte_dropdown("") if "tipos_fonte_dropdown" in globals() else ["Não informado", "E-mail", "WhatsApp", "Telefone", "Documento", "Áudio"]
+    zonas = zonas_eleitorais_dropdown() if "zonas_eleitorais_dropdown" in globals() else ["Não informada"]
+    secoes = secoes_atendimento() if "secoes_atendimento" in globals() else list(SECOES_ATENDIMENTO)
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        data_final = st.text_input("Data", value=sugestao.get("data") or hoje_ddmmaaaa(), key="entrada_inteligente_data")
+    with col_b:
+        fonte_final = st.selectbox(
+            "Fonte/canal",
+            fontes,
+            index=entrada_inteligente_index_opcao(fontes, sugestao.get("fonte_canal"), 0),
+            key="entrada_inteligente_fonte"
+        )
+    with col_c:
+        zona_final = st.selectbox(
+            "Zona Eleitoral",
+            zonas,
+            index=entrada_inteligente_index_opcao(zonas, sugestao.get("zona_eleitoral"), 0),
+            key="entrada_inteligente_zona"
+        )
+
+    col_d, col_e = st.columns(2)
+    with col_d:
+        secao_final = st.selectbox(
+            "Seção responsável",
+            secoes,
+            index=entrada_inteligente_index_opcao(secoes, sugestao.get("secao"), 0),
+            key="entrada_inteligente_secao"
+        )
+    with col_e:
+        assuntos_opcoes = entrada_inteligente_assuntos_secao(secao_final)
+        assunto_final = st.selectbox(
+            "Assunto",
+            assuntos_opcoes,
+            index=entrada_inteligente_index_opcao(assuntos_opcoes, sugestao.get("assunto"), 0),
+            key="entrada_inteligente_assunto"
+        )
+
+    descricao_final = st.text_area(
+        "Descrição da pergunta",
+        value=sugestao.get("descricao") or "",
+        height=240,
+        key="entrada_inteligente_descricao"
+    )
+
+    with st.expander("Campos complementares sugeridos", expanded=False):
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            prioridade_final = st.text_input("Prioridade sugerida", value=sugestao.get("prioridade") or "Normal", key="entrada_inteligente_prioridade")
+        with col_p2:
+            prazo_final = st.text_input("Prazo limite sugerido", value=sugestao.get("prazo_limite") or "", key="entrada_inteligente_prazo")
+        st.text_input("Remetente/origem identificada", value=sugestao.get("remetente") or "", key="entrada_inteligente_remetente")
+
+    with st.expander("Texto bruto analisado", expanded=False):
+        st.text_area("Conteúdo original", value=sugestao.get("texto_bruto") or "", height=220, key="entrada_inteligente_texto_bruto_view")
+
+    col_btn1, col_btn2 = st.columns([1, 1])
+
+    with col_btn1:
+        if st.button("Confirmar e cadastrar atendimento", type="primary", key="entrada_inteligente_confirmar"):
+            if not str(descricao_final or "").strip():
+                st.warning("A descrição da pergunta é obrigatória.")
+            else:
+                sugestao_final = dict(sugestao)
+                sugestao_final.update({
+                    "data": data_final,
+                    "fonte_canal": fonte_final,
+                    "zona_eleitoral": zona_final,
+                    "secao": secao_final,
+                    "assunto": assunto_final,
+                    "descricao": descricao_final,
+                    "prioridade": prioridade_final,
+                    "prazo_limite": prazo_final,
+                    "remetente": st.session_state.get("entrada_inteligente_remetente") or sugestao.get("remetente") or "",
+                })
+
+                novo, email_ok, email_msg = entrada_inteligente_criar_atendimento(sugestao_final)
+
+                if email_ok:
+                    registrar_mensagem_sistema("success", f"Atendimento {novo.get('id')} cadastrado pela Entrada Inteligente e e-mail enviado à unidade.")
+                else:
+                    registrar_mensagem_sistema("warning", f"Atendimento {novo.get('id')} cadastrado, mas o e-mail não foi enviado: {email_msg}")
+
+                st.session_state.pop("entrada_inteligente_sugestao", None)
+                st.session_state["pagina_atual"] = "Em atendimento"
+                st.rerun()
+
+    with col_btn2:
+        if st.button("Limpar análise", key="entrada_inteligente_limpar"):
+            st.session_state.pop("entrada_inteligente_sugestao", None)
+            st.rerun()
+
 def tela_novo_atendimento():
     """
     Porta de entrada da demanda.
@@ -9627,6 +10241,10 @@ def sidebar_menu():
         if usuario_pode_editar_atendimentos():
             if st.button("Novo atendimento ›", key="side_atendimento_novo", use_container_width=True):
                 ir_para_pagina("Novo atendimento")
+                st.rerun()
+
+            if st.button("Entrada inteligente ›", key="side_atendimento_entrada_inteligente", use_container_width=True):
+                ir_para_pagina("Entrada inteligente")
                 st.rerun()
 
         botoes_atendimento = [
@@ -15552,6 +16170,9 @@ def main():
 
     elif escolha == "Novo atendimento":
         tela_novo_atendimento()
+
+    elif escolha == "Entrada inteligente":
+        tela_entrada_inteligente()
 
     elif escolha == "Conversão em conhecimento":
         tela_validacao_chefia()
