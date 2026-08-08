@@ -6491,6 +6491,161 @@ def entrada_inteligente_criar_atendimento(sugestao):
     return novo, email_ok, email_msg
 
 
+
+# ============================================================
+# FASE 2 - TRANSCRICAO AUTOMATICA DE AUDIO
+# ============================================================
+
+def entrada_inteligente_openai_api_key():
+    """
+    Retorna a chave da API de transcricao configurada nos Secrets do Streamlit.
+    Ordem de preferencia: OPENAI_API_KEY, OPENAI_TRANSCRIPTION_API_KEY.
+    """
+    for nome in ["OPENAI_API_KEY", "OPENAI_TRANSCRIPTION_API_KEY"]:
+        try:
+            valor = str(st.secrets.get(nome, "") or "").strip()
+        except Exception:
+            valor = ""
+        if valor:
+            return valor
+    return ""
+
+
+def entrada_inteligente_modelo_transcricao():
+    """
+    Modelo usado para transcricao. Pode ser ajustado nos Secrets com OPENAI_TRANSCRIBE_MODEL.
+    """
+    try:
+        modelo = str(st.secrets.get("OPENAI_TRANSCRIBE_MODEL", "") or "").strip()
+    except Exception:
+        modelo = ""
+    return modelo or "gpt-4o-mini-transcribe"
+
+
+def entrada_inteligente_nome_audio(uploaded_file, padrao="audio.webm"):
+    nome = getattr(uploaded_file, "name", "") or ""
+    return nome or padrao
+
+
+def entrada_inteligente_content_type_audio(uploaded_file, nome_arquivo="audio.webm"):
+    tipo = getattr(uploaded_file, "type", "") or ""
+    if tipo:
+        return tipo
+    nome = str(nome_arquivo or "").lower()
+    if nome.endswith(".mp3"):
+        return "audio/mpeg"
+    if nome.endswith(".wav"):
+        return "audio/wav"
+    if nome.endswith(".m4a") or nome.endswith(".mp4"):
+        return "audio/mp4"
+    if nome.endswith(".ogg"):
+        return "audio/ogg"
+    if nome.endswith(".flac"):
+        return "audio/flac"
+    return "audio/webm"
+
+
+def entrada_inteligente_ler_audio(uploaded_file):
+    if uploaded_file is None:
+        return b"", "audio.webm", "audio/webm"
+    try:
+        data = uploaded_file.read()
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+    except Exception:
+        return b"", "audio.webm", "audio/webm"
+    nome = entrada_inteligente_nome_audio(uploaded_file)
+    content_type = entrada_inteligente_content_type_audio(uploaded_file, nome)
+    return data or b"", nome, content_type
+
+
+def entrada_inteligente_transcrever_audio_openai(uploaded_file):
+    """
+    Transcreve audio usando a API de transcricao da OpenAI.
+    Retorna: (ok, texto, mensagem)
+    """
+    api_key = entrada_inteligente_openai_api_key()
+    if not api_key:
+        return False, "", "OPENAI_API_KEY nao configurada nos Secrets do Streamlit. Configure a chave para ativar a transcricao automatica."
+    audio_bytes, nome_arquivo, content_type = entrada_inteligente_ler_audio(uploaded_file)
+    if not audio_bytes:
+        return False, "", "Nenhum audio foi recebido para transcricao."
+    tamanho_mb = len(audio_bytes) / (1024 * 1024)
+    if tamanho_mb > 24:
+        return False, "", f"O audio tem aproximadamente {tamanho_mb:.1f} MB. Envie arquivo menor ou divida a gravacao."
+    modelo = entrada_inteligente_modelo_transcricao()
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            files={"file": (nome_arquivo, audio_bytes, content_type)},
+            data={"model": modelo, "language": "pt", "response_format": "json", "temperature": "0"},
+            timeout=180,
+        )
+        if resp.status_code >= 400:
+            detalhe = resp.text or f"HTTP {resp.status_code}"
+            return False, "", f"Falha na transcricao do audio: {detalhe}"
+        dados = resp.json() if resp.text else {}
+        texto = str(dados.get("text") or "").strip()
+        if not texto:
+            return False, "", "A transcricao foi concluida, mas nenhum texto foi retornado."
+        return True, texto, "Audio transcrito com sucesso."
+    except Exception as e:
+        return False, "", f"Erro ao transcrever audio: {e}"
+
+
+def entrada_inteligente_widget_audio():
+    """
+    Renderiza gravacao/envio de audio e salva a transcricao em session_state.
+    """
+    st.markdown("**Audio com transcricao automatica**")
+    st.caption("Grave pelo navegador, quando disponivel, ou envie um arquivo de audio. A transcricao sera inserida no campo 'Conteudo recebido' para a pre-triagem.")
+    audio_gravado = None
+    if hasattr(st, "audio_input"):
+        try:
+            audio_gravado = st.audio_input("Gravar audio", key="entrada_inteligente_audio_gravado")
+        except Exception:
+            audio_gravado = None
+            st.caption("Gravacao direta indisponivel neste ambiente. Use envio de arquivo de audio.")
+    audio_arquivo = st.file_uploader(
+        "Ou enviar arquivo de audio",
+        type=["flac", "mp3", "mp4", "mpeg", "mpga", "m4a", "ogg", "wav", "webm"],
+        key="entrada_inteligente_audio_arquivo",
+    )
+    audio_final = audio_gravado or audio_arquivo
+    if audio_final is not None:
+        st.audio(audio_final)
+    col_audio_1, col_audio_2 = st.columns([1, 1])
+    with col_audio_1:
+        if st.button("Transcrever audio", key="entrada_inteligente_transcrever_audio", type="secondary"):
+            if audio_final is None:
+                st.warning("Grave ou envie um audio antes de transcrever.")
+            else:
+                with st.spinner("Transcrevendo audio..."):
+                    ok, texto, msg = entrada_inteligente_transcrever_audio_openai(audio_final)
+                if ok:
+                    st.session_state["entrada_inteligente_transcricao_audio"] = texto
+                    texto_atual = str(st.session_state.get("entrada_inteligente_texto_manual", "") or "").strip()
+                    if texto_atual:
+                        if texto not in texto_atual:
+                            st.session_state["entrada_inteligente_texto_manual"] = texto_atual + "\n\n[Transcricao automatica de audio]\n" + texto
+                    else:
+                        st.session_state["entrada_inteligente_texto_manual"] = texto
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+    with col_audio_2:
+        if st.button("Limpar transcricao de audio", key="entrada_inteligente_limpar_audio"):
+            st.session_state.pop("entrada_inteligente_transcricao_audio", None)
+            st.rerun()
+    transcricao = str(st.session_state.get("entrada_inteligente_transcricao_audio", "") or "").strip()
+    if transcricao:
+        with st.expander("Transcricao automatica", expanded=True):
+            st.text_area("Texto transcrito", value=transcricao, height=160, key="entrada_inteligente_transcricao_audio_view")
+
 def tela_entrada_inteligente():
     exibir_mensagem_sistema()
     st.title("Entrada inteligente")
@@ -6522,11 +6677,7 @@ def tela_entrada_inteligente():
         )
 
     with col2:
-        st.markdown("**Áudio nesta fase**")
-        st.caption(
-            "Para áudio ou ligação, use a transcrição do celular/navegador ou digite o relato. "
-            "A transcrição automática fica para a próxima fase."
-        )
+        entrada_inteligente_widget_audio()
 
     texto_manual = st.text_area(
         "Conteúdo recebido",
@@ -6540,7 +6691,11 @@ def tela_entrada_inteligente():
 
     if st.button("Analisar entrada", type="primary", key="entrada_inteligente_analisar"):
         texto_arquivo = entrada_inteligente_texto_arquivo(arquivo)
-        texto_total = "\n\n".join([t for t in [texto_arquivo, texto_manual] if str(t or "").strip()])
+        transcricao_audio = str(st.session_state.get("entrada_inteligente_transcricao_audio", "") or "").strip()
+        partes_texto = [texto_arquivo, texto_manual]
+        if transcricao_audio and transcricao_audio not in str(texto_manual or ""):
+            partes_texto.append("[Transcricao automatica de audio]\n" + transcricao_audio)
+        texto_total = "\n\n".join([t for t in partes_texto if str(t or "").strip()])
         texto_total = entrada_inteligente_limpar_texto(texto_total)
 
         if not texto_total:
@@ -6652,12 +6807,16 @@ def tela_entrada_inteligente():
                     registrar_mensagem_sistema("warning", f"Atendimento {novo.get('id')} cadastrado, mas o e-mail não foi enviado: {email_msg}")
 
                 st.session_state.pop("entrada_inteligente_sugestao", None)
+                st.session_state.pop("entrada_inteligente_transcricao_audio", None)
+                st.session_state.pop("entrada_inteligente_texto_manual", None)
                 st.session_state["pagina_atual"] = "Em atendimento"
                 st.rerun()
 
     with col_btn2:
         if st.button("Limpar análise", key="entrada_inteligente_limpar"):
             st.session_state.pop("entrada_inteligente_sugestao", None)
+            st.session_state.pop("entrada_inteligente_transcricao_audio", None)
+            st.session_state.pop("entrada_inteligente_texto_manual", None)
             st.rerun()
 
 def tela_novo_atendimento():
