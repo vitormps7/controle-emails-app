@@ -5776,6 +5776,13 @@ def zonas_eleitorais_dropdown():
         "194ª Zona Eleitoral",
         "195ª Zona Eleitoral",
         "196ª Zona Eleitoral",
+        "197ª Zona Eleitoral",
+        "198ª Zona Eleitoral",
+        "199ª Zona Eleitoral",
+        "200ª Zona Eleitoral",
+        "201ª Zona Eleitoral",
+        "202ª Zona Eleitoral",
+        "203ª Zona Eleitoral",
         "Outro / informar em observações",
     ]
 
