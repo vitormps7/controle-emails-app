@@ -12083,6 +12083,49 @@ def tela_dashboard():
 
 
 
+
+def usuario_pode_ver_relatorios():
+    """
+    Permissão para visualizar relatórios, Painel Gerencial e Inteligência Gerencial.
+    Função defensiva criada para evitar erro quando a tela gerencial for chamada.
+    """
+    try:
+        if "usuario_pode_ver_parametros" in globals() and callable(globals().get("usuario_pode_ver_parametros")):
+            if usuario_pode_ver_parametros():
+                return True
+    except Exception:
+        pass
+
+    try:
+        if "usuario_pode_ver_dashboard" in globals() and callable(globals().get("usuario_pode_ver_dashboard")):
+            if usuario_pode_ver_dashboard():
+                return True
+    except Exception:
+        pass
+
+    try:
+        if "usuario_pode_editar_atendimentos" in globals() and callable(globals().get("usuario_pode_editar_atendimentos")):
+            if usuario_pode_editar_atendimentos():
+                return True
+    except Exception:
+        pass
+
+    try:
+        perfil = str(perfil_atual() or "").strip().casefold()
+        return perfil in {
+            "administrador",
+            "admin",
+            "chefia",
+            "coordenador",
+            "coordenadora",
+            "supervisor",
+            "supervisora",
+            "gestor",
+            "gestora",
+        }
+    except Exception:
+        return False
+
 def tela_inteligencia_gerencial():
     """
     Inteligência Gerencial: leitura executiva, alertas, riscos, gargalos e providências recomendadas.
@@ -12095,7 +12138,12 @@ def tela_inteligencia_gerencial():
         "Leitura estratégica dos atendimentos: recorrências, riscos, gargalos, qualidade da base e providências recomendadas."
     )
 
-    if not usuario_pode_ver_relatorios():
+    try:
+        permitido_relatorios = usuario_pode_ver_relatorios()
+    except Exception:
+        permitido_relatorios = False
+
+    if not permitido_relatorios:
         st.warning("Inteligência Gerencial disponível apenas para chefia e administradores.")
         return
 
