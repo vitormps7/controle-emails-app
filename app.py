@@ -10252,6 +10252,425 @@ def diagnostico_tabela_supabase(nome_tabela):
         return "Falha"
 
 
+
+# ============================================================
+# SAUDE DO SISTEMA E CHECKLIST AUTOMATICO DE ESTABILIDADE
+# ============================================================
+
+VERSAO_SIGA_COR_ESTAVEL = "SIGA-COR 1.0 - estabilizacao"
+
+
+def saude_status_badge(ok, aviso=False):
+    if ok:
+        return "OK"
+    if aviso:
+        return "ATENÇÃO"
+    return "ERRO"
+
+
+def saude_linha(nome, ok, detalhe="", categoria="Sistema", aviso=False):
+    return {
+        "categoria": categoria,
+        "item": nome,
+        "status": saude_status_badge(ok, aviso=aviso),
+        "ok": bool(ok),
+        "aviso": bool(aviso) and not bool(ok),
+        "detalhe": str(detalhe or ""),
+    }
+
+
+def saude_funcao_existe(nome):
+    return callable(globals().get(nome))
+
+
+def saude_secret_existe(nome):
+    try:
+        return bool(str(st.secrets.get(nome, "") or "").strip())
+    except Exception:
+        return False
+
+
+def saude_contar_registros_seguro(funcao_nome):
+    try:
+        funcao = globals().get(funcao_nome)
+        if not callable(funcao):
+            return None, f"Função {funcao_nome} não localizada."
+        dados = funcao()
+        return len(dados or []), "Consulta executada."
+    except Exception as e:
+        return None, str(e)
+
+
+def saude_testar_supabase_basico():
+    try:
+        url_ok = saude_secret_existe("SUPABASE_URL")
+        key_ok = saude_secret_existe("SUPABASE_KEY")
+        if not url_ok or not key_ok:
+            return saude_linha(
+                "Conexão Supabase",
+                False,
+                "SUPABASE_URL ou SUPABASE_KEY não configurado nos Secrets.",
+                "Infraestrutura",
+            )
+
+        rows = supabase_get_silencioso("usuarios", {"select": "id", "limit": "1"})
+        if rows is None:
+            return saude_linha(
+                "Conexão Supabase",
+                False,
+                "Não foi possível consultar a tabela usuarios.",
+                "Infraestrutura",
+            )
+
+        return saude_linha("Conexão Supabase", True, "Consulta básica realizada com sucesso.", "Infraestrutura")
+    except Exception as e:
+        return saude_linha("Conexão Supabase", False, str(e), "Infraestrutura")
+
+
+def saude_testar_tabela(nome_tabela):
+    try:
+        rows = supabase_get_silencioso(nome_tabela, {"select": "*", "limit": "1"})
+        if rows is None:
+            return saude_linha(f"Tabela {nome_tabela}", False, "Tabela não consultável ou bloqueada por RLS.", "Banco de dados")
+        return saude_linha(f"Tabela {nome_tabela}", True, "Tabela consultável.", "Banco de dados")
+    except Exception as e:
+        return saude_linha(f"Tabela {nome_tabela}", False, str(e), "Banco de dados")
+
+
+def saude_verificar_funcoes_essenciais():
+    essenciais = [
+        ("Login", "tela_login"),
+        ("Menu principal", "tela_menu_principal"),
+        ("Sidebar", "sidebar_menu"),
+        ("Novo atendimento", "tela_novo_atendimento"),
+        ("Entrada inteligente", "tela_entrada_inteligente"),
+        ("Transcrição de áudio", "entrada_inteligente_transcrever_audio_openai"),
+        ("Em atendimento / realizados", "tela_status"),
+        ("Card de atendimento", "card_atendimento"),
+        ("Dashboard", "tela_dashboard"),
+        ("Instrumentos de orientação", "tela_orientacoes_zonas"),
+        ("Zel", "tela_zel_ia_controlada"),
+        ("Gerar resposta da Zel", "gerar_minuta_zel_para_atendimento"),
+        ("Backup e restauração", "tela_backup_restauracao"),
+        ("Usuários internos", "tela_usuarios"),
+        ("Usuários das Zonas", "tela_usuarios_zonas"),
+        ("Assuntos", "tela_assuntos"),
+        ("Saúde do sistema", "tela_saude_sistema"),
+    ]
+
+    linhas = []
+    for nome, funcao in essenciais:
+        linhas.append(
+            saude_linha(
+                nome,
+                saude_funcao_existe(funcao),
+                f"Função verificada: {funcao}",
+                "Rotas e telas",
+            )
+        )
+    return linhas
+
+
+def saude_verificar_configuracoes():
+    checks = []
+
+    checks.append(saude_linha(
+        "SUPABASE_URL",
+        saude_secret_existe("SUPABASE_URL"),
+        "Obrigatório para persistência dos dados.",
+        "Secrets",
+    ))
+
+    checks.append(saude_linha(
+        "SUPABASE_KEY",
+        saude_secret_existe("SUPABASE_KEY"),
+        "Obrigatório para acesso REST ao Supabase.",
+        "Secrets",
+    ))
+
+    service_ok = (
+        saude_secret_existe("SUPABASE_SERVICE_ROLE_KEY")
+        or saude_secret_existe("SUPABASE_SERVICE_KEY")
+        or saude_secret_existe("SERVICE_ROLE_KEY")
+    )
+    checks.append(saude_linha(
+        "Service role Supabase",
+        service_ok,
+        "Recomendado para gravações internas e redução de bloqueios por RLS.",
+        "Secrets",
+        aviso=True,
+    ))
+
+    smtp_ok = all([
+        saude_secret_existe("SMTP_HOST"),
+        saude_secret_existe("SMTP_USER"),
+        saude_secret_existe("SMTP_PASSWORD"),
+        saude_secret_existe("EMAIL_REMETENTE"),
+    ])
+    checks.append(saude_linha(
+        "Envio de e-mail",
+        smtp_ok,
+        "Requer SMTP_HOST, SMTP_USER, SMTP_PASSWORD e EMAIL_REMETENTE.",
+        "Secrets",
+        aviso=True,
+    ))
+
+    openai_ok = saude_secret_existe("OPENAI_API_KEY")
+    checks.append(saude_linha(
+        "OpenAI API",
+        openai_ok,
+        "Necessária para transcrição automática de áudio e futuras rotinas de IA.",
+        "Secrets",
+        aviso=True,
+    ))
+
+    modelo_transcricao = ""
+    try:
+        modelo_transcricao = str(st.secrets.get("OPENAI_TRANSCRIBE_MODEL", "") or "").strip()
+    except Exception:
+        modelo_transcricao = ""
+
+    checks.append(saude_linha(
+        "Modelo de transcrição",
+        True,
+        modelo_transcricao or "Padrão interno: gpt-4o-mini-transcribe.",
+        "Secrets",
+    ))
+
+    return checks
+
+
+def saude_verificar_banco():
+    tabelas = [
+        "usuarios",
+        "atendimentos",
+        "assuntos",
+        "base_conhecimento",
+        "modelos_resposta",
+        "historico_atendimento",
+        "sessoes",
+    ]
+    return [saude_testar_tabela(t) for t in tabelas]
+
+
+def saude_verificar_dados_operacionais():
+    checks = []
+    for nome, funcao in [
+        ("Usuários cadastrados", "usuarios"),
+        ("Atendimentos", "atendimentos"),
+        ("Assuntos", "assunto_rows"),
+        ("Instrumentos/Base da Zel", "base_conhecimento_rows"),
+    ]:
+        total, detalhe = saude_contar_registros_seguro(funcao)
+        ok = total is not None
+        texto = f"{total} registro(s)." if ok else detalhe
+        checks.append(saude_linha(nome, ok, texto, "Dados"))
+    return checks
+
+
+def saude_verificar_regras_negocio():
+    checks = []
+
+    try:
+        zonas = zonas_eleitorais_dropdown()
+        zonas_criticas = [
+            "001ª Zona Eleitoral",
+            "197ª Zona Eleitoral",
+            "198ª Zona Eleitoral",
+            "199ª Zona Eleitoral",
+            "200ª Zona Eleitoral",
+            "201ª Zona Eleitoral",
+            "202ª Zona Eleitoral",
+            "203ª Zona Eleitoral",
+        ]
+        faltantes = [z for z in zonas_criticas if z not in zonas]
+        checks.append(saude_linha(
+            "Lista de Zonas Eleitorais",
+            len(faltantes) == 0,
+            "Dropdown carregado com a sequência final conferida." if not faltantes else "Zonas ausentes: " + ", ".join(faltantes),
+            "Regras de negócio",
+        ))
+    except Exception as e:
+        checks.append(saude_linha("Lista de Zonas Eleitorais", False, str(e), "Regras de negócio"))
+
+    try:
+        fontes = tipos_fonte_dropdown("")
+        checks.append(saude_linha(
+            "Fonte/canal",
+            "E-mail" in fontes and "WhatsApp" in fontes and "Telefone" in fontes,
+            "Confere opções básicas de origem/fonte de atendimento.",
+            "Regras de negócio",
+        ))
+    except Exception as e:
+        checks.append(saude_linha("Fonte/canal", False, str(e), "Regras de negócio"))
+
+    checks.append(saude_linha(
+        "Zel sem fonte livre",
+        saude_funcao_existe("fonte_unica_zel_rows") and saude_funcao_existe("zel2_gerar_resposta_estruturada"),
+        "Confere se a Zel estruturada e a fonte única permanecem presentes.",
+        "Regras de negócio",
+    ))
+
+    checks.append(saude_linha(
+        "Refazer resposta da Zel",
+        "Refazer resposta da Zel" in open(__file__, encoding="utf-8").read() if "__file__" in globals() else True,
+        "Confere presença textual do botão de refazer resposta no atendimento.",
+        "Regras de negócio",
+        aviso=True,
+    ))
+
+    return checks
+
+
+def executar_checklist_estabilidade():
+    """
+    Checklist central para rodar depois de qualquer alteração.
+    Não altera dados. Apenas verifica funções, configurações, tabelas e pontos críticos.
+    """
+    resultados = []
+    resultados.append(saude_testar_supabase_basico())
+    resultados.extend(saude_verificar_configuracoes())
+    resultados.extend(saude_verificar_funcoes_essenciais())
+    resultados.extend(saude_verificar_banco())
+    resultados.extend(saude_verificar_dados_operacionais())
+    resultados.extend(saude_verificar_regras_negocio())
+
+    erros = [r for r in resultados if r.get("status") == "ERRO"]
+    avisos = [r for r in resultados if r.get("status") == "ATENÇÃO"]
+    oks = [r for r in resultados if r.get("status") == "OK"]
+
+    resumo = {
+        "total": len(resultados),
+        "ok": len(oks),
+        "avisos": len(avisos),
+        "erros": len(erros),
+        "aprovado": len(erros) == 0,
+        "executado_em": agora_iso() if "agora_iso" in globals() else "",
+        "versao": VERSAO_SIGA_COR_ESTAVEL,
+    }
+
+    return resumo, resultados
+
+
+def saude_resultados_dataframe(resultados):
+    try:
+        return pd.DataFrame(resultados)[["categoria", "item", "status", "detalhe"]]
+    except Exception:
+        return pd.DataFrame(resultados)
+
+
+def saude_texto_relatorio(resumo, resultados):
+    linhas = []
+    linhas.append("SIGA-COR - Relatório de Saúde do Sistema")
+    linhas.append("")
+    linhas.append(f"Versão: {resumo.get('versao')}")
+    linhas.append(f"Executado em: {resumo.get('executado_em')}")
+    linhas.append(f"Resultado geral: {'APROVADO' if resumo.get('aprovado') else 'COM PENDÊNCIAS'}")
+    linhas.append(f"OK: {resumo.get('ok')} | Avisos: {resumo.get('avisos')} | Erros: {resumo.get('erros')} | Total: {resumo.get('total')}")
+    linhas.append("")
+    linhas.append("Itens verificados:")
+    for r in resultados:
+        linhas.append(f"- [{r.get('status')}] {r.get('categoria')} > {r.get('item')}: {r.get('detalhe')}")
+    return "\n".join(linhas)
+
+
+def tela_saude_sistema():
+    st.subheader("Saúde do sistema")
+    st.caption("Checklist automático de estabilidade para reduzir o risco de uma correção quebrar outra parte do SIGA-COR.")
+
+    if not usuario_pode_ver_parametros():
+        st.warning("Saúde do sistema disponível apenas para administradores.")
+        return
+
+    st.info(
+        "Use esta tela antes e depois de qualquer alteração importante no código, no SQL ou nos Secrets. "
+        "Ela não altera dados; apenas verifica pontos críticos do sistema."
+    )
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric("Versão de referência", "1.0")
+    with col_b:
+        st.metric("Modo", modo_visualizacao_atual() if "modo_visualizacao_atual" in globals() else "Padrão")
+    with col_c:
+        st.metric("Perfil", perfil_atual() or "não identificado")
+
+    if st.button("Executar checklist automático", type="primary", key="saude_executar_checklist"):
+        with st.spinner("Executando checklist de estabilidade..."):
+            resumo, resultados = executar_checklist_estabilidade()
+        st.session_state["saude_sistema_resumo"] = resumo
+        st.session_state["saude_sistema_resultados"] = resultados
+        st.rerun()
+
+    resumo = st.session_state.get("saude_sistema_resumo")
+    resultados = st.session_state.get("saude_sistema_resultados")
+
+    if not resumo or not resultados:
+        st.warning("Checklist ainda não executado nesta sessão.")
+        st.markdown(
+            """
+            O checklist verificará:
+            - conexão com Supabase;
+            - Secrets obrigatórios;
+            - tabelas principais;
+            - rotas e telas críticas;
+            - dados operacionais;
+            - regras de negócio sensíveis, como 198ª Zona, Fonte/canal, Zel e Instrumentos.
+            """
+        )
+        return
+
+    st.divider()
+    st.subheader("Resultado geral")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("OK", resumo.get("ok", 0))
+    col2.metric("Avisos", resumo.get("avisos", 0))
+    col3.metric("Erros", resumo.get("erros", 0))
+    col4.metric("Total", resumo.get("total", 0))
+
+    if resumo.get("aprovado"):
+        st.success("Checklist aprovado: nenhum erro crítico encontrado.")
+    else:
+        st.error("Checklist com pendências: corrija os itens marcados como ERRO antes de nova entrega.")
+
+    abas = st.tabs(["Resumo", "Erros e avisos", "Checklist completo", "Relatório"])
+
+    with abas[0]:
+        df = saude_resultados_dataframe(resultados)
+        try:
+            resumo_categoria = df.groupby(["categoria", "status"]).size().reset_index(name="quantidade")
+            st.dataframe(resumo_categoria, use_container_width=True, hide_index=True)
+        except Exception:
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+    with abas[1]:
+        pendencias = [r for r in resultados if r.get("status") in ("ERRO", "ATENÇÃO")]
+        if not pendencias:
+            st.success("Nenhum erro ou aviso registrado.")
+        else:
+            st.dataframe(saude_resultados_dataframe(pendencias), use_container_width=True, hide_index=True)
+
+    with abas[2]:
+        st.dataframe(saude_resultados_dataframe(resultados), use_container_width=True, hide_index=True)
+
+    with abas[3]:
+        texto = saude_texto_relatorio(resumo, resultados)
+        st.text_area("Relatório do checklist", value=texto, height=320)
+        st.download_button(
+            "Baixar relatório de saúde",
+            data=texto.encode("utf-8"),
+            file_name="relatorio_saude_siga_cor.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
+
+    st.divider()
+    st.caption(
+        "Regra de estabilidade: se o checklist apresentar ERRO, não publique nova versão antes de corrigir. "
+        "Itens de ATENÇÃO não impedem o uso, mas indicam configuração recomendada ou melhoria pendente."
+    )
+
 def tela_diagnostico_sistema():
     st.subheader("Diagnóstico do sistema")
     st.caption(
@@ -10490,6 +10909,7 @@ def sidebar_menu():
                     ("Usuários internos", "Usuários"),
                     ("Usuários das Zonas", "Usuários das Zonas"),
                     ("Parâmetros nacionais", "Parâmetros nacionais"),
+                    ("Saúde do sistema", "Saúde do sistema"),
                     ("Diagnóstico do sistema", "Diagnóstico do sistema"),
                     ("Backup e restauração", "Backup e restauração"),
                 ]
@@ -16440,6 +16860,9 @@ def main():
 
     elif escolha == "Parâmetros nacionais" and usuario_pode_ver_parametros():
         tela_parametros_nacionais()
+
+    elif escolha == "Saúde do sistema" and usuario_pode_ver_parametros():
+        tela_saude_sistema()
 
     elif escolha == "Diagnóstico do sistema" and usuario_pode_ver_parametros():
         tela_diagnostico_sistema()
