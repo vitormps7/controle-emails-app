@@ -12578,28 +12578,86 @@ def dataframe_qualidade_base(lista):
     return pd.DataFrame(linhas)
 
 
+
 def dataframe_resumo_por_secao(lista):
+    """
+    Resumo por seção para a Inteligência Gerencial.
+    Implementação autônoma, sem dependência de rotinas externas de tempo médio.
+    """
+    base = list(lista or [])
+    colunas = [
+        "Seção",
+        "Total",
+        "Pendentes",
+        "Realizados",
+        "% realizado",
+        "Vencidos",
+        "Urgentes",
+        "Sem responsável",
+        "Tempo médio até conclusão",
+    ]
+
+    if not base:
+        return pd.DataFrame(columns=colunas)
+
     linhas = []
-    secoes = secoes_atendimento()
+    secoes = sorted({
+        str(a.get("secao") or a.get("unidade_responsavel") or "Não informado").strip() or "Não informado"
+        for a in base
+    })
 
     for secao in secoes:
-        base = [a for a in lista if normalizar_secao(a.get("secao")) == secao]
-        total = len(base)
-        realizados = sum(1 for a in base if a.get("status") == STATUS_REALIZADO)
+        itens = [
+            a for a in base
+            if (str(a.get("secao") or a.get("unidade_responsavel") or "Não informado").strip() or "Não informado") == secao
+        ]
+
+        total = len(itens)
+        realizados = len([a for a in itens if a.get("status") == STATUS_REALIZADO])
         pendentes = total - realizados
-        alertas = len(dataframe_alertas_gerenciais(base))
-        tempo_df = dataframe_tempo_medio_por_fonte(base)
+
+        try:
+            vencidos = len([a for a in itens if prazo_vencido(a)])
+        except Exception:
+            vencidos = 0
+
+        urgentes = len([
+            a for a in itens
+            if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente"
+        ])
+
+        sem_resp = len([
+            a for a in itens
+            if atendimento_aberto(a) and atendimento_sem_responsavel(a)
+        ])
+
+        tempos = []
+        for a in itens:
+            try:
+                if a.get("status") != STATUS_REALIZADO:
+                    continue
+                inicio = data_para_datetime(a.get("data_atendimento") or a.get("criado_em"))
+                fim = data_para_datetime(a.get("data_realizacao") or a.get("atualizado_em"))
+                if inicio and fim and fim >= inicio:
+                    tempos.append((fim - inicio).total_seconds() / 86400)
+            except Exception:
+                continue
+
+        tempo_medio = f"{sum(tempos) / len(tempos):.1f} dia(s)".replace(".", ",") if tempos else "-"
+
         linhas.append({
             "Seção": secao,
             "Total": numero_br(total),
             "Pendentes": numero_br(pendentes),
             "Realizados": numero_br(realizados),
             "% realizado": percentual_br((realizados / total * 100) if total else 0),
-            "Alertas": numero_br(alertas),
+            "Vencidos": numero_br(vencidos),
+            "Urgentes": numero_br(urgentes),
+            "Sem responsável": numero_br(sem_resp),
+            "Tempo médio até conclusão": tempo_medio,
         })
 
-    return pd.DataFrame(linhas)
-
+    return pd.DataFrame(linhas, columns=colunas)
 
 def calcular_horas_atendimento_relatorio(atendimento):
     """
