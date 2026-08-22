@@ -634,16 +634,128 @@ def supabase_rest_url(tabela):
     return f"{url}/rest/v1/{tabela}"
 
 
+
+# ============================================================
+# OTIMIZACAO DE EGRESS - CACHE REST E CONSULTAS ENXUTAS
+# ============================================================
+
+ATENDIMENTOS_SELECT_OPERACIONAL = ",".join([
+    "id",
+    "data_atendimento",
+    "status",
+    "secao",
+    "tribunal",
+    "uf",
+    "unidade_responsavel",
+    "requer_validacao",
+    "situacao_validacao",
+    "validado_por",
+    "validado_em",
+    "servidor",
+    "fonte",
+    "assunto",
+    "zona_eleitoral",
+    "origem",
+    "protocolo",
+    "prioridade",
+    "complexidade",
+    "prazo_limite",
+    "descricao",
+    "observacoes",
+    "providencia_adotada",
+    "conclusao",
+    "criado_por",
+    "criado_em",
+    "atualizado_em",
+    "data_realizacao",
+    "triado_por",
+    "triado_em",
+    "natureza_demanda",
+    "eixo_competencia",
+    "unidade_sugerida",
+    "exige_validacao_tecnica",
+    "unidade_tecnica_validadora",
+    "status_validacao_tecnica",
+    "exige_coajuc",
+    "motivo_escalonamento",
+    "potencial_uniformizacao",
+    "produto_institucional_sugerido",
+])
+
+
+def supabase_params_json(params=None):
+    """
+    Normaliza os parâmetros para gerar uma chave estável de cache.
+    """
+    try:
+        return json.dumps(params or {}, sort_keys=True, ensure_ascii=False, default=str)
+    except Exception:
+        return json.dumps({}, sort_keys=True, ensure_ascii=False)
+
+
+def supabase_params_from_json(params_json):
+    try:
+        return json.loads(params_json or "{}")
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def supabase_get_cached_rest(tabela, params_json, headers_json):
+    """
+    Cache compartilhado do Streamlit para consultas GET ao Supabase.
+    Reduz egress porque evita baixar repetidamente os mesmos dados a cada rerun,
+    troca de tela ou acesso de múltiplos usuários à mesma consulta.
+    """
+    params = supabase_params_from_json(params_json)
+    headers = supabase_params_from_json(headers_json)
+
+    resp = requests.get(
+        supabase_rest_url(tabela),
+        headers=headers,
+        params=params,
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return resp.json() if resp.text else []
+
+
+def supabase_get_cached(tabela, params=None, usar_cache=True):
+    """
+    Camada central de leitura. Por padrão usa cache REST.
+    Para consultas que precisam ser absolutamente imediatas, usar_cache=False.
+    """
+    headers = supabase_headers()
+    params_json = supabase_params_json(params or {})
+    headers_json = supabase_params_json(headers or {})
+
+    if usar_cache:
+        return supabase_get_cached_rest(str(tabela), params_json, headers_json)
+
+    resp = requests.get(
+        supabase_rest_url(tabela),
+        headers=headers,
+        params=params or {},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return resp.json() if resp.text else []
+
+
+def limpar_cache_rest_supabase():
+    """
+    Limpa o cache compartilhado das consultas REST.
+    Deve ser chamado após gravações, exclusões, restaurações e alterações administrativas.
+    """
+    try:
+        supabase_get_cached_rest.clear()
+    except Exception:
+        pass
+
+
 def supabase_get(tabela, params=None):
     try:
-        resp = requests.get(
-            supabase_rest_url(tabela),
-            headers=supabase_headers(),
-            params=params or {},
-            timeout=20,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        return supabase_get_cached(tabela, params or {}, usar_cache=True)
     except Exception as erro:
         # A tabela de assuntos é usada em telas de entrada.
         # Se o Supabase/requests oscilar, não podemos quebrar o Novo Atendimento.
@@ -903,16 +1015,10 @@ def supabase_insert_silencioso(tabela, rows):
         return []
 
 
+
 def supabase_get_silencioso(tabela, params=None):
     try:
-        resp = requests.get(
-            supabase_rest_url(tabela),
-            headers=supabase_headers(),
-            params=params or {},
-            timeout=20,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        return supabase_get_cached(tabela, params or {}, usar_cache=True)
     except Exception:
         return []
 
@@ -1079,6 +1185,8 @@ def criar_item_base_conhecimento(atendimento):
         try:
             supabase_update_silencioso(
                 "base_conhecimento",
+        "base_conhecimento_com_superadas",
+        "base_conhecimento_ativas",
                 {"codigo_cadastro": codigo, "atualizado_em": agora_iso()},
                 "id",
                 criado[0].get("id")
@@ -1385,10 +1493,15 @@ def gerar_relatorio_pdf_base_conhecimento(df, filtros_aplicados):
 
 
 def base_conhecimento_rows(incluir_superadas=True):
+    chave_cache = f"base_conhecimento_{'com_superadas' if incluir_superadas else 'ativas'}"
+    cached = cache_sessao_get(chave_cache, ttl_segundos=900)
+    if cached is not None:
+        return cached
+
     rows = supabase_get_silencioso("base_conhecimento", {"select": "*", "ativo": "eq.true", "order": "criado_em.desc"}) or []
     if not incluir_superadas:
         rows = [r for r in rows if not r.get("superada", False)]
-    return rows
+    return cache_sessao_set(chave_cache, rows)
 
 
 def auditoria_atendimento(atendimento_id):
@@ -1699,6 +1812,8 @@ def cache_sessao_limpar(*chaves):
     if not chaves:
         st.session_state.pop("_cache_leve_siga_cor", None)
         st.session_state.pop("_secoes_atendimento_cache", None)
+        if "limpar_cache_rest_supabase" in globals():
+            limpar_cache_rest_supabase()
         return
 
     cache = st.session_state.setdefault("_cache_leve_siga_cor", {})
@@ -1707,6 +1822,11 @@ def cache_sessao_limpar(*chaves):
 
     if "secoes_atendimento" in chaves:
         st.session_state.pop("_secoes_atendimento_cache", None)
+
+    # Após gravações/exclusões, as funções já chamam cache_sessao_limpar.
+    # Limpamos também o cache REST compartilhado para evitar leitura stale.
+    if "limpar_cache_rest_supabase" in globals():
+        limpar_cache_rest_supabase()
 
 
 def cache_sessao_limpar_dados():
@@ -1723,7 +1843,7 @@ def cache_sessao_limpar_dados():
 
 
 def usuarios():
-    cached = cache_sessao_get("usuarios", ttl_segundos=180)
+    cached = cache_sessao_get("usuarios", ttl_segundos=600)
     if cached is not None:
         return cached
 
@@ -1755,11 +1875,17 @@ def salvar_usuarios(lista):
 
 
 def atendimentos():
-    cached = cache_sessao_get("atendimentos", ttl_segundos=180)
+    cached = cache_sessao_get("atendimentos", ttl_segundos=300)
     if cached is not None:
         return cached
 
-    rows = supabase_get("atendimentos", {"select": "*", "order": "id.asc"})
+    rows = supabase_get(
+        "atendimentos",
+        {
+            "select": ATENDIMENTOS_SELECT_OPERACIONAL,
+            "order": "id.asc",
+        }
+    )
     dados = [atendimento_db_para_app(row) for row in (rows or [])]
     return cache_sessao_set("atendimentos", dados)
 
@@ -2032,7 +2158,7 @@ def assuntos_fallback_rows(secao=None):
 
 
 def assunto_rows():
-    cached = cache_sessao_get("assuntos_rows", ttl_segundos=180)
+    cached = cache_sessao_get("assuntos_rows", ttl_segundos=900)
     if cached is not None:
         return cached
 
@@ -5513,10 +5639,10 @@ def tela_menu_principal():
 
     cards_gestao = []
     if usuario_pode_ver_inteligencia():
-        cards_gestao.append(("workflow", "Inteligência gerencial", "Analisar recorrências, competências, riscos e oportunidades de orientação.", "Abrir inteligência", "Inteligência gerencial", "card_inteligencia_gerencial"))
+        cards_gestao.append(("workflow", "Inteligência gerencial", "Leitura executiva com alertas, gargalos, riscos e providências sugeridas.", "Abrir inteligência", "Inteligência gerencial", "card_inteligencia_gerencial"))
     if usuario_eh_gestor():
         cards_gestao.extend([
-            ("chart", "Painel gerencial", "Acompanhar indicadores essenciais e a situação dos atendimentos.", "Abrir painel", "Dashboard", "card_painel_gerencial"),
+            ("chart", "Painel gerencial", "Acompanhar indicadores operacionais e gráficos dos atendimentos.", "Abrir painel", "Dashboard", "card_painel_gerencial"),
             ("file", "Relatórios", "Emitir relatórios gerenciais, auditoria e memória institucional.", "Emitir relatório", "Relatórios e exportação", "card_relatorios"),
         ])
 
@@ -10356,6 +10482,8 @@ def saude_verificar_funcoes_essenciais():
         ("Usuários das Zonas", "tela_usuarios_zonas"),
         ("Assuntos", "tela_assuntos"),
         ("Saúde do sistema", "tela_saude_sistema"),
+        ("Cache REST Supabase", "supabase_get_cached_rest"),
+        ("Limpeza do cache REST", "limpar_cache_rest_supabase"),
     ]
 
     linhas = []
@@ -10585,6 +10713,11 @@ def tela_saude_sistema():
     st.info(
         "Use esta tela antes e depois de qualquer alteração importante no código, no SQL ou nos Secrets. "
         "Ela não altera dados; apenas verifica pontos críticos do sistema."
+    )
+
+    st.caption(
+        "Otimização de egress ativa: consultas REST ao Supabase usam cache compartilhado, "
+        "tabelas estáveis têm TTL maior e os atendimentos são carregados com seleção operacional de campos."
     )
 
     col_a, col_b, col_c = st.columns(3)
@@ -10882,7 +11015,7 @@ def sidebar_menu():
 
             if usuario_pode_ver_governanca():
                 botoes_gestao += [
-                    ("Demandas a escalar", "Demandas a escalar"),
+                    ("Demandas para encaminhamento superior", "Demandas para encaminhamento superior"),
                     ("Qualidade dos Registros", "Qualidade dos Registros"),
                     ("Plano de ação COORZE", "Plano de ação COORZE"),
                     ("Relatório Governança COORZE", "Relatório Governança COORZE"),
@@ -11939,24 +12072,218 @@ def _render_dashboard_gerencial(titulo="Dashboard Gerencial", subtitulo="Visão 
 
 def tela_dashboard():
     """
-    Dashboard gerencial com gráficos.
-    Mantém pizza, barras, evolução mensal e tabela dos últimos atendimentos.
+    Painel Gerencial: visão operacional dos atendimentos.
+    Mantém indicadores objetivos, gráficos e tabela dos últimos registros.
     """
     _render_dashboard_gerencial(
-        titulo="Dashboard Gerencial",
-        subtitulo="Visão geral, distribuição por status, seção, fonte/canal, responsáveis, assuntos e zonas."
+        titulo="Painel Gerencial",
+        subtitulo="Indicadores operacionais dos atendimentos: status, seção, fonte/canal, responsáveis, assuntos, zonas e evolução mensal."
     )
+
 
 
 
 def tela_inteligencia_gerencial():
     """
-    Inteligência Gerencial estabilizada.
-    Usa o mesmo motor do Dashboard, com leitura gerencial e gráficos.
+    Inteligência Gerencial: leitura executiva, alertas, riscos, gargalos e providências recomendadas.
+    Diferente do Painel Gerencial, esta tela não é apenas visualização de gráficos:
+    ela interpreta o acervo e aponta pontos de atenção para gestão.
     """
-    _render_dashboard_gerencial(
-        titulo="Inteligência Gerencial",
-        subtitulo="Leitura estratégica dos atendimentos, recorrências, fontes/canais, zonas demandantes e responsáveis."
+    exibir_mensagem_sistema()
+    st.title("Inteligência Gerencial")
+    st.caption(
+        "Leitura estratégica dos atendimentos: recorrências, riscos, gargalos, qualidade da base e providências recomendadas."
+    )
+
+    if not usuario_pode_ver_relatorios():
+        st.warning("Inteligência Gerencial disponível apenas para chefia e administradores.")
+        return
+
+    try:
+        lista = filtros_base(atendimentos())
+    except Exception:
+        try:
+            lista = atendimentos()
+        except Exception:
+            lista = []
+
+    lista = list(lista or [])
+
+    if not lista:
+        st.info("Ainda não há atendimentos suficientes para análise gerencial.")
+        return
+
+    total = len(lista)
+    realizados = len([a for a in lista if a.get("status") == STATUS_REALIZADO])
+    abertos = total - realizados
+    alertas_df = dataframe_alertas_gerenciais(lista)
+    qualidade_df = dataframe_qualidade_base(lista)
+    resumo_secao_df = dataframe_resumo_por_secao(lista)
+    prazos_df = dataframe_prazos_gerencial(lista)
+    taxa = (realizados / total * 100) if total else 0
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Registros analisados", numero_br(total))
+    col2.metric("Pendentes", numero_br(abertos))
+    col3.metric("Realizados", numero_br(realizados))
+    col4.metric("% realizado", percentual_br(taxa))
+
+    st.divider()
+
+    leitura = gerar_leitura_executiva(lista)
+    bloco_leitura_executiva(leitura)
+
+    st.markdown("### Alertas gerenciais")
+
+    if alertas_df.empty:
+        st.success("Nenhum alerta gerencial crítico identificado no recorte atual.")
+    else:
+        col_a, col_b = st.columns([1, 3])
+        with col_a:
+            st.metric("Alertas", numero_br(len(alertas_df)))
+        with col_b:
+            try:
+                resumo_alertas = alertas_df["Alerta"].value_counts().reset_index()
+                resumo_alertas.columns = ["Alerta", "Quantidade"]
+                st.dataframe(resumo_alertas, use_container_width=True, hide_index=True)
+            except Exception:
+                st.caption("Resumo de alertas indisponível.")
+
+        with st.expander("Ver atendimentos com alerta", expanded=True):
+            st.dataframe(alertas_df, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("### Qualidade da base")
+
+    st.caption(
+        "Indica lacunas cadastrais que prejudicam relatórios, inteligência gerencial e respostas futuras da Zel."
+    )
+    st.dataframe(qualidade_df, use_container_width=True, hide_index=True)
+
+    try:
+        problemas = []
+        for _, row in qualidade_df.iterrows():
+            qtd_texto = str(row.get("Qtd.", "0")).replace(".", "").replace(",", "")
+            qtd = int(re.sub(r"\\D", "", qtd_texto) or "0")
+            if qtd > 0:
+                problemas.append(str(row.get("Indicador")))
+        if problemas:
+            st.warning("Pontos a sanear: " + "; ".join(problemas[:5]) + ".")
+        else:
+            st.success("Não foram identificadas lacunas relevantes de qualidade cadastral no recorte.")
+    except Exception:
+        pass
+
+    st.divider()
+    st.markdown("### Gargalos por unidade")
+
+    st.dataframe(resumo_secao_df, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("### Recorrências relevantes")
+
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        st.markdown("#### Assuntos mais recorrentes")
+        st.dataframe(dataframe_top_assuntos_gerencial(lista, 10), use_container_width=True, hide_index=True)
+
+    with col_r2:
+        st.markdown("#### Zonas mais demandantes")
+        st.dataframe(dataframe_top_zonas_gerencial(lista, 10), use_container_width=True, hide_index=True)
+
+    col_r3, col_r4 = st.columns(2)
+    with col_r3:
+        st.markdown("#### Servidores com maior volume")
+        st.dataframe(dataframe_top_servidores_normalizado(lista, 10), use_container_width=True, hide_index=True)
+
+    with col_r4:
+        st.markdown("#### Prazos e pendências")
+        st.dataframe(prazos_df, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("### Providências recomendadas")
+
+    recomendacoes = []
+
+    try:
+        vencidos = len([a for a in lista if prazo_vencido(a)])
+    except Exception:
+        vencidos = 0
+
+    urgentes = len([
+        a for a in lista
+        if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente"
+    ])
+
+    sem_responsavel = len([a for a in lista if atendimento_aberto(a) and atendimento_sem_responsavel(a)])
+    sem_assunto = len([a for a in lista if atendimento_sem_assunto(a)])
+    sem_zona = len([a for a in lista if atendimento_sem_zona(a)])
+
+    top_assuntos = dataframe_top_assuntos_gerencial(lista, 3)
+    if not top_assuntos.empty:
+        assuntos_relevantes = ", ".join(top_assuntos["Assunto"].astype(str).tolist())
+        recomendacoes.append(
+            f"Avaliar a criação ou atualização de Instrumentos de orientação para os assuntos mais recorrentes: {assuntos_relevantes}."
+        )
+
+    if vencidos:
+        recomendacoes.append(
+            f"Priorizar saneamento de {numero_br(vencidos)} atendimento(s) com prazo vencido."
+        )
+
+    if urgentes:
+        recomendacoes.append(
+            f"Verificar imediatamente {numero_br(urgentes)} demanda(s) urgente(s) ainda aberta(s)."
+        )
+
+    if sem_responsavel:
+        recomendacoes.append(
+            f"Distribuir {numero_br(sem_responsavel)} atendimento(s) aberto(s) sem responsável definido."
+        )
+
+    if sem_assunto or sem_zona:
+        recomendacoes.append(
+            "Revisar campos obrigatórios de classificação, especialmente assunto e zona eleitoral, para melhorar a confiabilidade dos relatórios."
+        )
+
+    if not recomendacoes:
+        recomendacoes.append("Manter monitoramento periódico. Não há providência crítica sugerida para o recorte atual.")
+
+    for i, rec in enumerate(recomendacoes, start=1):
+        st.markdown(f"{i}. {rec}")
+
+    st.divider()
+    st.markdown("### Próxima ação sugerida")
+
+    if alertas_df.empty and not recomendacoes:
+        st.success("Manter acompanhamento periódico.")
+    else:
+        st.info(
+            "Use os alertas e recomendações acima para revisar a distribuição de demandas, atualizar instrumentos de orientação "
+            "e corrigir lacunas cadastrais que impactem a gestão."
+        )
+
+    texto_relatorio = []
+    texto_relatorio.append("SIGA-COR - Inteligência Gerencial")
+    texto_relatorio.append("")
+    texto_relatorio.append("Leitura executiva:")
+    texto_relatorio.append(leitura)
+    texto_relatorio.append("")
+    texto_relatorio.append("Providências recomendadas:")
+    for i, rec in enumerate(recomendacoes, start=1):
+        texto_relatorio.append(f"{i}. {rec}")
+    texto_relatorio.append("")
+    texto_relatorio.append(f"Registros analisados: {numero_br(total)}")
+    texto_relatorio.append(f"Pendentes: {numero_br(abertos)}")
+    texto_relatorio.append(f"Realizados: {numero_br(realizados)}")
+    texto_relatorio.append(f"Alertas: {numero_br(len(alertas_df)) if not alertas_df.empty else '0'}")
+
+    st.download_button(
+        "Baixar leitura gerencial",
+        data="\\n".join(texto_relatorio).encode("utf-8"),
+        file_name="inteligencia_gerencial_siga_cor.txt",
+        mime="text/plain",
+        use_container_width=True,
     )
 
 
@@ -15527,14 +15854,14 @@ def tela_relatorio_governanca_coorze():
         render_metric_card("Planos de ação", numero_br(len(planos)), "#2E7D32")
     st.markdown("### Síntese de qualidade")
     st.dataframe(qualidade, use_container_width=True, hide_index=True)
-    st.markdown("### Demandas a escalar")
-    demandas_escalar = [a for a in lista if a.get("exige_validacao_tecnica") or a.get("exige_coajuc") or a.get("potencial_uniformizacao") in ("Alto", "Crítico")]
-    if demandas_escalar:
-        df_esc = pd.DataFrame(demandas_escalar)
+    st.markdown("### Demandas para encaminhamento superior")
+    demandas_encaminhamento_superior = [a for a in lista if a.get("exige_validacao_tecnica") or a.get("exige_coajuc") or a.get("potencial_uniformizacao") in ("Alto", "Crítico")]
+    if demandas_encaminhamento_superior:
+        df_esc = pd.DataFrame(demandas_encaminhamento_superior)
         colunas = ["id", "secao", "assunto", "natureza_demanda", "unidade_tecnica_validadora", "exige_coajuc", "potencial_uniformizacao", "status"]
         st.dataframe(df_esc[[c for c in colunas if c in df_esc.columns]], use_container_width=True, hide_index=True)
     else:
-        st.info("Não há demandas a escalar no recorte atual.")
+        st.info("Não há demandas para encaminhamento superior no recorte atual.")
     with st.expander("Articulações técnicas", expanded=False):
         if articulacoes.empty:
             st.info("Nenhuma articulação técnica registrada.")
@@ -15561,7 +15888,7 @@ def tela_relatorio_governanca_coorze():
     st.divider()
     dados = {
         "qualidade": qualidade.to_dict(orient="records"),
-        "demandas_escalar": demandas_escalar,
+        "demandas_encaminhamento_superior": demandas_encaminhamento_superior,
         "articulacoes": articulacoes.to_dict(orient="records") if not articulacoes.empty else [],
         "instrumentos": instrumentos.to_dict(orient="records") if not instrumentos.empty else [],
         "curadoria": curadoria.to_dict(orient="records") if not curadoria.empty else [],
@@ -15757,7 +16084,7 @@ def criar_plano_acao_de_achado(achado, providencia, unidade="COORZE", prioridade
 
 
 def tela_demandas_a_escalar():
-    st.subheader("Demandas a escalar / validar")
+    st.subheader("Demandas para encaminhamento superior / validar")
     aviso_modo_visualizacao()
     st.caption("Demandas que exigem validação técnica, articulação com COAJUC ou potencial de uniformização.")
 
@@ -15774,7 +16101,7 @@ def tela_demandas_a_escalar():
         or a.get("potencial_uniformizacao") in ("Alto", "Crítico")
     ]
 
-    st.metric("Demandas a escalar / validar", len(demandas))
+    st.metric("Demandas para encaminhamento superior / validar", len(demandas))
 
     if not demandas:
         st.info("Nenhuma demanda com necessidade de escalonamento no recorte atual.")
@@ -16813,7 +17140,7 @@ def main():
     elif escolha == "Modelos de resposta":
         tela_modelos_resposta()
 
-    elif escolha == "Demandas a escalar":
+    elif escolha == "Demandas para encaminhamento superior":
         tela_demandas_a_escalar()
 
     elif escolha == "Qualidade dos Registros":
