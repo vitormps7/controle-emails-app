@@ -422,12 +422,73 @@ def parse_data(valor):
         return None
 
 
-def data_para_exibir(valor):
-    d = parse_data(valor)
-    if d:
-        return d.strftime("%d/%m/%Y")
-    return ""
 
+def data_para_exibir(valor):
+    """
+    Converte datas para dd/mm/aaaa de forma segura.
+    Aceita None, NaN/NaT, datetime/date, pandas Timestamp, Arrow scalar e textos variados.
+    Nunca deve quebrar telas de listagem por causa de valor de data inválido.
+    """
+    try:
+        if valor is None:
+            return ""
+
+        try:
+            if pd.isna(valor):
+                return ""
+        except Exception:
+            pass
+
+        try:
+            if hasattr(valor, "as_py"):
+                valor = valor.as_py()
+        except Exception:
+            pass
+
+        if isinstance(valor, datetime):
+            return valor.strftime("%d/%m/%Y")
+
+        if isinstance(valor, date):
+            return valor.strftime("%d/%m/%Y")
+
+        texto = str(valor or "").strip()
+        if not texto or texto.lower() in {"nan", "nat", "none", "null"}:
+            return ""
+
+        m_br = re.match(r"^(\\d{1,2})/(\\d{1,2})/(\\d{4})$", texto)
+        if m_br:
+            d, m, a = m_br.groups()
+            return f"{int(d):02d}/{int(m):02d}/{a}"
+
+        texto_iso = texto.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(texto_iso)
+            return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+        m_iso = re.match(r"^(\\d{4})-(\\d{2})-(\\d{2})", texto)
+        if m_iso:
+            a, m, d = m_iso.groups()
+            return f"{d}/{m}/{a}"
+
+        try:
+            dt = pd.to_datetime(texto, errors="coerce", dayfirst=False)
+            if pd.notna(dt):
+                return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+        try:
+            dt = pd.to_datetime(texto, errors="coerce", dayfirst=True)
+            if pd.notna(dt):
+                return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+        return texto[:10]
+    except Exception:
+        return ""
 
 def formatar_data_hora_brasilia(valor):
     if valor is None or valor == "":
@@ -2772,7 +2833,10 @@ def atendimentos_df(lista=None):
         if col not in df.columns:
             df[col] = ""
 
-    df["Data"] = df["data"].apply(data_para_exibir)
+    try:
+        df["Data"] = df["data"].apply(lambda v: data_para_exibir(v))
+    except Exception:
+        df["Data"] = ""
     df["Atualizado em"] = df["atualizado_em"].apply(iso_para_exibir)
     df["Criado em"] = df["criado_em"].apply(iso_para_exibir)
     df["Data de realização"] = df["data_realizacao"].apply(data_para_exibir)
@@ -10484,6 +10548,7 @@ def saude_verificar_funcoes_essenciais():
         ("Saúde do sistema", "tela_saude_sistema"),
         ("Cache REST Supabase", "supabase_get_cached_rest"),
         ("Limpeza do cache REST", "limpar_cache_rest_supabase"),
+        ("Conversão segura de datas", "data_para_exibir"),
     ]
 
     linhas = []
@@ -12083,49 +12148,6 @@ def tela_dashboard():
 
 
 
-
-def usuario_pode_ver_relatorios():
-    """
-    Permissão para visualizar relatórios, Painel Gerencial e Inteligência Gerencial.
-    Função defensiva criada para evitar erro quando a tela gerencial for chamada.
-    """
-    try:
-        if "usuario_pode_ver_parametros" in globals() and callable(globals().get("usuario_pode_ver_parametros")):
-            if usuario_pode_ver_parametros():
-                return True
-    except Exception:
-        pass
-
-    try:
-        if "usuario_pode_ver_dashboard" in globals() and callable(globals().get("usuario_pode_ver_dashboard")):
-            if usuario_pode_ver_dashboard():
-                return True
-    except Exception:
-        pass
-
-    try:
-        if "usuario_pode_editar_atendimentos" in globals() and callable(globals().get("usuario_pode_editar_atendimentos")):
-            if usuario_pode_editar_atendimentos():
-                return True
-    except Exception:
-        pass
-
-    try:
-        perfil = str(perfil_atual() or "").strip().casefold()
-        return perfil in {
-            "administrador",
-            "admin",
-            "chefia",
-            "coordenador",
-            "coordenadora",
-            "supervisor",
-            "supervisora",
-            "gestor",
-            "gestora",
-        }
-    except Exception:
-        return False
-
 def tela_inteligencia_gerencial():
     """
     Inteligência Gerencial: leitura executiva, alertas, riscos, gargalos e providências recomendadas.
@@ -12138,12 +12160,7 @@ def tela_inteligencia_gerencial():
         "Leitura estratégica dos atendimentos: recorrências, riscos, gargalos, qualidade da base e providências recomendadas."
     )
 
-    try:
-        permitido_relatorios = usuario_pode_ver_relatorios()
-    except Exception:
-        permitido_relatorios = False
-
-    if not permitido_relatorios:
+    if not usuario_pode_ver_relatorios():
         st.warning("Inteligência Gerencial disponível apenas para chefia e administradores.")
         return
 
@@ -12578,86 +12595,28 @@ def dataframe_qualidade_base(lista):
     return pd.DataFrame(linhas)
 
 
-
 def dataframe_resumo_por_secao(lista):
-    """
-    Resumo por seção para a Inteligência Gerencial.
-    Implementação autônoma, sem dependência de rotinas externas de tempo médio.
-    """
-    base = list(lista or [])
-    colunas = [
-        "Seção",
-        "Total",
-        "Pendentes",
-        "Realizados",
-        "% realizado",
-        "Vencidos",
-        "Urgentes",
-        "Sem responsável",
-        "Tempo médio até conclusão",
-    ]
-
-    if not base:
-        return pd.DataFrame(columns=colunas)
-
     linhas = []
-    secoes = sorted({
-        str(a.get("secao") or a.get("unidade_responsavel") or "Não informado").strip() or "Não informado"
-        for a in base
-    })
+    secoes = secoes_atendimento()
 
     for secao in secoes:
-        itens = [
-            a for a in base
-            if (str(a.get("secao") or a.get("unidade_responsavel") or "Não informado").strip() or "Não informado") == secao
-        ]
-
-        total = len(itens)
-        realizados = len([a for a in itens if a.get("status") == STATUS_REALIZADO])
+        base = [a for a in lista if normalizar_secao(a.get("secao")) == secao]
+        total = len(base)
+        realizados = sum(1 for a in base if a.get("status") == STATUS_REALIZADO)
         pendentes = total - realizados
-
-        try:
-            vencidos = len([a for a in itens if prazo_vencido(a)])
-        except Exception:
-            vencidos = 0
-
-        urgentes = len([
-            a for a in itens
-            if atendimento_aberto(a) and str(a.get("prioridade") or "").casefold() == "urgente"
-        ])
-
-        sem_resp = len([
-            a for a in itens
-            if atendimento_aberto(a) and atendimento_sem_responsavel(a)
-        ])
-
-        tempos = []
-        for a in itens:
-            try:
-                if a.get("status") != STATUS_REALIZADO:
-                    continue
-                inicio = data_para_datetime(a.get("data_atendimento") or a.get("criado_em"))
-                fim = data_para_datetime(a.get("data_realizacao") or a.get("atualizado_em"))
-                if inicio and fim and fim >= inicio:
-                    tempos.append((fim - inicio).total_seconds() / 86400)
-            except Exception:
-                continue
-
-        tempo_medio = f"{sum(tempos) / len(tempos):.1f} dia(s)".replace(".", ",") if tempos else "-"
-
+        alertas = len(dataframe_alertas_gerenciais(base))
+        tempo_df = dataframe_tempo_medio_por_fonte(base)
         linhas.append({
             "Seção": secao,
             "Total": numero_br(total),
             "Pendentes": numero_br(pendentes),
             "Realizados": numero_br(realizados),
             "% realizado": percentual_br((realizados / total * 100) if total else 0),
-            "Vencidos": numero_br(vencidos),
-            "Urgentes": numero_br(urgentes),
-            "Sem responsável": numero_br(sem_resp),
-            "Tempo médio até conclusão": tempo_medio,
+            "Alertas": numero_br(alertas),
         })
 
-    return pd.DataFrame(linhas, columns=colunas)
+    return pd.DataFrame(linhas)
+
 
 def calcular_horas_atendimento_relatorio(atendimento):
     """
