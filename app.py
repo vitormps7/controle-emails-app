@@ -91,9 +91,27 @@ DOMINIO_INSTITUCIONAL = "@tre-ba.jus.br"
 BASE_DIR = Path(__file__).resolve().parent
 PASTA_ASSETS = BASE_DIR / "assets"
 
+# Imagem transparente minima usada apenas como contingencia.
+# Assim, se a pasta assets nao for enviada ao servidor, o SIGA-COR continua abrindo
+# em vez de encerrar com FileNotFoundError.
+PNG_TRANSPARENTE_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAE"
+    "AQH/6Fh6WQAAAABJRU5ErkJggg=="
+)
+
 def carregar_imagem_base64(nome_arquivo):
-    caminho = PASTA_ASSETS / nome_arquivo
-    return base64.b64encode(caminho.read_bytes()).decode("ascii")
+    """Carrega uma imagem sem impedir a inicializacao do sistema se o arquivo faltar."""
+    candidatos = [
+        PASTA_ASSETS / nome_arquivo,
+        BASE_DIR / nome_arquivo,  # compatibilidade com pacotes antigos
+    ]
+    for caminho in candidatos:
+        try:
+            if caminho.is_file():
+                return base64.b64encode(caminho.read_bytes()).decode("ascii")
+        except OSError:
+            pass
+    return PNG_TRANSPARENTE_BASE64
 
 LOGO_CORREGEDORIA_BASE64 = carregar_imagem_base64("logo_corregedoria.png")
 FUNDO_LOGIN_BASE64 = carregar_imagem_base64("fundo_login_tre_ba.png")
